@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行程计划</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="main-container">
+        <!-- 用户选择器 -->
+        <div class="user-selector">
+            <div class="user-selector-label">当前用户：</div>
+            <div class="user-buttons">
+                <button class="user-btn" data-user="userA">👤 用户A</button>
+                <button class="user-btn" data-user="userB">👤 用户B</button>
+            </div>
+        </div>
+
+        <!-- 同步控制栏 -->
+        <div class="sync-controls">
+            <div class="sync-buttons">
+                <button class="sync-btn" onclick="syncUpload()" title="上传到云端">☁️ 上传</button>
+                <button class="sync-btn" onclick="syncDownload()" title="从云端下载">⬇️ 下载</button>
+                <button class="sync-btn" onclick="showSyncConfig()" title="配置同步">⚙️ 配置</button>
+                <button class="sync-btn" onclick="exportData()" title="导出数据">💾 导出</button>
+                <button class="sync-btn" onclick="importData()" title="导入数据">📥 导入</button>
+            </div>
+            <div id="sync-status" class="sync-status"></div>
+        </div>
+
+        <!-- 同步配置模态框 -->
+        <div id="sync-config-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>同步配置</h3>
+                    <button class="modal-close" onclick="closeSyncConfig()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="config-section">
+                        <label for="github-token-input">GitHub Personal Access Token：</label>
+                        <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxx">
+                        <small>需要创建GitHub Token，勾选gist权限。点击下方链接查看教程</small>
+                        <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token" target="_blank" class="help-link">如何创建Token？</a>
+                    </div>
+                    <div class="config-section">
+                        <label for="gist-id-input">Gist ID（首次使用留空，会自动创建）：</label>
+                        <input type="text" id="gist-id-input" placeholder="留空则自动创建新的Gist">
+                        <small>如果已经创建过Gist，可以输入Gist ID直接使用</small>
+                    </div>
+                    <div class="config-section">
+                        <label>
+                            <input type="checkbox" id="auto-sync-checkbox">
+                            启用自动同步（每30秒自动上传）
+                        </label>
+                    </div>
+                    <div class="config-actions">
+                        <button class="btn-primary" onclick="saveSyncConfig()">保存配置</button>
+                        <button class="btn-secondary" onclick="closeSyncConfig()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 标题区域 -->
+        <div class="header">
+            <h1>浙东行程计划（上海→绍兴→衢州→义乌→上海）</h1>
+        </div>
+
+        <!-- 目录导航 -->
+        <div class="nav-container">
+            <h2>行程总览</h2>
+            <ul class="nav-list">
+                <!-- 导航项将由 JavaScript 动态生成 -->
+            </ul>
+        </div>
+
+        <!-- 日期标题 -->
+        <div class="day-header">
+            <h2>Day 1: 上海 → 绍兴（不变）</h2>
+        </div>
+
+        <!-- 卡片容器 -->
+        <div id="cards-container" class="cards-container">
+            <div class="card-indicator"></div>
+        </div>
+    </div>
+
+    <!-- 引入数据文件 -->
+    <script src="data.js"></script>
+    <!-- 引入同步功能 -->
+    <script src="sync.js"></script>
+    <!-- 引入逻辑文件 -->
+    <script src="script.js"></script>
+</body>
+</html>
+
