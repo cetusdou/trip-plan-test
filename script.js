@@ -87,9 +87,20 @@ class CardSlider {
     toggleSortMode() {
         this.sortMode = !this.sortMode;
         
-        // 退出排序模式时，重置当前索引
+        // 退出排序模式时，重置当前索引并重新加载顺序
         if (!this.sortMode) {
             this.currentIndex = 0;
+            // 重新应用保存的顺序（确保使用最新的顺序）
+            const day = tripData.days.find(d => d.id === this.dayId);
+            if (day) {
+                const customItems = getCustomItems(this.dayId);
+                const allItems = [...day.items, ...customItems];
+                const orderedItems = applyCardOrder(this.dayId, allItems);
+                const filteredItems = applyFilter(orderedItems);
+                // 更新cards数组为最新的顺序
+                this.cards = filteredItems;
+                console.log('退出排序模式，更新后的cards顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
+            }
         }
         
         this.renderCards();
@@ -321,6 +332,11 @@ class CardSlider {
                 this.setRating(this.dayId, index, i + 1);
                 // 重新渲染卡片
                 this.renderCards();
+                // 重新绑定事件
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             });
         });
         
@@ -348,6 +364,11 @@ class CardSlider {
                         const currentImages = this.getImages(this.dayId, index);
                         this.setImages(this.dayId, index, [...currentImages, ...imageUrls]);
                         this.renderCards();
+                        // 重新绑定事件
+                        if (!this.sortMode) {
+                            this.attachEventListeners();
+                        }
+                        this.attachCardEventsForAll();
                     });
                 }
                 // 清空input，允许重复选择相同文件
@@ -365,6 +386,11 @@ class CardSlider {
                 const isExpanded = expandBtn.dataset.expanded === 'true';
                 this.setCardExpanded(this.dayId, index, !isExpanded);
                 this.renderCards();
+                // 重新绑定事件（重要：重新渲染后需要重新绑定滑动事件）
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             });
             
             // 也处理触摸事件，确保移动设备上也能正常工作
@@ -375,6 +401,11 @@ class CardSlider {
                 const isExpanded = expandBtn.dataset.expanded === 'true';
                 this.setCardExpanded(this.dayId, index, !isExpanded);
                 this.renderCards();
+                // 重新绑定事件（重要：重新渲染后需要重新绑定滑动事件）
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             });
         }
         
@@ -504,6 +535,11 @@ class CardSlider {
                     images.splice(btnIndex, 1);
                     this.setImages(this.dayId, index, images);
                     this.renderCards();
+                    // 重新绑定事件
+                    if (!this.sortMode) {
+                        this.attachEventListeners();
+                    }
+                    this.attachCardEventsForAll();
                 });
             });
         }
@@ -527,6 +563,11 @@ class CardSlider {
                 const section = btn.dataset.section;
                 this.toggleItemLike(this.dayId, index, section);
                 this.renderCards();
+                // 重新绑定事件
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             });
         });
         
@@ -537,6 +578,11 @@ class CardSlider {
                 const commentIndex = parseInt(btn.dataset.commentIndex);
                 this.toggleCommentLike(this.dayId, index, commentIndex);
                 this.renderCards();
+                // 重新绑定事件
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             });
         });
         
@@ -551,6 +597,11 @@ class CardSlider {
                 commentInput.value = '';
                 // 重新渲染卡片
                 this.renderCards();
+                // 重新绑定事件
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
             }
         });
         
@@ -633,9 +684,8 @@ class CardSlider {
         } else {
             localStorage.removeItem(key);
         }
-        if (typeof dataSync !== 'undefined' && dataSync.autoSyncEnabled) {
-            dataSync.upload().catch(() => {});
-        }
+        // 自动同步到Gist
+        autoSyncToGist();
     }
     
     // 获取行程项点赞
@@ -940,18 +990,36 @@ class CardSlider {
     
     // 保存卡片顺序
     saveCardOrder() {
-        // 构建顺序信息
-        const orderInfo = this.cards.map((item, idx) => ({
-            index: idx,
-            id: item.id || item.category || `item_${idx}`,
-            isCustom: item.isCustom || false
-        }));
+        console.log('保存卡片顺序，当前cards:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
+        
+        // 构建顺序信息 - 使用更可靠的唯一标识
+        const orderInfo = this.cards.map((item, idx) => {
+            // 对于自定义项，使用id；对于原始项，使用category+time组合作为唯一标识
+            let uniqueId;
+            if (item.isCustom && item.id) {
+                uniqueId = item.id;
+            } else {
+                // 原始项：使用category + time + plan的前几个字符作为唯一标识
+                const time = item.time || '';
+                const plan = (item.plan || '').substring(0, 20);
+                uniqueId = `${item.category || 'item'}_${time}_${plan}`.replace(/\s+/g, '_');
+            }
+            
+            return {
+                index: idx,
+                id: uniqueId,
+                category: item.category,
+                isCustom: item.isCustom || false
+            };
+        });
+        
+        console.log('保存的顺序信息:', orderInfo);
         
         // 保存顺序
         const orderKey = `trip_card_order_${this.dayId}`;
         localStorage.setItem(orderKey, JSON.stringify(orderInfo));
         
-        // 保存自定义项的新顺序
+        // 保存自定义项的新顺序（保持完整数据）
         const newCustomItems = this.cards.filter(item => item.isCustom);
         if (newCustomItems.length > 0) {
             localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(newCustomItems));
@@ -964,13 +1032,6 @@ class CardSlider {
     // 重新排序卡片（保留用于兼容）
     reorderCards(fromIndex, toIndex) {
         this.saveCardOrder();
-    }
-    
-    // 保存卡片顺序
-    saveCardOrder() {
-        // 顺序已在上面的reorderCards中保存
-        // 触发自动同步到Gist
-        autoSyncToGist();
     }
 
     escapeHtml(text) {
@@ -1350,7 +1411,10 @@ function showDay(dayId) {
         
         // 创建新的滑动器
         const slider = new CardSlider('cards-container', filteredItems, dayId);
-        currentSlider = slider; // 保存引用
+        // 只有在当前日期时才保存引用，避免跨日期状态混乱
+        if (dayId === currentDayId) {
+            currentSlider = slider; // 保存引用
+        }
         
         // 滚动到卡片区域
         cardsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1361,26 +1425,63 @@ function showDay(dayId) {
 function applyCardOrder(dayId, items) {
     const orderKey = `trip_card_order_${dayId}`;
     const orderData = localStorage.getItem(orderKey);
-    if (!orderData) return items;
+    if (!orderData) {
+        console.log('没有保存的顺序，使用原始顺序');
+        return items;
+    }
     
     try {
         const order = JSON.parse(orderData);
-        const orderedItems = [];
-        const itemMap = new Map(items.map(item => [item.id || item.category, item]));
+        console.log('应用保存的顺序，order:', order);
+        console.log('原始items:', items.map((i, idx) => `${idx}:${i.category || i.id}`).join(', '));
         
+        const orderedItems = [];
+        // 创建映射：对于自定义项使用id，对于原始项使用category+time+plan组合
+        const itemMap = new Map();
+        items.forEach(item => {
+            let key;
+            if (item.isCustom && item.id) {
+                key = item.id;
+            } else {
+                const time = item.time || '';
+                const plan = (item.plan || '').substring(0, 20);
+                key = `${item.category || 'item'}_${time}_${plan}`.replace(/\s+/g, '_');
+            }
+            // 如果key已存在，添加索引后缀确保唯一性
+            if (itemMap.has(key)) {
+                let counter = 1;
+                while (itemMap.has(`${key}_${counter}`)) {
+                    counter++;
+                }
+                key = `${key}_${counter}`;
+            }
+            itemMap.set(key, item);
+        });
+        
+        console.log('itemMap keys:', Array.from(itemMap.keys()));
+        
+        // 按照保存的顺序排列
         order.forEach(orderItem => {
             const item = itemMap.get(orderItem.id);
             if (item) {
                 orderedItems.push(item);
                 itemMap.delete(orderItem.id);
+            } else {
+                console.warn('未找到匹配的项，id:', orderItem.id);
             }
         });
         
-        // 添加未排序的项
-        itemMap.forEach(item => orderedItems.push(item));
+        // 添加未排序的项（新添加的项）
+        itemMap.forEach(item => {
+            console.log('添加未排序的项:', item.category || item.id);
+            orderedItems.push(item);
+        });
+        
+        console.log('应用顺序后的items:', orderedItems.map((i, idx) => `${idx}:${i.category || i.id}`).join(', '));
         
         return orderedItems;
     } catch (e) {
+        console.error('应用顺序时出错:', e);
         return items;
     }
 }
@@ -1421,12 +1522,8 @@ function toggleSortMode() {
     const cardsContainer = document.getElementById('cards-container');
     if (!cardsContainer) return;
     
-    const stack = cardsContainer.querySelector('.cards-stack');
-    if (!stack) return;
-    
-    // 找到当前的slider实例
-    if (!currentSlider) {
-        // 从容器中获取slider
+    // 如果currentSlider不存在或日期不匹配，重新创建
+    if (!currentSlider || currentSlider.dayId !== currentDayId) {
         const day = tripData.days.find(d => d.id === currentDayId);
         if (!day) return;
         const customItems = getCustomItems(currentDayId);
