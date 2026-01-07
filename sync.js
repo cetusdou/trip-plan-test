@@ -218,9 +218,38 @@ class DataSync {
             
             if (merge) {
                 // 智能合并策略：
-                // 1. 对于数组类型的数据（留言、计划项等），合并数组
-                // 2. 对于其他数据，如果本地有则保留本地，否则使用远程
+                // 1. 如果本地没有缓存数据，优先使用云端数据
+                // 2. 对于数组类型的数据（留言、计划项等），合并数组
+                // 3. 对于其他数据，如果本地有则保留本地，否则使用远程
                 const localData = this.getAllLocalData();
+                const localDataKeys = Object.keys(localData);
+                
+                // 检查本地是否有有效数据（排除空值）
+                const hasLocalData = localDataKeys.length > 0 && 
+                    localDataKeys.some(key => {
+                        const value = localData[key];
+                        // 检查是否为有效数据（不是空字符串、空数组、空对象）
+                        if (!value || value === '[]' || value === '{}' || value === '""') {
+                            return false;
+                        }
+                        try {
+                            const parsed = JSON.parse(value);
+                            if (Array.isArray(parsed) && parsed.length === 0) return false;
+                            if (typeof parsed === 'object' && Object.keys(parsed).length === 0) return false;
+                        } catch (e) {
+                            // 不是JSON，检查字符串长度
+                            if (value.trim().length === 0) return false;
+                        }
+                        return true;
+                    });
+                
+                // 如果本地没有有效数据，直接使用云端数据
+                if (!hasLocalData) {
+                    this.setAllLocalData(remoteData);
+                    return { success: true, message: '同步成功！已从云端加载数据。', data: remoteData };
+                }
+                
+                // 本地有数据，使用合并策略
                 const mergedData = { ...localData }; // 从本地数据开始
                 
                 Object.keys(remoteData).forEach(key => {
