@@ -35,7 +35,7 @@ class CardSlider {
         this.currentX = 0;
         this.startY = 0;
         this.startTime = 0;
-        this.threshold = 80; // 滑动阈值（增加到80px，减少误触）
+        this.threshold = 40; // 滑动阈值（40px，在手机上更容易触发）
         this.sortMode = false; // 排序模式
         this.init();
     }
@@ -1107,18 +1107,19 @@ class CardSlider {
         const deltaX = this.currentX - this.startX;
         const deltaY = Math.abs(currentY - this.startY);
         
-        // 如果垂直移动距离大于水平移动距离，可能是滚动操作，不处理滑动
-        if (deltaY > Math.abs(deltaX)) {
+        // 如果垂直移动距离明显大于水平移动距离（超过2倍），可能是滚动操作，不处理滑动
+        if (deltaY > Math.abs(deltaX) * 2 && deltaY > 30) {
             this.isDragging = false;
             card.classList.remove('swiping');
             card.style.transform = '';
             return;
         }
         
-        // 只有水平移动距离大于10px时才开始滑动动画
-        if (Math.abs(deltaX) > 10) {
+        // 只有水平移动距离大于5px时才开始滑动动画
+        if (Math.abs(deltaX) > 5) {
             card.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.1}deg)`;
             e.preventDefault();
+            console.log('滑动中，deltaX:', deltaX, 'deltaY:', deltaY);
         }
     }
 
@@ -1130,23 +1131,33 @@ class CardSlider {
         
         const deltaX = this.currentX - this.startX;
         const deltaTime = Date.now() - this.startTime;
+        const absDeltaX = Math.abs(deltaX);
         
         this.isDragging = false;
         card.classList.remove('swiping');
         card.style.transform = '';
         
-        // 如果移动距离很小（小于阈值）或时间很短（可能是点击），不触发滑动
-        if (Math.abs(deltaX) < this.threshold || deltaTime < 200) {
+        // 如果移动距离很小（小于阈值），不触发滑动
+        if (absDeltaX < this.threshold) {
             return;
         }
         
-        // 只有明显的滑动才触发翻页
-        if (Math.abs(deltaX) > this.threshold) {
+        // 如果时间很短（小于100ms）且移动距离不够大，可能是误触，不触发滑动
+        if (deltaTime < 100 && absDeltaX < this.threshold * 1.5) {
+            return;
+        }
+        
+        // 明显的滑动才触发翻页
+        console.log('滑动结束，deltaX:', deltaX, 'absDeltaX:', absDeltaX, 'threshold:', this.threshold, 'deltaTime:', deltaTime);
+        if (absDeltaX > this.threshold) {
+            console.log('触发翻页，方向:', deltaX > 0 ? '右' : '左');
             if (deltaX > 0) {
                 this.swipeRight(card);
             } else {
                 this.swipeLeft(card);
             }
+        } else {
+            console.log('滑动距离不足，未触发翻页');
         }
     }
 

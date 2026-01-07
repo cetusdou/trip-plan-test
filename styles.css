@@ -8,7 +8,7 @@
 
 /* 页面基础样式 */
 body {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: #333;
     line-height: 1.6;
     padding: 10px;
@@ -298,6 +298,7 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom; /* 允许垂直滚动和缩放，但允许水平滑动 */
 }
 
 .card:active {

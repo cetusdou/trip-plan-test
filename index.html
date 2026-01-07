@@ -17,16 +17,22 @@
             </div>
         </div>
 
-        <!-- 同步控制栏 -->
+        <!-- 同步控制栏（可展开） -->
         <div class="sync-controls">
-            <div class="sync-buttons">
-                <button class="sync-btn" onclick="syncUpload()" title="手动上传到云端">☁️ 上传</button>
-                <button class="sync-btn" onclick="syncDownload()" title="从云端下载">⬇️ 下载</button>
-                <button class="sync-btn" onclick="showSyncConfig()" title="配置同步">⚙️ 配置</button>
-                <button class="sync-btn" onclick="exportData()" title="导出数据（备份）">💾 导出</button>
-                <button class="sync-btn" onclick="importData()" title="导入数据">📥 导入</button>
+            <button class="sync-toggle-btn" onclick="toggleSyncPanel()">
+                <span>☁️ 同步与数据</span>
+                <span class="sync-toggle-icon">▼</span>
+            </button>
+            <div class="sync-panel" id="sync-panel">
+                <div class="sync-buttons">
+                    <button class="sync-btn" onclick="syncUpload()" title="手动上传到云端">☁️ 上传</button>
+                    <button class="sync-btn" onclick="syncDownload()" title="从云端下载">⬇️ 下载</button>
+                    <button class="sync-btn" onclick="showSyncConfig()" title="配置同步">⚙️ 配置</button>
+                    <button class="sync-btn" onclick="exportData()" title="导出数据（备份）">💾 导出</button>
+                    <button class="sync-btn" onclick="importData()" title="导入数据">📥 导入</button>
+                </div>
+                <div id="sync-status" class="sync-status"></div>
             </div>
-            <div id="sync-status" class="sync-status"></div>
         </div>
 
         <!-- 新增行程项模态框 -->
