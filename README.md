@@ -32,7 +32,28 @@
 5. 点击 "Generate token"
 6. **重要**：复制生成的token（只显示一次）
 
-#### 第二步：配置同步
+#### 第二步：配置同步（三种方式任选一种）
+
+**方式一：使用配置文件（推荐，最简单）**
+
+1. 复制 `config.example.js` 为 `config.js`
+2. 打开 `config.js`，将你的token填入 `githubToken` 字段
+3. 保存文件
+4. 刷新页面，token会自动导入
+
+**方式二：使用URL参数**
+
+在浏览器地址栏访问：
+```
+index.html?token=你的token&gist_id=你的gist_id（可选）
+```
+
+例如：
+```
+index.html?token=ghp_xxxxxxxxxxxx
+```
+
+**方式三：手动配置**
 
 1. 在应用中点击 "⚙️ 配置" 按钮
 2. 粘贴刚才复制的GitHub Token

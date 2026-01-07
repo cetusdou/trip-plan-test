@@ -20,13 +20,55 @@
         <!-- 同步控制栏 -->
         <div class="sync-controls">
             <div class="sync-buttons">
-                <button class="sync-btn" onclick="syncUpload()" title="上传到云端">☁️ 上传</button>
+                <button class="sync-btn" onclick="syncUpload()" title="手动上传到云端">☁️ 上传</button>
                 <button class="sync-btn" onclick="syncDownload()" title="从云端下载">⬇️ 下载</button>
                 <button class="sync-btn" onclick="showSyncConfig()" title="配置同步">⚙️ 配置</button>
-                <button class="sync-btn" onclick="exportData()" title="导出数据">💾 导出</button>
+                <button class="sync-btn" onclick="exportData()" title="导出数据（备份）">💾 导出</button>
                 <button class="sync-btn" onclick="importData()" title="导入数据">📥 导入</button>
             </div>
             <div id="sync-status" class="sync-status"></div>
+        </div>
+
+        <!-- 新增行程项模态框 -->
+        <div id="add-item-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>新增行程项</h3>
+                    <button class="modal-close" onclick="closeAddItemModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="config-section">
+                        <label for="new-item-category">事项名称 *</label>
+                        <input type="text" id="new-item-category" placeholder="例如：早餐、景点游览等" required>
+                    </div>
+                    <div class="config-section">
+                        <label for="new-item-time">时间</label>
+                        <input type="text" id="new-item-time" placeholder="例如：08:00-10:00">
+                    </div>
+                    <div class="config-section">
+                        <label for="new-item-plan">计划</label>
+                        <textarea id="new-item-plan" rows="3" placeholder="输入计划内容..."></textarea>
+                    </div>
+                    <div class="config-section">
+                        <label for="new-item-note">备注</label>
+                        <textarea id="new-item-note" rows="3" placeholder="输入备注信息..."></textarea>
+                    </div>
+                    <div class="config-section">
+                        <label for="new-item-tag">分类标签</label>
+                        <select id="new-item-tag">
+                            <option value="其他">📋 其他</option>
+                            <option value="景点">🏛️ 景点</option>
+                            <option value="美食">🍜 美食</option>
+                            <option value="住宿">🏨 住宿</option>
+                            <option value="赶路">🚗 赶路</option>
+                        </select>
+                    </div>
+                    <div class="config-actions">
+                        <button class="btn-primary" onclick="saveNewItem()">保存</button>
+                        <button class="btn-secondary" onclick="closeAddItemModal()">取消</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 同步配置模态框 -->
@@ -75,6 +117,18 @@
             </ul>
         </div>
 
+        <!-- 筛选面板 -->
+        <div id="filter-panel" class="filter-panel" style="display: none;">
+            <div class="filter-buttons">
+                <button class="filter-tag-btn" onclick="setFilter('all')">全部</button>
+                <button class="filter-tag-btn" onclick="setFilter('景点')">🏛️ 景点</button>
+                <button class="filter-tag-btn" onclick="setFilter('美食')">🍜 美食</button>
+                <button class="filter-tag-btn" onclick="setFilter('住宿')">🏨 住宿</button>
+                <button class="filter-tag-btn" onclick="setFilter('赶路')">🚗 赶路</button>
+                <button class="filter-tag-btn" onclick="setFilter('其他')">📋 其他</button>
+            </div>
+        </div>
+
         <!-- 日期标题 -->
         <div class="day-header">
             <h2>Day 1: 上海 → 绍兴（不变）</h2>
@@ -88,6 +142,8 @@
 
     <!-- 引入数据文件 -->
     <script src="data.js"></script>
+    <!-- 引入配置文件（如果存在） -->
+    <script src="config.js" onerror="console.log('未找到config.js，将使用URL参数或手动配置')"></script>
     <!-- 引入同步功能 -->
     <script src="sync.js"></script>
     <!-- 引入逻辑文件 -->
