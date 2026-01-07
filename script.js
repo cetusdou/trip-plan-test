@@ -1502,25 +1502,10 @@ class CardSlider {
 
 // 从配置文件或URL参数中读取配置
 function loadConfigFromURL() {
-    // 首先尝试从config.js加载配置
-    if (typeof tripConfig !== 'undefined') {
-        if (tripConfig.githubToken && typeof dataSync !== 'undefined') {
-            dataSync.setToken(tripConfig.githubToken);
-            updateSyncStatus('Token已从配置文件导入', 'success');
-        }
-        if (tripConfig.gistId && typeof dataSync !== 'undefined') {
-            dataSync.setGistId(tripConfig.gistId);
-            updateSyncStatus('Gist ID已从配置文件导入', 'success');
-        }
-        if (tripConfig.autoSync && typeof dataSync !== 'undefined') {
-            dataSync.setAutoSync(tripConfig.autoSync);
-            if (tripConfig.autoSync) {
-                updateSyncStatus('自动同步已启用', 'success');
-            }
-        }
-    }
+    // 不再从config.js导入，只使用本地缓存的token
+    // Token和Gist ID已经缓存在localStorage中，DataSync构造函数会自动读取
     
-    // 然后从URL参数读取（URL参数优先级更高）
+    // 从URL参数读取（URL参数优先级更高，用于首次配置）
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     const gistId = urlParams.get('gist_id') || urlParams.get('gistId');
@@ -1700,8 +1685,7 @@ function showDay(dayId) {
             currentSlider = slider; // 保存引用
         }
         
-        // 滚动到卡片区域
-        cardsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 不再自动滚动到卡片区域，让用户保持在当前位置
     }
 }
 

@@ -431,9 +431,8 @@ async function syncUpload() {
     if (result.success) {
         const summary = `同步成功！\n包含：${dataKeys.length} 个数据项\n- 计划项: ${planKeys.length}\n- 卡片顺序: ${orderKeys.length}\n- 留言: ${commentKeys.length}\n- 标签: ${tagKeys.length}`;
         updateSyncStatus(summary, 'success');
-        if (currentDayId) {
-            showDay(currentDayId);
-        }
+        // 不再自动跳转，让用户看到同步信息
+        // 如果需要刷新数据，可以手动点击日期链接
     } else {
         updateSyncStatus(result.message, 'error');
     }
@@ -444,9 +443,8 @@ async function syncDownload() {
     updateSyncStatus('正在下载...', 'info');
     const result = await dataSync.download(false); // false = 覆盖模式
     updateSyncStatus(result.message, result.success ? 'success' : 'error');
-    if (result.success && currentDayId) {
-        showDay(currentDayId);
-    }
+    // 不再自动跳转，让用户看到同步信息
+    // 如果需要刷新数据，可以手动点击日期链接
 }
 
 // 导出数据
@@ -501,6 +499,7 @@ function importData() {
                 updateSyncStatus('正在导入...', 'info');
                 const result = await dataSync.importData(file);
                 updateSyncStatus(result.message, 'success');
+                // 导入数据后刷新显示，但不跳转（已移除showDay中的跳转代码）
                 if (currentDayId) {
                     showDay(currentDayId);
                 }

@@ -149,8 +149,7 @@
 
     <!-- 引入数据文件 -->
     <script src="data.js"></script>
-    <!-- 引入配置文件（如果存在） -->
-    <script src="config.js" onerror=""></script>
+    <!-- 不再从config.js导入token，token缓存在localStorage中 -->
     <!-- 引入同步功能 -->
     <script src="sync.js"></script>
     <!-- 引入逻辑文件 -->
