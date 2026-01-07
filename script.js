@@ -1046,6 +1046,9 @@ class CardSlider {
     }
 
     swipeLeft(card) {
+        // 排序模式下不处理滑动
+        if (this.sortMode) return;
+        
         card.classList.add('swiped-left');
         setTimeout(() => {
             card.remove();
@@ -1060,6 +1063,9 @@ class CardSlider {
     }
 
     swipeRight(card) {
+        // 排序模式下不处理滑动
+        if (this.sortMode) return;
+        
         card.classList.add('swiped-right');
         setTimeout(() => {
             card.remove();
