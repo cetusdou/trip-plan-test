@@ -176,6 +176,7 @@ class CardSlider {
                         <div class="card-tag tag-${cardTag}" data-card-index="${index}" data-current-tag="${cardTag}">${this.getTagLabel(cardTag)}</div>
                     </div>
                     <div class="card-header-actions">
+                        <button class="card-save-btn" data-card-index="${index}" title="保存并同步">💾</button>
                         <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}">
                             ${isExpanded ? '▼' : '▶'}
                         </button>
@@ -263,12 +264,18 @@ class CardSlider {
                     return `
                         <li class="plan-item">
                             <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
-                            <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
-                                    data-plan-index="${planIndex}" 
-                                    title="点赞">
-                                <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
-                                <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
-                            </button>
+                            <div class="plan-item-actions">
+                                <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
+                                        data-plan-index="${planIndex}" 
+                                        title="点赞">
+                                    <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
+                                    <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
+                                </button>
+                                <button class="plan-item-delete-btn" 
+                                        data-card-index="${index}"
+                                        data-plan-index="${planIndex}" 
+                                        title="删除此项">🗑️</button>
+                            </div>
                         </li>
                     `;
                     }).join('') : ''}
@@ -623,6 +630,51 @@ class CardSlider {
                     const itemId = deleteBtn.dataset.itemId;
                     deleteCustomItem(this.dayId, itemId);
                 }
+            });
+        }
+        
+        // 计划项删除事件
+        card.querySelectorAll('.plan-item-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const planIndex = parseInt(btn.dataset.planIndex);
+                const cardIndex = parseInt(btn.dataset.cardIndex);
+                if (confirm('确定要删除这个计划项吗？')) {
+                    this.deletePlanItem(cardIndex, planIndex);
+                }
+            });
+            
+            // 也处理触摸事件
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const planIndex = parseInt(btn.dataset.planIndex);
+                const cardIndex = parseInt(btn.dataset.cardIndex);
+                if (confirm('确定要删除这个计划项吗？')) {
+                    this.deletePlanItem(cardIndex, planIndex);
+                }
+            });
+        });
+        
+        // 保存按钮事件
+        const saveBtn = card.querySelector('.card-save-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.saveCard(index);
+            });
+            
+            // 也处理触摸事件
+            saveBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.saveCard(index);
             });
         }
         
@@ -1287,10 +1339,12 @@ class CardSlider {
             target.closest('a') ||
             target.closest('.card-expand-btn') ||
             target.closest('.card-sort-btn') ||
+            target.closest('.card-save-btn') ||
             target.closest('.comment-submit') ||
             target.closest('.image-upload-btn') ||
             target.closest('.comment-like-btn') ||
             target.closest('.plan-item-like-btn') ||
+            target.closest('.plan-item-delete-btn') ||
             target.closest('.item-like-btn') ||
             target.closest('.card-tag') ||
             target.closest('.plan-add-btn')

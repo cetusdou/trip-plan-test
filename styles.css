@@ -472,6 +472,23 @@ body {
     align-items: center;
 }
 
+.card-save-btn {
+    background: transparent;
+    border: 1px solid #56ab2f;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    color: #56ab2f;
+}
+
+.card-save-btn:hover {
+    background: #56ab2f;
+    color: white;
+    transform: scale(1.05);
+}
+
 .card-expand-btn {
     background: transparent;
     border: 1px solid #ddd;
@@ -630,6 +647,27 @@ body {
     border-radius: 6px;
     border-left: 3px solid #56ab2f;
     transition: background 0.2s ease;
+}
+
+.plan-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.plan-item-delete-btn {
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+}
+
+.plan-item-delete-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
 }
 
 .plan-item:hover {
