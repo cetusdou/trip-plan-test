@@ -254,6 +254,12 @@ body {
     width: 100%;
     height: auto;
     min-height: 200px;
+    touch-action: none; /* 防止触摸滚动干扰拖拽 */
+}
+
+.sort-mode .card-header {
+    position: relative;
+    z-index: 2;
 }
 
 .sort-mode .card.sortable-card {
@@ -350,20 +356,51 @@ body {
     gap: 10px;
 }
 
-.card-drag-handle {
-    cursor: grab;
-    color: #7f8c8d;
-    font-size: 18px;
-    padding: 4px 8px;
-    user-select: none;
-    transition: all 0.3s ease;
-    border-radius: 4px;
-    flex-shrink: 0;
+.card-sort-buttons {
     display: none;
+    flex-direction: column;
+    gap: 4px;
+    margin-right: 8px;
+    flex-shrink: 0;
 }
 
-.sort-mode .card-drag-handle {
-    display: block;
+.sort-mode .card-sort-buttons {
+    display: flex !important;
+}
+
+.card-sort-btn {
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid #3498db;
+    border-radius: 4px;
+    color: #3498db;
+    font-size: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    user-select: none;
+    min-width: 32px;
+    text-align: center;
+    line-height: 1;
+}
+
+.card-sort-btn:hover:not(:disabled) {
+    background: rgba(52, 152, 219, 0.2);
+    border-color: #2980b9;
+    color: #2980b9;
+    transform: scale(1.1);
+}
+
+.card-sort-btn:active:not(:disabled) {
+    background: rgba(52, 152, 219, 0.3);
+    transform: scale(0.95);
+}
+
+.card-sort-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    background: rgba(200, 200, 200, 0.5);
+    border-color: #ccc;
+    color: #999;
 }
 
 .card-drag-handle:hover {

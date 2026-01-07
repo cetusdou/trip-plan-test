@@ -84,9 +84,17 @@ class CardSlider {
     // 切换排序模式
     toggleSortMode() {
         this.sortMode = !this.sortMode;
+        
+        // 退出排序模式时，重置当前索引
+        if (!this.sortMode) {
+            this.currentIndex = 0;
+        }
+        
         this.renderCards();
         // 重新绑定事件（重要：排序模式下需要重新绑定拖拽事件）
         this.attachCardEventsForAll();
+        // 重新绑定滑动事件（退出排序模式后需要恢复滑动功能）
+        this.attachEventListeners();
         
         // 更新按钮状态
         const sortBtn = document.querySelector('.sort-mode-btn');
@@ -104,8 +112,13 @@ class CardSlider {
     // 为所有卡片绑定事件
     attachCardEventsForAll() {
         const cards = this.container.querySelectorAll('.card');
+        console.log('绑定拖拽事件，卡片数量:', cards.length, '排序模式:', this.sortMode);
         cards.forEach((card, index) => {
             const cardIndex = parseInt(card.dataset.index);
+            if (isNaN(cardIndex)) {
+                console.warn('卡片索引无效:', card.dataset.index);
+                return;
+            }
             this.attachCardEvents(card, cardIndex);
         });
     }
@@ -128,7 +141,10 @@ class CardSlider {
         let html = `
             <div class="card-header">
                 <div class="card-header-main">
-                    <div class="card-drag-handle" title="拖拽排序">☰</div>
+                    <div class="card-sort-buttons">
+                        <button class="card-sort-btn card-sort-up" data-index="${index}" title="上移">▲</button>
+                        <button class="card-sort-btn card-sort-down" data-index="${index}" title="下移">▼</button>
+                    </div>
                     <div class="card-header-content">
                         <div class="card-category">${this.escapeHtml(cardData.category)}</div>
                         ${cardData.time ? `<div class="card-time">${this.escapeHtml(cardData.time)}</div>` : ''}
@@ -348,32 +364,50 @@ class CardSlider {
             });
         }
         
-        // 拖拽排序（仅在排序模式下启用）
-        const dragHandle = card.querySelector('.card-drag-handle');
-        if (dragHandle) {
+        // 排序按钮（仅在排序模式下启用）
+        const sortButtons = card.querySelector('.card-sort-buttons');
+        if (sortButtons) {
             if (this.sortMode) {
-                dragHandle.style.display = 'block';
-                dragHandle.style.cursor = 'grab';
-                // 清除之前的事件监听器（通过克隆节点）
-                const newDragHandle = dragHandle.cloneNode(true);
-                dragHandle.parentNode.replaceChild(newDragHandle, dragHandle);
+                sortButtons.style.display = 'flex';
                 
-                // 绑定拖拽事件
-                const handleDragStart = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    this.handleDragStart(e, card, index);
-                };
+                const upBtn = sortButtons.querySelector('.card-sort-up');
+                const downBtn = sortButtons.querySelector('.card-sort-down');
                 
-                newDragHandle.addEventListener('mousedown', handleDragStart, { passive: false });
-                newDragHandle.addEventListener('touchstart', handleDragStart, { passive: false });
+                // 清除旧的事件监听器（通过克隆节点）
+                const newSortButtons = sortButtons.cloneNode(true);
+                sortButtons.parentNode.replaceChild(newSortButtons, sortButtons);
                 
-                // 确保拖拽手柄可见且可交互
-                newDragHandle.style.pointerEvents = 'auto';
-                newDragHandle.style.userSelect = 'none';
+                const newUpBtn = newSortButtons.querySelector('.card-sort-up');
+                const newDownBtn = newSortButtons.querySelector('.card-sort-down');
+                
+                // 禁用第一个的上移按钮和最后一个的下移按钮
+                if (newUpBtn) {
+                    if (index === 0) {
+                        newUpBtn.disabled = true;
+                    } else {
+                        newUpBtn.disabled = false;
+                        newUpBtn.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            this.moveCardUp(index);
+                        });
+                    }
+                }
+                
+                if (newDownBtn) {
+                    if (index === this.cards.length - 1) {
+                        newDownBtn.disabled = true;
+                    } else {
+                        newDownBtn.disabled = false;
+                        newDownBtn.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            this.moveCardDown(index);
+                        });
+                    }
+                }
             } else {
-                dragHandle.style.display = 'none';
+                sortButtons.style.display = 'none';
             }
         }
         
@@ -654,7 +688,11 @@ class CardSlider {
     
     // 拖拽开始（排序模式）
     handleDragStart(e, card, index) {
-        if (!this.sortMode) return;
+        console.log('handleDragStart 被调用，排序模式:', this.sortMode, '索引:', index);
+        if (!this.sortMode) {
+            console.warn('不在排序模式，无法拖拽');
+            return;
+        }
         
         e.preventDefault();
         e.stopPropagation();
@@ -664,6 +702,8 @@ class CardSlider {
         this.dragCardIndex = parseInt(index);
         this.dragStartY = e.touches ? e.touches[0].clientY : e.clientY;
         
+        console.log('开始拖拽，卡片索引:', this.dragCardIndex, '起始Y:', this.dragStartY);
+        
         card.classList.add('dragging');
         card.style.zIndex = '1000';
         card.style.cursor = 'grabbing';
@@ -671,6 +711,7 @@ class CardSlider {
         // 使用箭头函数保持this上下文
         this.dragMoveHandler = (evt) => {
             evt.preventDefault();
+            console.log('拖拽移动中，Y:', evt.touches ? evt.touches[0].clientY : evt.clientY);
             this.handleDragMove(evt);
         };
         this.dragEndHandler = (evt) => {
@@ -697,7 +738,9 @@ class CardSlider {
         
         const cards = Array.from(this.container.querySelectorAll('.card'));
         const currentCard = cards.find(c => parseInt(c.dataset.index) === this.dragCardIndex);
-        if (!currentCard) return;
+        if (!currentCard) {
+            return;
+        }
         
         // 更新当前卡片位置
         currentCard.style.transform = `translateY(${deltaY}px)`;
@@ -706,52 +749,54 @@ class CardSlider {
         const cardHeight = currentCard.offsetHeight + 20; // 加上间距
         const threshold = cardHeight / 2;
         
-        // 找到目标位置
+        // 找到目标位置 - dataset.index就是数组索引
         let targetIndex = this.dragCardIndex;
         const currentRect = currentCard.getBoundingClientRect();
         const currentCenter = currentRect.top + currentRect.height / 2;
         
-        cards.forEach((card, i) => {
-            if (i === this.dragCardIndex) return;
+        // 按dataset.index排序卡片（即按数组索引排序）
+        const sortedCards = cards.map(card => ({
+            card: card,
+            index: parseInt(card.dataset.index)
+        })).sort((a, b) => a.index - b.index);
+        
+        const currentCardArrayIndex = sortedCards.findIndex(item => item.index === this.dragCardIndex);
+        
+        sortedCards.forEach((item, arrayIndex) => {
+            if (arrayIndex === currentCardArrayIndex) return;
             
-            const rect = card.getBoundingClientRect();
+            const rect = item.card.getBoundingClientRect();
             const cardCenter = rect.top + rect.height / 2;
             const distance = Math.abs(cardCenter - currentCenter);
             
             if (distance < threshold) {
-                if (currentCenter < cardCenter && i > this.dragCardIndex) {
-                    targetIndex = i;
-                } else if (currentCenter > cardCenter && i < this.dragCardIndex) {
-                    targetIndex = i;
+                if (currentCenter < cardCenter && arrayIndex > currentCardArrayIndex) {
+                    targetIndex = item.index;
+                } else if (currentCenter > cardCenter && arrayIndex < currentCardArrayIndex) {
+                    targetIndex = item.index;
                 }
             }
         });
         
-        if (targetIndex !== this.dragCardIndex) {
-            // 更新其他卡片的位置提示
-            cards.forEach((card, i) => {
-                if (i === this.dragCardIndex) return;
-                
-                if (targetIndex > this.dragCardIndex && i > this.dragCardIndex && i <= targetIndex) {
-                    card.style.transform = `translateY(-${cardHeight}px)`;
-                } else if (targetIndex < this.dragCardIndex && i < this.dragCardIndex && i >= targetIndex) {
-                    card.style.transform = `translateY(${cardHeight}px)`;
-                } else {
-                    card.style.transform = '';
-                }
-            });
-        } else {
-            // 重置其他卡片位置
-            cards.forEach((card, i) => {
-                if (i !== this.dragCardIndex) {
-                    card.style.transform = '';
-                }
-            });
-        }
+        // 更新其他卡片的位置提示
+        sortedCards.forEach((item, arrayIndex) => {
+            if (item.index === this.dragCardIndex) return;
+            
+            if (targetIndex > this.dragCardIndex && item.index > this.dragCardIndex && item.index <= targetIndex) {
+                item.card.style.transform = `translateY(-${cardHeight}px)`;
+            } else if (targetIndex < this.dragCardIndex && item.index < this.dragCardIndex && item.index >= targetIndex) {
+                item.card.style.transform = `translateY(${cardHeight}px)`;
+            } else {
+                item.card.style.transform = '';
+            }
+        });
     }
     
     handleDragEnd(e) {
-        if (!this.isDraggingCard || !this.sortMode) return;
+        if (!this.isDraggingCard || !this.sortMode) {
+            console.warn('拖拽结束但状态异常');
+            return;
+        }
         
         e.preventDefault();
         e.stopPropagation();
@@ -759,34 +804,56 @@ class CardSlider {
         const cards = Array.from(this.container.querySelectorAll('.card'));
         const currentCard = cards.find(c => parseInt(c.dataset.index) === this.dragCardIndex);
         
-        // 计算最终位置
+        let targetIndex = this.dragCardIndex;
+        
+        // 计算最终位置 - 使用dataset.index
         if (currentCard) {
             const currentRect = currentCard.getBoundingClientRect();
             const currentCenter = currentRect.top + currentRect.height / 2;
-            let targetIndex = this.dragCardIndex;
             
-            cards.forEach((card, i) => {
-                if (i === this.dragCardIndex) return;
-                const rect = card.getBoundingClientRect();
+            // 按dataset.index排序卡片
+            const sortedCards = cards.map(card => ({
+                card: card,
+                index: parseInt(card.dataset.index)
+            })).sort((a, b) => a.index - b.index);
+            
+            const currentCardArrayIndex = sortedCards.findIndex(item => item.index === this.dragCardIndex);
+            
+            sortedCards.forEach((item, arrayIndex) => {
+                if (arrayIndex === currentCardArrayIndex) return;
+                
+                const rect = item.card.getBoundingClientRect();
                 const cardCenter = rect.top + rect.height / 2;
                 
                 if (Math.abs(cardCenter - currentCenter) < rect.height / 2) {
-                    if (currentCenter < cardCenter && i > this.dragCardIndex) {
-                        targetIndex = i;
-                    } else if (currentCenter > cardCenter && i < this.dragCardIndex) {
-                        targetIndex = i;
+                    if (currentCenter < cardCenter && arrayIndex > currentCardArrayIndex) {
+                        targetIndex = item.index;
+                    } else if (currentCenter > cardCenter && arrayIndex < currentCardArrayIndex) {
+                        targetIndex = item.index;
                     }
                 }
             });
             
+            console.log('拖拽结束，原索引:', this.dragCardIndex, '目标索引:', targetIndex);
+            
             if (targetIndex !== this.dragCardIndex) {
-                // 重新排序数组
+                // 直接使用数组索引操作（dragCardIndex和targetIndex就是数组索引）
+                console.log('重新排序，从索引', this.dragCardIndex, '移动到', targetIndex);
+                
+                // 先更新 this.cards 数组
                 const [movedItem] = this.cards.splice(this.dragCardIndex, 1);
                 this.cards.splice(targetIndex, 0, movedItem);
+                
+                // 保存新顺序到 localStorage
                 this.reorderCards(this.dragCardIndex, targetIndex);
+                
+                console.log('排序完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
+            } else {
+                console.log('位置未改变，无需重新排序');
             }
         }
         
+        // 清理状态
         this.isDraggingCard = false;
         cards.forEach(card => {
             card.classList.remove('dragging');
@@ -796,6 +863,7 @@ class CardSlider {
             card.style.cursor = '';
         });
         
+        // 移除事件监听器
         if (this.dragMoveHandler) {
             document.removeEventListener('mousemove', this.dragMoveHandler);
             document.removeEventListener('touchmove', this.dragMoveHandler);
@@ -810,34 +878,78 @@ class CardSlider {
         this.attachCardEventsForAll();
     }
     
-    // 重新排序卡片
-    reorderCards(fromIndex, toIndex) {
-        const day = tripData.days.find(d => d.id === this.dayId);
-        if (!day) return;
-        
-        const customItems = getCustomItems(this.dayId);
-        const allItems = [...day.items, ...customItems];
-        
-        if (fromIndex < 0 || fromIndex >= allItems.length || toIndex < 0 || toIndex >= allItems.length) {
-            return;
+    // 上移卡片
+    moveCardUp(index) {
+        if (index <= 0) {
+            console.log('已经在最上面，无法上移');
+            return; // 已经在最上面
         }
         
-        const [movedItem] = allItems.splice(fromIndex, 1);
-        allItems.splice(toIndex, 0, movedItem);
+        console.log('上移卡片，索引:', index);
+        
+        // 交换位置
+        const [movedItem] = this.cards.splice(index, 1);
+        this.cards.splice(index - 1, 0, movedItem);
+        
+        console.log('移动完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
+        
+        // 保存顺序
+        this.saveCardOrder();
+        
+        // 重新渲染（这会重新创建所有卡片，所以事件会重新绑定）
+        this.renderCards();
+        this.attachCardEventsForAll();
+    }
+    
+    // 下移卡片
+    moveCardDown(index) {
+        if (index >= this.cards.length - 1) {
+            console.log('已经在最下面，无法下移');
+            return; // 已经在最下面
+        }
+        
+        console.log('下移卡片，索引:', index);
+        
+        // 交换位置
+        const [movedItem] = this.cards.splice(index, 1);
+        this.cards.splice(index + 1, 0, movedItem);
+        
+        console.log('移动完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
+        
+        // 保存顺序
+        this.saveCardOrder();
+        
+        // 重新渲染（这会重新创建所有卡片，所以事件会重新绑定）
+        this.renderCards();
+        this.attachCardEventsForAll();
+    }
+    
+    // 保存卡片顺序
+    saveCardOrder() {
+        // 构建顺序信息
+        const orderInfo = this.cards.map((item, idx) => ({
+            index: idx,
+            id: item.id || item.category || `item_${idx}`,
+            isCustom: item.isCustom || false
+        }));
         
         // 保存顺序
         const orderKey = `trip_card_order_${this.dayId}`;
-        localStorage.setItem(orderKey, JSON.stringify(allItems.map((item, idx) => ({
-            index: idx,
-            id: item.id || item.category,
-            isCustom: item.isCustom || false
-        }))));
+        localStorage.setItem(orderKey, JSON.stringify(orderInfo));
         
         // 保存自定义项的新顺序
-        const newCustomItems = allItems.filter(item => item.isCustom);
+        const newCustomItems = this.cards.filter(item => item.isCustom);
         if (newCustomItems.length > 0) {
             localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(newCustomItems));
         }
+        
+        // 自动同步到Gist
+        autoSyncToGist();
+    }
+    
+    // 重新排序卡片（保留用于兼容）
+    reorderCards(fromIndex, toIndex) {
+        this.saveCardOrder();
     }
     
     // 保存卡片顺序
@@ -961,6 +1073,15 @@ class CardSlider {
     }
 
     updateIndicator() {
+        // 排序模式下不显示指示器
+        if (this.sortMode) {
+            const indicator = this.container.querySelector('.card-indicator');
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
+            return;
+        }
+        
         // 查找指示器（在容器内部，但不在stack内部）
         let indicator = this.container.querySelector('.card-indicator');
         if (!indicator) {
@@ -968,6 +1089,8 @@ class CardSlider {
             indicator.className = 'card-indicator';
             this.container.appendChild(indicator);
         }
+        
+        indicator.style.display = 'block';
         const remaining = this.cards.length - this.currentIndex;
         indicator.textContent = remaining > 0 ? `${this.currentIndex + 1} / ${this.cards.length}` : '已完成';
     }
