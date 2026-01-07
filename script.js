@@ -900,8 +900,6 @@ class CardSlider {
             
             if (targetIndex !== this.dragCardIndex) {
                 // 直接使用数组索引操作（dragCardIndex和targetIndex就是数组索引）
-                console.log('重新排序，从索引', this.dragCardIndex, '移动到', targetIndex);
-                
                 // 先更新 this.cards 数组
                 const [movedItem] = this.cards.splice(this.dragCardIndex, 1);
                 this.cards.splice(targetIndex, 0, movedItem);
@@ -979,8 +977,6 @@ class CardSlider {
     
     // 保存卡片顺序
     saveCardOrder() {
-        console.log('保存卡片顺序，当前cards:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
-        
         // 构建顺序信息 - 使用更可靠的唯一标识
         const orderInfo = this.cards.map((item, idx) => {
             // 对于自定义项，使用id；对于原始项，使用category+time组合作为唯一标识
@@ -1001,8 +997,6 @@ class CardSlider {
                 isCustom: item.isCustom || false
             };
         });
-        
-        console.log('保存的顺序信息:', orderInfo);
         
         // 保存顺序
         const orderKey = `trip_card_order_${this.dayId}`;
@@ -1120,7 +1114,6 @@ class CardSlider {
         if (Math.abs(deltaX) > 5) {
             card.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.1}deg)`;
             e.preventDefault();
-            console.log('滑动中，deltaX:', deltaX, 'deltaY:', deltaY);
         }
     }
 
@@ -1149,16 +1142,12 @@ class CardSlider {
         }
         
         // 明显的滑动才触发翻页
-        console.log('滑动结束，deltaX:', deltaX, 'absDeltaX:', absDeltaX, 'threshold:', this.threshold, 'deltaTime:', deltaTime);
         if (absDeltaX > this.threshold) {
-            console.log('触发翻页，方向:', deltaX > 0 ? '右' : '左');
             if (deltaX > 0) {
                 this.swipeRight(card);
             } else {
                 this.swipeLeft(card);
             }
-        } else {
-            console.log('滑动距离不足，未触发翻页');
         }
     }
 
@@ -1438,15 +1427,11 @@ function applyCardOrder(dayId, items) {
     const orderKey = `trip_card_order_${dayId}`;
     const orderData = localStorage.getItem(orderKey);
     if (!orderData) {
-        console.log('没有保存的顺序，使用原始顺序');
         return items;
     }
     
     try {
         const order = JSON.parse(orderData);
-        console.log('应用保存的顺序，order:', order);
-        console.log('原始items:', items.map((i, idx) => `${idx}:${i.category || i.id}`).join(', '));
-        
         const orderedItems = [];
         // 创建映射：对于自定义项使用id，对于原始项使用category+time+plan组合
         const itemMap = new Map();
@@ -1470,8 +1455,6 @@ function applyCardOrder(dayId, items) {
             itemMap.set(key, item);
         });
         
-        console.log('itemMap keys:', Array.from(itemMap.keys()));
-        
         // 按照保存的顺序排列
         order.forEach(orderItem => {
             const item = itemMap.get(orderItem.id);
@@ -1479,21 +1462,16 @@ function applyCardOrder(dayId, items) {
                 orderedItems.push(item);
                 itemMap.delete(orderItem.id);
             } else {
-                console.warn('未找到匹配的项，id:', orderItem.id);
             }
         });
         
         // 添加未排序的项（新添加的项）
         itemMap.forEach(item => {
-            console.log('添加未排序的项:', item.category || item.id);
             orderedItems.push(item);
         });
         
-        console.log('应用顺序后的items:', orderedItems.map((i, idx) => `${idx}:${i.category || i.id}`).join(', '));
-        
         return orderedItems;
     } catch (e) {
-        console.error('应用顺序时出错:', e);
         return items;
     }
 }
@@ -1650,13 +1628,10 @@ function autoSyncToGist() {
     syncTimeout = setTimeout(() => {
         dataSync.upload().then(result => {
             if (result.success) {
-                console.log('数据已自动同步到GitHub Gist');
                 updateSyncStatus('已自动同步', 'success');
-            } else {
-                console.warn('自动同步失败:', result.message);
             }
-        }).catch(error => {
-            console.warn('自动同步错误:', error);
+        }).catch(() => {
+            // 静默处理错误
         });
     }, 2000); // 2秒后同步
 }
