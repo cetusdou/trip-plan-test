@@ -156,12 +156,31 @@ class DataSync {
         }
     }
 
-    // 从云端下载数据
-    async download() {
+    // 从云端下载数据（智能合并：保留本地新数据）
+    async download(merge = true) {
         try {
-            const data = await this.fetchGist();
-            this.setAllLocalData(data);
-            return { success: true, message: '同步成功！数据已更新。', data: data };
+            const remoteData = await this.fetchGist();
+            
+            if (merge) {
+                // 合并策略：优先保留本地数据，只添加远程有但本地没有的数据
+                // 这样可以避免覆盖用户正在编辑的内容
+                const localData = this.getAllLocalData();
+                const mergedData = { ...localData }; // 从本地数据开始
+                
+                // 只添加远程有但本地没有的数据
+                Object.keys(remoteData).forEach(key => {
+                    if (!localData[key]) {
+                        mergedData[key] = remoteData[key];
+                    }
+                });
+                
+                this.setAllLocalData(mergedData);
+            } else {
+                // 直接覆盖模式（手动下载时使用）
+                this.setAllLocalData(remoteData);
+            }
+            
+            return { success: true, message: '同步成功！数据已更新。', data: remoteData };
         } catch (error) {
             return { success: false, message: error.message };
         }
@@ -296,10 +315,10 @@ async function syncUpload() {
     }
 }
 
-// 手动同步（下载）
+// 手动同步（下载）- 使用覆盖模式，完全替换本地数据
 async function syncDownload() {
     updateSyncStatus('正在下载...', 'info');
-    const result = await dataSync.download();
+    const result = await dataSync.download(false); // false = 覆盖模式
     updateSyncStatus(result.message, result.success ? 'success' : 'error');
     if (result.success && currentDayId) {
         showDay(currentDayId);

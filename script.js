@@ -1512,9 +1512,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // 返回顶部按钮
     initBackToTop();
     
-    // 如果已配置同步且启用自动同步，初始化自动同步
-    if (typeof dataSync !== 'undefined' && dataSync.isConfigured() && dataSync.autoSyncEnabled) {
-        dataSync.setAutoSync(true);
+    // 如果已配置同步，页面加载时自动从 Gist 下载数据（合并策略）
+    if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
+        // 先尝试从 Gist 下载数据（静默，不显示错误）
+        dataSync.download().then(result => {
+            if (result.success) {
+                // 下载成功后，重新显示当前日期以刷新数据
+                if (currentDayId) {
+                    showDay(currentDayId);
+                }
+            }
+        }).catch(() => {
+            // 静默处理错误，不影响页面正常使用
+        });
+        
+        // 如果启用自动同步，初始化自动同步
+        if (dataSync.autoSyncEnabled) {
+            dataSync.setAutoSync(true);
+        }
     }
     
     // 点击模态框外部关闭
