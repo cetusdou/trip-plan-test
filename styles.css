@@ -386,9 +386,7 @@ body {
     flex-shrink: 0;
 }
 
-.sort-mode .card-sort-buttons {
-    display: flex !important;
-}
+/* 排序按钮的显示由JavaScript根据sortMode状态控制，不在这里强制显示 */
 
 .card-sort-btn {
     background: rgba(255, 255, 255, 0.9);

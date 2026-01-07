@@ -23,26 +23,19 @@ function updateUserSelector() {
     });
 }
 
-// 滑动卡片逻辑
+// 卡片显示逻辑（滚动模式）
 class CardSlider {
     constructor(containerId, cards, dayId) {
         this.container = document.getElementById(containerId);
         this.cards = cards;
         this.dayId = dayId;
-        this.currentIndex = 0;
-        this.isDragging = false;
-        this.startX = 0;
-        this.currentX = 0;
-        this.startY = 0;
-        this.startTime = 0;
-        this.threshold = 40; // 滑动阈值（40px，在手机上更容易触发）
-        this.sortMode = false; // 排序模式
+        this.sortMode = false; // 排序模式：false=普通查看模式，true=排序模式（显示上下箭头）
         this.init();
     }
 
     init() {
         this.renderCards();
-        this.attachEventListeners();
+        this.attachCardEventsForAll();
     }
 
     renderCards() {
@@ -50,64 +43,42 @@ class CardSlider {
         let stack = this.container.querySelector('.cards-stack');
         if (!stack) {
             stack = document.createElement('div');
-            stack.className = 'cards-stack';
-            // 确保指示器在stack之前
-            const indicator = this.container.querySelector('.card-indicator');
-            if (indicator) {
-                this.container.insertBefore(stack, indicator);
-            } else {
-                this.container.appendChild(stack);
-            }
+            stack.className = 'cards-stack sort-mode';
+            this.container.appendChild(stack);
         } else {
             stack.innerHTML = '';
-        }
-        
-        // 根据模式渲染
-        if (this.sortMode) {
-            // 排序模式：所有卡片平铺显示
             stack.className = 'cards-stack sort-mode';
-            for (let i = 0; i < this.cards.length; i++) {
-                const card = this.createCard(this.cards[i], i);
-                card.classList.add('sortable-card');
-                stack.appendChild(card);
-            }
-        } else {
-            // 正常模式：堆叠显示
-            stack.className = 'cards-stack';
-            // 只显示从 currentIndex 开始的卡片（已经滑过的卡片不显示）
-            for (let i = this.cards.length - 1; i >= this.currentIndex; i--) {
-                const card = this.createCard(this.cards[i], i);
-                stack.appendChild(card);
-            }
         }
         
-        this.updateIndicator();
+        // 滚动模式：所有卡片平铺显示，可以滚动查看和编辑
+        // 根据sortMode决定是否添加sortable-card类
+        for (let i = 0; i < this.cards.length; i++) {
+            const card = this.createCard(this.cards[i], i);
+            if (this.sortMode) {
+                card.classList.add('sortable-card');
+            }
+            stack.appendChild(card);
+        }
     }
     
     // 切换排序模式
     toggleSortMode() {
         this.sortMode = !this.sortMode;
         
-        // 退出排序模式时，重置当前索引并重新加载顺序
-        if (!this.sortMode) {
-            this.currentIndex = 0;
-            // 重新应用保存的顺序（确保使用最新的顺序）
-            const day = tripData.days.find(d => d.id === this.dayId);
-            if (day) {
-                const customItems = getCustomItems(this.dayId);
-                const allItems = [...day.items, ...customItems];
-                const orderedItems = applyCardOrder(this.dayId, allItems);
-                const filteredItems = applyFilter(orderedItems);
-                // 更新cards数组为最新的顺序
-                this.cards = filteredItems;
-            }
+        // 重新应用保存的顺序（确保使用最新的顺序）
+        const day = tripData.days.find(d => d.id === this.dayId);
+        if (day) {
+            const customItems = getCustomItems(this.dayId);
+            const allItems = [...day.items, ...customItems];
+            const orderedItems = applyCardOrder(this.dayId, allItems);
+            const filteredItems = applyFilter(orderedItems);
+            // 更新cards数组为最新的顺序
+            this.cards = filteredItems;
         }
         
         this.renderCards();
-        // 重新绑定事件（重要：排序模式下需要重新绑定拖拽事件）
+        // 重新绑定事件
         this.attachCardEventsForAll();
-        // 重新绑定滑动事件（退出排序模式后需要恢复滑动功能）
-        this.attachEventListeners();
         
         // 更新按钮状态
         const sortBtn = document.querySelector('.sort-mode-btn');
@@ -350,18 +321,160 @@ class CardSlider {
         const imageUploadInput = card.querySelector('.image-upload-input');
         
         if (imageUploadBtn && imageUploadInput) {
-            imageUploadBtn.addEventListener('click', () => {
+            // 防止重复触发的标志
+            let isProcessing = false;
+            let touchStartTime = 0;
+            let touchStartY = 0;
+            let touchStartX = 0;
+            
+            // 统一的触发函数
+            const triggerFileInput = (e) => {
+                // 如果正在处理，忽略
+                if (isProcessing) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                
+                // 检查是否为有效的点击（不是滑动）
+                if (e.type === 'touchend') {
+                    const touch = e.changedTouches[0];
+                    const touchEndY = touch.clientY;
+                    const touchEndX = touch.clientX;
+                    const deltaY = Math.abs(touchEndY - touchStartY);
+                    const deltaX = Math.abs(touchEndX - touchStartX);
+                    const touchDuration = Date.now() - touchStartTime;
+                    
+                    // 如果是滑动（移动距离超过10px）或长按（超过300ms），忽略
+                    if (deltaY > 10 || deltaX > 10 || touchDuration > 300 || touchDuration < 0) {
+                        return;
+                    }
+                }
+                
+                isProcessing = true;
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                // 立即触发文件选择器
                 imageUploadInput.click();
+                
+                // 重置标志（延迟一点，确保文件选择器已打开）
+                setTimeout(() => {
+                    isProcessing = false;
+                }, 300);
+            };
+            
+            // 触摸开始事件（移动端）
+            imageUploadBtn.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartTime = Date.now();
+                touchStartY = touch.clientY;
+                touchStartX = touch.clientX;
+            }, { passive: true });
+            
+            // 触摸结束事件（移动端）- 优先处理
+            imageUploadBtn.addEventListener('touchend', triggerFileInput, { passive: false });
+            
+            // 点击事件（桌面端）- 延迟处理，避免与触摸事件冲突
+            imageUploadBtn.addEventListener('click', (e) => {
+                // 如果是触摸设备，忽略 click 事件（因为 touchend 已经处理了）
+                // 通过检查是否有最近的触摸事件来判断
+                const timeSinceTouch = Date.now() - touchStartTime;
+                if (timeSinceTouch < 500) {
+                    // 最近有触摸事件，忽略 click
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                // 桌面端，正常处理
+                triggerFileInput(e);
             });
             
             imageUploadInput.addEventListener('change', (e) => {
-                const files = Array.from(e.target.files);
-                if (files.length > 0) {
-                    const readers = files.map(file => {
-                        return new Promise((resolve) => {
+                // 延迟处理，确保在移动设备上文件选择完成
+                setTimeout(() => {
+                    const files = Array.from(e.target.files || []);
+                    
+                    if (files.length === 0) {
+                        // 如果没有文件，可能是用户取消了选择
+                        e.target.value = '';
+                        return;
+                    }
+                    
+                    // 检查文件大小（限制为10MB）
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    const validFiles = files.filter(file => {
+                        // 验证文件类型
+                        if (!file.type || !file.type.startsWith('image/')) {
+                            alert(`文件 "${file.name}" 不是有效的图片文件`);
+                            return false;
+                        }
+                        
+                        // 验证文件大小
+                        if (file.size > maxSize) {
+                            alert(`文件 "${file.name}" 太大（${(file.size / 1024 / 1024).toFixed(2)}MB），最大支持10MB`);
+                            return false;
+                        }
+                        
+                        // 验证文件大小不为0
+                        if (file.size === 0) {
+                            alert(`文件 "${file.name}" 为空，无法上传`);
+                            return false;
+                        }
+                        
+                        return true;
+                    });
+                    
+                    if (validFiles.length === 0) {
+                        e.target.value = '';
+                        return;
+                    }
+                    
+                    // 显示上传进度提示
+                    const uploadBtn = card.querySelector('.image-upload-btn');
+                    const originalText = uploadBtn ? uploadBtn.textContent : '';
+                    if (uploadBtn) {
+                        uploadBtn.textContent = '📤 上传中...';
+                        uploadBtn.disabled = true;
+                    }
+                    
+                    const readers = validFiles.map((file, fileIndex) => {
+                        return new Promise((resolve, reject) => {
                             const reader = new FileReader();
-                            reader.onload = (event) => resolve(event.target.result);
-                            reader.readAsDataURL(file);
+                            
+                            // 设置超时（30秒）
+                            const timeout = setTimeout(() => {
+                                reader.abort();
+                                reject(new Error(`读取文件 "${file.name}" 超时`));
+                            }, 30000);
+                            
+                            reader.onload = (event) => {
+                                clearTimeout(timeout);
+                                // 验证读取结果是否为有效的图片数据
+                                if (!event.target.result || !event.target.result.startsWith('data:image/')) {
+                                    reject(new Error(`文件 "${file.name}" 不是有效的图片格式`));
+                                } else {
+                                    resolve(event.target.result);
+                                }
+                            };
+                            
+                            reader.onerror = (error) => {
+                                clearTimeout(timeout);
+                                reject(new Error(`读取文件 "${file.name}" 失败: ${error.message || '未知错误'}`));
+                            };
+                            
+                            reader.onabort = () => {
+                                clearTimeout(timeout);
+                                reject(new Error(`读取文件 "${file.name}" 被中断`));
+                            };
+                            
+                            try {
+                                reader.readAsDataURL(file);
+                            } catch (error) {
+                                clearTimeout(timeout);
+                                reject(new Error(`无法读取文件 "${file.name}": ${error.message}`));
+                            }
                         });
                     });
                     
@@ -374,10 +487,25 @@ class CardSlider {
                             this.attachEventListeners();
                         }
                         this.attachCardEventsForAll();
+                        // 自动同步
+                        autoSyncToGist();
+                        
+                        // 恢复按钮状态
+                        if (uploadBtn) {
+                            uploadBtn.textContent = originalText;
+                            uploadBtn.disabled = false;
+                        }
+                    }).catch(error => {
+                        alert(`上传图片失败: ${error.message}`);
+                        e.target.value = '';
+                        
+                        // 恢复按钮状态
+                        if (uploadBtn) {
+                            uploadBtn.textContent = originalText;
+                            uploadBtn.disabled = false;
+                        }
                     });
-                }
-                // 清空input，允许重复选择相同文件
-                e.target.value = '';
+                }, 100); // 延迟100ms，确保文件选择完成
             });
         }
         
@@ -1299,205 +1427,7 @@ class CardSlider {
         return escaped;
     }
 
-    attachEventListeners() {
-        // 排序模式下不绑定滑动事件，避免冲突
-        if (this.sortMode) return;
-        
-        const cards = this.container.querySelectorAll('.card');
-        
-        cards.forEach(card => {
-            // 触摸事件
-            card.addEventListener('touchstart', (e) => this.handleStart(e, card), { passive: false });
-            card.addEventListener('touchmove', (e) => this.handleMove(e, card), { passive: false });
-            card.addEventListener('touchend', (e) => this.handleEnd(e, card), { passive: false });
-            
-            // 鼠标事件
-            card.addEventListener('mousedown', (e) => this.handleStart(e, card));
-            card.addEventListener('mousemove', (e) => this.handleMove(e, card));
-            card.addEventListener('mouseup', (e) => this.handleEnd(e, card));
-            card.addEventListener('mouseleave', (e) => this.handleEnd(e, card));
-        });
-    }
-
-    handleStart(e, card) {
-        // 排序模式下不处理滑动
-        if (this.sortMode) return;
-        
-        // 如果正在拖拽排序，不处理滑动
-        if (this.isDraggingCard) return;
-        
-        // 如果点击的是交互元素（按钮、输入框等），不处理滑动
-        const target = e.target;
-        if (target && (
-            target.tagName === 'BUTTON' ||
-            target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.tagName === 'A' ||
-            target.closest('button') ||
-            target.closest('input') ||
-            target.closest('textarea') ||
-            target.closest('a') ||
-            target.closest('.card-expand-btn') ||
-            target.closest('.card-sort-btn') ||
-            target.closest('.card-save-btn') ||
-            target.closest('.comment-submit') ||
-            target.closest('.image-upload-btn') ||
-            target.closest('.comment-like-btn') ||
-            target.closest('.plan-item-like-btn') ||
-            target.closest('.plan-item-delete-btn') ||
-            target.closest('.item-like-btn') ||
-            target.closest('.card-tag') ||
-            target.closest('.plan-add-btn')
-        )) {
-            return;
-        }
-        
-        if (card !== this.getTopCard()) return;
-        
-        this.isDragging = true;
-        this.startX = this.getEventX(e);
-        this.startY = e.touches ? e.touches[0].clientY : e.clientY;
-        this.startTime = Date.now();
-        card.classList.add('swiping');
-        // 不阻止默认行为，让点击事件能正常工作
-    }
-
-    handleMove(e, card) {
-        if (!this.isDragging || card !== this.getTopCard()) return;
-        
-        this.currentX = this.getEventX(e);
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const deltaX = this.currentX - this.startX;
-        const deltaY = Math.abs(currentY - this.startY);
-        
-        // 如果垂直移动距离明显大于水平移动距离（超过2倍），可能是滚动操作，不处理滑动
-        if (deltaY > Math.abs(deltaX) * 2 && deltaY > 30) {
-            this.isDragging = false;
-            card.classList.remove('swiping');
-            card.style.transform = '';
-            return;
-        }
-        
-        // 只有水平移动距离大于5px时才开始滑动动画
-        if (Math.abs(deltaX) > 5) {
-            card.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.1}deg)`;
-            e.preventDefault();
-        }
-    }
-
-    handleEnd(e, card) {
-        if (!this.isDragging || card !== this.getTopCard()) {
-            this.isDragging = false;
-            return;
-        }
-        
-        const deltaX = this.currentX - this.startX;
-        const deltaTime = Date.now() - this.startTime;
-        const absDeltaX = Math.abs(deltaX);
-        
-        this.isDragging = false;
-        card.classList.remove('swiping');
-        card.style.transform = '';
-        
-        // 如果移动距离很小（小于阈值），不触发滑动
-        if (absDeltaX < this.threshold) {
-            return;
-        }
-        
-        // 如果时间很短（小于100ms）且移动距离不够大，可能是误触，不触发滑动
-        if (deltaTime < 100 && absDeltaX < this.threshold * 1.5) {
-            return;
-        }
-        
-        // 明显的滑动才触发翻页
-        if (absDeltaX > this.threshold) {
-            if (deltaX > 0) {
-                this.swipeRight(card);
-            } else {
-                this.swipeLeft(card);
-            }
-        }
-    }
-
-    getEventX(e) {
-        return e.touches ? e.touches[0].clientX : e.clientX;
-    }
-
-    getTopCard() {
-        const cards = this.container.querySelectorAll('.card');
-        return cards[cards.length - 1];
-    }
-
-    swipeLeft(card) {
-        // 排序模式下不处理滑动
-        if (this.sortMode) return;
-        
-        card.classList.add('swiped-left');
-        setTimeout(() => {
-            card.remove();
-            this.currentIndex++;
-            this.updateIndicator();
-            
-            // 如果没有更多卡片，可以重新开始或显示完成消息
-            if (this.currentIndex >= this.cards.length) {
-                this.showCompletion();
-            }
-        }, 300);
-    }
-
-    swipeRight(card) {
-        // 排序模式下不处理滑动
-        if (this.sortMode) return;
-        
-        card.classList.add('swiped-right');
-        setTimeout(() => {
-            card.remove();
-            this.currentIndex++;
-            this.updateIndicator();
-            
-            if (this.currentIndex >= this.cards.length) {
-                this.showCompletion();
-            }
-        }, 300);
-    }
-
-    updateIndicator() {
-        // 排序模式下不显示指示器
-        if (this.sortMode) {
-            const indicator = this.container.querySelector('.card-indicator');
-            if (indicator) {
-                indicator.style.display = 'none';
-            }
-            return;
-        }
-        
-        // 查找指示器（在容器内部，但不在stack内部）
-        let indicator = this.container.querySelector('.card-indicator');
-        if (!indicator) {
-            indicator = document.createElement('div');
-            indicator.className = 'card-indicator';
-            this.container.appendChild(indicator);
-        }
-        
-        indicator.style.display = 'block';
-        const remaining = this.cards.length - this.currentIndex;
-        indicator.textContent = remaining > 0 ? `${this.currentIndex + 1} / ${this.cards.length}` : '已完成';
-    }
-
-    showCompletion() {
-        const stack = this.container.querySelector('.cards-stack');
-        stack.innerHTML = `
-            <div class="card" style="display: flex; align-items: center; justify-content: center; flex-direction: column;">
-                <div style="font-size: 48px; margin-bottom: 20px;">🎉</div>
-                <div style="font-size: 24px; color: #2c3e50; font-weight: 600;">今日行程已完成！</div>
-            </div>
-        `;
-    }
-
-    reset() {
-        this.currentIndex = 0;
-        this.renderCards();
-    }
+    // 滑动相关代码已移至 card-slider-swipe.js（备用）
 }
 
 // 从配置文件或URL参数中读取配置
@@ -1667,18 +1597,10 @@ function showDay(dayId) {
     // 应用筛选
     const filteredItems = applyFilter(orderedItems);
     
-    // 创建卡片滑动器
+    // 创建卡片容器（滚动模式）
     const cardsContainer = document.getElementById('cards-container');
     if (cardsContainer) {
-        // 确保有指示器
-        let indicator = cardsContainer.querySelector('.card-indicator');
-        if (!indicator) {
-            indicator = document.createElement('div');
-            indicator.className = 'card-indicator';
-            cardsContainer.appendChild(indicator);
-        }
-        
-        // 创建新的滑动器
+        // 创建新的卡片显示器（滚动模式）
         const slider = new CardSlider('cards-container', filteredItems, dayId);
         // 只有在当前日期时才保存引用，避免跨日期状态混乱
         if (dayId === currentDayId) {
