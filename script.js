@@ -756,9 +756,7 @@ class CardSlider {
     
     // 拖拽开始（排序模式）
     handleDragStart(e, card, index) {
-        console.log('handleDragStart 被调用，排序模式:', this.sortMode, '索引:', index);
         if (!this.sortMode) {
-            console.warn('不在排序模式，无法拖拽');
             return;
         }
         
@@ -770,8 +768,6 @@ class CardSlider {
         this.dragCardIndex = parseInt(index);
         this.dragStartY = e.touches ? e.touches[0].clientY : e.clientY;
         
-        console.log('开始拖拽，卡片索引:', this.dragCardIndex, '起始Y:', this.dragStartY);
-        
         card.classList.add('dragging');
         card.style.zIndex = '1000';
         card.style.cursor = 'grabbing';
@@ -779,7 +775,6 @@ class CardSlider {
         // 使用箭头函数保持this上下文
         this.dragMoveHandler = (evt) => {
             evt.preventDefault();
-            console.log('拖拽移动中，Y:', evt.touches ? evt.touches[0].clientY : evt.clientY);
             this.handleDragMove(evt);
         };
         this.dragEndHandler = (evt) => {
@@ -862,7 +857,6 @@ class CardSlider {
     
     handleDragEnd(e) {
         if (!this.isDraggingCard || !this.sortMode) {
-            console.warn('拖拽结束但状态异常');
             return;
         }
         
@@ -915,9 +909,6 @@ class CardSlider {
                 // 保存新顺序到 localStorage
                 this.reorderCards(this.dragCardIndex, targetIndex);
                 
-                console.log('排序完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
-            } else {
-                console.log('位置未改变，无需重新排序');
             }
         }
         
@@ -949,11 +940,8 @@ class CardSlider {
     // 上移卡片
     moveCardUp(index) {
         if (index <= 0) {
-            console.log('已经在最上面，无法上移');
             return; // 已经在最上面
         }
-        
-        console.log('上移卡片，索引:', index);
         
         // 交换位置
         const [movedItem] = this.cards.splice(index, 1);
@@ -972,11 +960,8 @@ class CardSlider {
     // 下移卡片
     moveCardDown(index) {
         if (index >= this.cards.length - 1) {
-            console.log('已经在最下面，无法下移');
             return; // 已经在最下面
         }
-        
-        console.log('下移卡片，索引:', index);
         
         // 交换位置
         const [movedItem] = this.cards.splice(index, 1);
