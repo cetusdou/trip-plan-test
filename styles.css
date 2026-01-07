@@ -7,8 +7,14 @@
 }
 
 /* 页面基础样式 */
+html {
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    min-height: 100%;
+}
+
 body {
     background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    background-attachment: fixed; /* 固定背景，防止滚动时出现跳变 */
     color: #333;
     line-height: 1.6;
     padding: 10px;
@@ -48,9 +54,9 @@ body {
 
 .user-btn {
     padding: 8px 16px;
-    border: 2px solid #3498db;
+    border: 2px solid #56ab2f;
     background: white;
-    color: #3498db;
+    color: #56ab2f;
     border-radius: 20px;
     font-size: 14px;
     font-weight: 500;
@@ -59,15 +65,15 @@ body {
 }
 
 .user-btn:hover {
-    background: #e8f4fd;
+    background: #e8f5e9;
     transform: translateY(-2px);
 }
 
 .user-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border-color: transparent;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px rgba(86, 171, 47, 0.3);
 }
 
 /* 标题区域 */
@@ -85,7 +91,7 @@ body {
     color: #2c3e50;
     margin-bottom: 15px;
     padding-bottom: 10px;
-    border-bottom: 2px solid #3498db;
+    border-bottom: 2px solid #56ab2f;
 }
 
 /* 目录导航 */
@@ -102,7 +108,7 @@ body {
     color: #34495e;
     margin-bottom: 12px;
     padding-left: 8px;
-    border-left: 3px solid #3498db;
+    border-left: 3px solid #56ab2f;
 }
 
 .nav-list {
@@ -117,24 +123,24 @@ body {
 .nav-link {
     display: block;
     padding: 12px 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     text-decoration: none;
     border-radius: 8px;
     transition: all 0.3s ease;
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px rgba(86, 171, 47, 0.3);
 }
 
 .nav-link:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
 }
 
 .nav-link.active {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+    background: linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%);
+    box-shadow: 0 4px 12px rgba(46, 125, 50, 0.4);
 }
 
 /* 日期标题 */
@@ -166,7 +172,8 @@ body {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-start;
+    align-items: stretch; /* 确保所有按钮高度一致 */
 }
 
 .filter-panel {
@@ -194,12 +201,12 @@ body {
 }
 
 .filter-tag-btn:hover {
-    background: #e8f4fd;
-    border-color: #3498db;
+    background: #e8f5e9;
+    border-color: #56ab2f;
 }
 
 .filter-btn {
-    padding: 8px 16px;
+    padding: 10px 16px;
     background: #f5f5f5;
     color: #333;
     border: 1px solid #ddd;
@@ -208,11 +215,16 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px; /* 统一按钮高度 */
+    white-space: nowrap;
 }
 
 .filter-btn:hover {
     background: #e0e0e0;
-    border-color: #3498db;
+    border-color: #56ab2f;
 }
 
 /* 卡片容器 */
@@ -357,7 +369,7 @@ body {
 .card-header {
     margin-bottom: 15px;
     padding-bottom: 12px;
-    border-bottom: 2px solid #3498db;
+    border-bottom: 2px solid #56ab2f;
 }
 
 .card-header-main {
@@ -380,9 +392,9 @@ body {
 
 .card-sort-btn {
     background: rgba(255, 255, 255, 0.9);
-    border: 2px solid #3498db;
+    border: 2px solid #56ab2f;
     border-radius: 4px;
-    color: #3498db;
+    color: #56ab2f;
     font-size: 12px;
     padding: 4px 8px;
     cursor: pointer;
@@ -394,14 +406,14 @@ body {
 }
 
 .card-sort-btn:hover:not(:disabled) {
-    background: rgba(52, 152, 219, 0.2);
-    border-color: #2980b9;
-    color: #2980b9;
+    background: rgba(86, 171, 47, 0.2);
+    border-color: #4a9a26;
+    color: #4a9a26;
     transform: scale(1.1);
 }
 
 .card-sort-btn:active:not(:disabled) {
-    background: rgba(52, 152, 219, 0.3);
+    background: rgba(86, 171, 47, 0.3);
     transform: scale(0.95);
 }
 
@@ -414,7 +426,7 @@ body {
 }
 
 .card-drag-handle:hover {
-    color: #3498db;
+    color: #56ab2f;
     background: #f0f0f0;
 }
 
@@ -423,7 +435,7 @@ body {
 }
 
 .sort-mode-btn {
-    padding: 8px 16px;
+    padding: 10px 16px;
     background: #f5f5f5;
     color: #333;
     border: 1px solid #ddd;
@@ -432,15 +444,20 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px; /* 统一按钮高度 */
+    white-space: nowrap;
 }
 
 .sort-mode-btn:hover {
     background: #e0e0e0;
-    border-color: #3498db;
+    border-color: #56ab2f;
 }
 
 .sort-mode-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border-color: transparent;
 }
@@ -467,7 +484,7 @@ body {
 
 .card-expand-btn:hover {
     background: #f5f5f5;
-    border-color: #3498db;
+    border-color: #56ab2f;
 }
 
 .card-content.collapsed {
@@ -588,7 +605,7 @@ body {
     padding: 10px;
     background: #f8f9fa;
     border-radius: 8px;
-    border-left: 3px solid #3498db;
+    border-left: 3px solid #56ab2f;
 }
 
 .card-section-content.note-content {
@@ -613,7 +630,7 @@ body {
 
 .image-upload-btn {
     padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -753,8 +770,8 @@ body {
 
 .image-placeholder:hover {
     background: #e8f4fd;
-    border-color: #3498db;
-    color: #3498db;
+    border-color: #56ab2f;
+    color: #56ab2f;
 }
 
 .image-placeholder-icon {
@@ -810,9 +827,8 @@ body {
 }
 
 .add-item-btn {
-    margin-top: 10px;
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -820,11 +836,17 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px; /* 统一按钮高度 */
+    white-space: nowrap;
 }
 
 .add-item-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
 }
 
 /* 点赞按钮 */
@@ -1021,12 +1043,12 @@ body {
 
 .comment-input:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: #56ab2f;
 }
 
 .comment-submit {
     padding: 8px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -1062,7 +1084,7 @@ body {
     right: 20px;
     width: 50px;
     height: 50px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 50%;
@@ -1171,34 +1193,79 @@ body {
 .sync-controls {
     background: white;
     border-radius: 12px;
-    padding: 15px 20px;
     margin-bottom: 15px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.sync-toggle-btn {
+    width: 100%;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    color: white;
+    border: none;
+    border-radius: 0;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sync-toggle-btn:hover {
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
+}
+
+.sync-toggle-icon {
+    transition: transform 0.3s ease;
+    font-size: 12px;
+}
+
+.sync-controls.expanded .sync-toggle-icon {
+    transform: rotate(180deg);
+}
+
+.sync-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.sync-controls.expanded .sync-panel {
+    max-height: 500px;
+    padding: 15px 20px;
 }
 
 .sync-buttons {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
 }
 
 .sync-btn {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px; /* 统一按钮高度 */
     white-space: nowrap;
 }
 
 .sync-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
 }
 
 .sync-btn:active {
@@ -1331,7 +1398,7 @@ body {
 .config-section input[type="text"]:focus,
 .config-section input[type="password"]:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: #56ab2f;
 }
 
 .config-section small {
@@ -1344,7 +1411,7 @@ body {
 .help-link {
     display: inline-block;
     margin-top: 6px;
-    color: #3498db;
+    color: #56ab2f;
     text-decoration: none;
     font-size: 12px;
 }
@@ -1369,7 +1436,7 @@ body {
 
 .btn-primary {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -1381,7 +1448,8 @@ body {
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
 }
 
 .btn-secondary {
@@ -1403,10 +1471,19 @@ body {
 /* 响应式调整 */
 @media (max-width: 480px) {
     .sync-buttons {
-        flex-direction: column;
+        grid-template-columns: 1fr;
     }
 
     .sync-btn {
+        width: 100%;
+    }
+    
+    .day-header-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .day-header-actions button {
         width: 100%;
     }
 

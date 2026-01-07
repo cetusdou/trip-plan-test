@@ -74,7 +74,8 @@ class CardSlider {
         } else {
             // 正常模式：堆叠显示
             stack.className = 'cards-stack';
-            for (let i = this.cards.length - 1; i >= 0; i--) {
+            // 只显示从 currentIndex 开始的卡片（已经滑过的卡片不显示）
+            for (let i = this.cards.length - 1; i >= this.currentIndex; i--) {
                 const card = this.createCard(this.cards[i], i);
                 stack.appendChild(card);
             }
@@ -559,8 +560,12 @@ class CardSlider {
         // 行程项like事件
         card.querySelectorAll('.like-btn[data-section]').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
                 const section = btn.dataset.section;
+                // 保存当前滚动位置
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 this.toggleItemLike(this.dayId, index, section);
                 this.renderCards();
                 // 重新绑定事件
@@ -568,14 +573,36 @@ class CardSlider {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
+                // 恢复滚动位置
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+            });
+            
+            // 也处理触摸事件
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const section = btn.dataset.section;
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                this.toggleItemLike(this.dayId, index, section);
+                this.renderCards();
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
             });
         });
         
         // 留言like事件
         card.querySelectorAll('.comment-like-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
                 const commentIndex = parseInt(btn.dataset.commentIndex);
+                // 保存当前滚动位置
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 this.toggleCommentLike(this.dayId, index, commentIndex);
                 this.renderCards();
                 // 重新绑定事件
@@ -583,6 +610,24 @@ class CardSlider {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
+                // 恢复滚动位置
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+            });
+            
+            // 也处理触摸事件
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const commentIndex = parseInt(btn.dataset.commentIndex);
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                this.toggleCommentLike(this.dayId, index, commentIndex);
+                this.renderCards();
+                if (!this.sortMode) {
+                    this.attachEventListeners();
+                }
+                this.attachCardEventsForAll();
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
             });
         });
         
@@ -1719,5 +1764,13 @@ function initBackToTop() {
     backToTop.addEventListener('click', () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+}
+
+// 切换同步面板展开/折叠
+function toggleSyncPanel() {
+    const syncControls = document.querySelector('.sync-controls');
+    if (syncControls) {
+        syncControls.classList.toggle('expanded');
+    }
 }
 
