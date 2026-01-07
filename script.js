@@ -896,8 +896,6 @@ class CardSlider {
                 }
             });
             
-            console.log('拖拽结束，原索引:', this.dragCardIndex, '目标索引:', targetIndex);
-            
             if (targetIndex !== this.dragCardIndex) {
                 // 直接使用数组索引操作（dragCardIndex和targetIndex就是数组索引）
                 // 先更新 this.cards 数组
@@ -945,8 +943,6 @@ class CardSlider {
         const [movedItem] = this.cards.splice(index, 1);
         this.cards.splice(index - 1, 0, movedItem);
         
-        console.log('移动完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
-        
         // 保存顺序
         this.saveCardOrder();
         
@@ -964,8 +960,6 @@ class CardSlider {
         // 交换位置
         const [movedItem] = this.cards.splice(index, 1);
         this.cards.splice(index + 1, 0, movedItem);
-        
-        console.log('移动完成，新顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
         
         // 保存顺序
         this.saveCardOrder();
