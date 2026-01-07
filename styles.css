@@ -237,8 +237,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: visible; /* 允许页面滚动，而不是容器内滚动 */
     padding: 10px 0;
     height: auto;
     min-height: 500px;
@@ -254,12 +253,22 @@ body {
     width: 100%;
     height: auto;
     min-height: 200px;
-    touch-action: none; /* 防止触摸滚动干扰拖拽 */
+    touch-action: pan-y; /* 允许垂直滚动，阻止水平拖拽 */
 }
 
 .sort-mode .card-header {
     position: relative;
     z-index: 2;
+}
+
+/* 排序按钮区域允许滚动 */
+.sort-mode .card-sort-buttons {
+    touch-action: pan-y;
+}
+
+/* 排序模式下，卡片内容区域允许滚动 */
+.sort-mode .card-content {
+    touch-action: pan-y;
 }
 
 .sort-mode .card.sortable-card {

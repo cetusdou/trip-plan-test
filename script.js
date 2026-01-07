@@ -33,7 +33,9 @@ class CardSlider {
         this.isDragging = false;
         this.startX = 0;
         this.currentX = 0;
-        this.threshold = 50; // 滑动阈值
+        this.startY = 0;
+        this.startTime = 0;
+        this.threshold = 80; // 滑动阈值（增加到80px，减少误触）
         this.sortMode = false; // 排序模式
         this.init();
     }
@@ -357,7 +359,19 @@ class CardSlider {
         const expandBtn = card.querySelector('.card-expand-btn');
         if (expandBtn) {
             expandBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
+                const isExpanded = expandBtn.dataset.expanded === 'true';
+                this.setCardExpanded(this.dayId, index, !isExpanded);
+                this.renderCards();
+            });
+            
+            // 也处理触摸事件，确保移动设备上也能正常工作
+            expandBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 const isExpanded = expandBtn.dataset.expanded === 'true';
                 this.setCardExpanded(this.dayId, index, !isExpanded);
                 this.renderCards();
@@ -992,8 +1006,25 @@ class CardSlider {
         // 如果正在拖拽排序，不处理滑动
         if (this.isDraggingCard) return;
         
-        // 如果点击的是拖拽手柄，不处理滑动
-        if (e.target && (e.target.classList.contains('card-drag-handle') || e.target.closest('.card-drag-handle'))) {
+        // 如果点击的是交互元素（按钮、输入框等），不处理滑动
+        const target = e.target;
+        if (target && (
+            target.tagName === 'BUTTON' ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'A' ||
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('textarea') ||
+            target.closest('a') ||
+            target.closest('.card-expand-btn') ||
+            target.closest('.card-sort-btn') ||
+            target.closest('.comment-submit') ||
+            target.closest('.image-upload-btn') ||
+            target.closest('.star') ||
+            target.closest('.comment-like-btn') ||
+            target.closest('.item-like-btn')
+        )) {
             return;
         }
         
@@ -1001,32 +1032,54 @@ class CardSlider {
         
         this.isDragging = true;
         this.startX = this.getEventX(e);
+        this.startY = e.touches ? e.touches[0].clientY : e.clientY;
+        this.startTime = Date.now();
         card.classList.add('swiping');
-        e.preventDefault();
+        // 不阻止默认行为，让点击事件能正常工作
     }
 
     handleMove(e, card) {
         if (!this.isDragging || card !== this.getTopCard()) return;
         
         this.currentX = this.getEventX(e);
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
         const deltaX = this.currentX - this.startX;
+        const deltaY = Math.abs(currentY - this.startY);
         
-        if (Math.abs(deltaX) > 5) {
-            card.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.1}deg)`;
+        // 如果垂直移动距离大于水平移动距离，可能是滚动操作，不处理滑动
+        if (deltaY > Math.abs(deltaX)) {
+            this.isDragging = false;
+            card.classList.remove('swiping');
+            card.style.transform = '';
+            return;
         }
         
-        e.preventDefault();
+        // 只有水平移动距离大于10px时才开始滑动动画
+        if (Math.abs(deltaX) > 10) {
+            card.style.transform = `translateX(${deltaX}px) rotate(${deltaX * 0.1}deg)`;
+            e.preventDefault();
+        }
     }
 
     handleEnd(e, card) {
-        if (!this.isDragging || card !== this.getTopCard()) return;
+        if (!this.isDragging || card !== this.getTopCard()) {
+            this.isDragging = false;
+            return;
+        }
+        
+        const deltaX = this.currentX - this.startX;
+        const deltaTime = Date.now() - this.startTime;
         
         this.isDragging = false;
-        const deltaX = this.currentX - this.startX;
-        
         card.classList.remove('swiping');
         card.style.transform = '';
         
+        // 如果移动距离很小（小于阈值）或时间很短（可能是点击），不触发滑动
+        if (Math.abs(deltaX) < this.threshold || deltaTime < 200) {
+            return;
+        }
+        
+        // 只有明显的滑动才触发翻页
         if (Math.abs(deltaX) > this.threshold) {
             if (deltaX > 0) {
                 this.swipeRight(card);
