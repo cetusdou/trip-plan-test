@@ -85,6 +85,8 @@ class CardSlider {
     toggleSortMode() {
         this.sortMode = !this.sortMode;
         this.renderCards();
+        // 重新绑定事件（重要：排序模式下需要重新绑定拖拽事件）
+        this.attachCardEventsForAll();
         
         // 更新按钮状态
         const sortBtn = document.querySelector('.sort-mode-btn');
@@ -97,6 +99,15 @@ class CardSlider {
                 sortBtn.classList.remove('active');
             }
         }
+    }
+    
+    // 为所有卡片绑定事件
+    attachCardEventsForAll() {
+        const cards = this.container.querySelectorAll('.card');
+        cards.forEach((card, index) => {
+            const cardIndex = parseInt(card.dataset.index);
+            this.attachCardEvents(card, cardIndex);
+        });
     }
 
     createCard(cardData, index) {
@@ -339,12 +350,31 @@ class CardSlider {
         
         // 拖拽排序（仅在排序模式下启用）
         const dragHandle = card.querySelector('.card-drag-handle');
-        if (dragHandle && this.sortMode) {
-            dragHandle.style.display = 'block';
-            dragHandle.addEventListener('mousedown', (e) => this.handleDragStart(e, card, index));
-            dragHandle.addEventListener('touchstart', (e) => this.handleDragStart(e, card, index));
-        } else if (dragHandle) {
-            dragHandle.style.display = 'none';
+        if (dragHandle) {
+            if (this.sortMode) {
+                dragHandle.style.display = 'block';
+                dragHandle.style.cursor = 'grab';
+                // 清除之前的事件监听器（通过克隆节点）
+                const newDragHandle = dragHandle.cloneNode(true);
+                dragHandle.parentNode.replaceChild(newDragHandle, dragHandle);
+                
+                // 绑定拖拽事件
+                const handleDragStart = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    this.handleDragStart(e, card, index);
+                };
+                
+                newDragHandle.addEventListener('mousedown', handleDragStart, { passive: false });
+                newDragHandle.addEventListener('touchstart', handleDragStart, { passive: false });
+                
+                // 确保拖拽手柄可见且可交互
+                newDragHandle.style.pointerEvents = 'auto';
+                newDragHandle.style.userSelect = 'none';
+            } else {
+                dragHandle.style.display = 'none';
+            }
         }
         
         // 图片轮播控制
@@ -638,8 +668,15 @@ class CardSlider {
         card.style.zIndex = '1000';
         card.style.cursor = 'grabbing';
         
-        this.dragMoveHandler = (e) => this.handleDragMove(e);
-        this.dragEndHandler = (e) => this.handleDragEnd(e);
+        // 使用箭头函数保持this上下文
+        this.dragMoveHandler = (evt) => {
+            evt.preventDefault();
+            this.handleDragMove(evt);
+        };
+        this.dragEndHandler = (evt) => {
+            evt.preventDefault();
+            this.handleDragEnd(evt);
+        };
         
         document.addEventListener('mousemove', this.dragMoveHandler, { passive: false });
         document.addEventListener('mouseup', this.dragEndHandler);
@@ -648,7 +685,10 @@ class CardSlider {
     }
     
     handleDragMove(e) {
-        if (!this.isDraggingCard || !this.sortMode) return;
+        if (!this.isDraggingCard || !this.sortMode) {
+            return;
+        }
+        
         e.preventDefault();
         e.stopPropagation();
         
@@ -659,7 +699,7 @@ class CardSlider {
         const currentCard = cards.find(c => parseInt(c.dataset.index) === this.dragCardIndex);
         if (!currentCard) return;
         
-        // 更新卡片位置
+        // 更新当前卡片位置
         currentCard.style.transform = `translateY(${deltaY}px)`;
         currentCard.style.opacity = '0.8';
         
@@ -688,7 +728,7 @@ class CardSlider {
         });
         
         if (targetIndex !== this.dragCardIndex) {
-            // 更新所有卡片的位置
+            // 更新其他卡片的位置提示
             cards.forEach((card, i) => {
                 if (i === this.dragCardIndex) return;
                 
@@ -765,8 +805,9 @@ class CardSlider {
             document.removeEventListener('touchend', this.dragEndHandler);
         }
         
-        // 重新渲染以更新索引
+        // 重新渲染以更新索引和事件
         this.renderCards();
+        this.attachCardEventsForAll();
     }
     
     // 重新排序卡片
@@ -813,6 +854,9 @@ class CardSlider {
     }
 
     attachEventListeners() {
+        // 排序模式下不绑定滑动事件，避免冲突
+        if (this.sortMode) return;
+        
         const cards = this.container.querySelectorAll('.card');
         
         cards.forEach(card => {

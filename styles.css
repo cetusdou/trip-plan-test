@@ -240,15 +240,20 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 10px 0;
+    height: auto;
+    min-height: 500px;
 }
 
 .sort-mode .card {
-    position: relative;
+    position: relative !important;
     transform: none !important;
     opacity: 1 !important;
     z-index: 1 !important;
     margin-bottom: 0;
     cursor: default;
+    width: 100%;
+    height: auto;
+    min-height: 200px;
 }
 
 .sort-mode .card.sortable-card {
@@ -257,8 +262,9 @@ body {
 
 .sort-mode .card.dragging {
     opacity: 0.8;
-    z-index: 1000;
+    z-index: 1000 !important;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    cursor: grabbing !important;
 }
 
 /* 单个卡片 */
