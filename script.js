@@ -100,7 +100,6 @@ class CardSlider {
                 const filteredItems = applyFilter(orderedItems);
                 // 更新cards数组为最新的顺序
                 this.cards = filteredItems;
-                console.log('退出排序模式，更新后的cards顺序:', this.cards.map((c, i) => `${i}:${c.category || c.id}`).join(', '));
             }
         }
         
@@ -126,11 +125,9 @@ class CardSlider {
     // 为所有卡片绑定事件
     attachCardEventsForAll() {
         const cards = this.container.querySelectorAll('.card');
-        console.log('绑定拖拽事件，卡片数量:', cards.length, '排序模式:', this.sortMode);
         cards.forEach((card, index) => {
             const cardIndex = parseInt(card.dataset.index);
             if (isNaN(cardIndex)) {
-                console.warn('卡片索引无效:', card.dataset.index);
                 return;
             }
             this.attachCardEvents(card, cardIndex);
@@ -144,9 +141,8 @@ class CardSlider {
         card.dataset.dayId = this.dayId;
         card.dataset.itemIndex = index;
         
-        // 获取留言和评分数据
+        // 获取留言数据
         const comments = this.getComments(this.dayId, index);
-        const ratings = this.getRatings(this.dayId, index);
         const images = this.getImages(this.dayId, index);
         const itemLikes = this.getItemLikes(this.dayId, index);
         
@@ -218,65 +214,50 @@ class CardSlider {
         `;
         
         if (cardData.plan) {
-            const planLikes = itemLikes.plan || { userA: false, userB: false };
-            const planLikeCount = (planLikes.userA ? 1 : 0) + (planLikes.userB ? 1 : 0);
-            html += `
-                <div class="card-section">
-                    <div class="card-section-header">
-                        <div class="card-section-title plan">计划</div>
-                        <button class="like-btn ${planLikes[currentUser] ? 'liked' : ''}" data-section="plan" title="点赞">
-                            <span class="like-icon">${planLikes[currentUser] ? '❤️' : '🤍'}</span>
-                            <span class="like-count">${planLikeCount > 0 ? planLikeCount : ''}</span>
-                        </button>
+            // 支持plan为数组或字符串格式
+            // 如果是数组，直接使用；如果是字符串，转换为单元素数组（向后兼容）
+            const planItems = Array.isArray(cardData.plan) 
+                ? cardData.plan.filter(item => item && item.trim().length > 0) // 过滤空项
+                : [cardData.plan].filter(item => item && item.trim().length > 0);
+            
+            if (planItems.length > 0) {
+                html += `
+                    <div class="card-section">
+                        <div class="card-section-header">
+                            <div class="card-section-title plan">计划</div>
+                        </div>
+                        <ul class="plan-list">
+                            ${planItems.map((planItem, planIndex) => {
+                                const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
+                                const planItemLikeCount = (planItemLikes.userA ? 1 : 0) + (planItemLikes.userB ? 1 : 0);
+                            return `
+                                <li class="plan-item">
+                                    <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
+                                    <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
+                                            data-plan-index="${planIndex}" 
+                                            title="点赞">
+                                        <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
+                                        <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
+                                    </button>
+                                </li>
+                            `;
+                            }).join('')}
+                        </ul>
                     </div>
-                    <div class="card-section-content">${cardData.plan}</div>
-                </div>
-            `;
+                `;
+            }
         }
         
         if (cardData.note) {
-            const noteLikes = itemLikes.note || { userA: false, userB: false };
-            const noteLikeCount = (noteLikes.userA ? 1 : 0) + (noteLikes.userB ? 1 : 0);
             html += `
                 <div class="card-section">
                     <div class="card-section-header">
                         <div class="card-section-title note">备注</div>
-                        <button class="like-btn ${noteLikes[currentUser] ? 'liked' : ''}" data-section="note" title="点赞">
-                            <span class="like-icon">${noteLikes[currentUser] ? '❤️' : '🤍'}</span>
-                            <span class="like-count">${noteLikeCount > 0 ? noteLikeCount : ''}</span>
-                        </button>
                     </div>
                     <div class="card-section-content note-content">${cardData.note}</div>
                 </div>
             `;
         }
-        
-        if (cardData.rating) {
-            html += `
-                <div class="card-section">
-                    <div class="card-section-title rating">原始评分</div>
-                    <div class="card-section-content rating-content">${this.escapeHtml(cardData.rating)}</div>
-                </div>
-            `;
-        }
-        
-        // 添加评分区域
-        html += `
-            <div class="card-section">
-                <div class="card-section-title rating">我的评分</div>
-                <div class="rating-input-container">
-                    <div class="star-rating">
-                        ${[1, 2, 3, 4, 5].map(star => `
-                            <span class="star" data-rating="${star}">⭐</span>
-                        `).join('')}
-                    </div>
-                    <div class="rating-display">
-                        ${ratings.userA ? `<span class="rating-item user-a">用户A: ${ratings.userA}⭐</span>` : ''}
-                        ${ratings.userB ? `<span class="rating-item user-b">用户B: ${ratings.userB}⭐</span>` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
         
         // 添加留言区域
         html += `
@@ -319,28 +300,6 @@ class CardSlider {
     }
     
     attachCardEvents(card, index) {
-        // 评分点击事件
-        const stars = card.querySelectorAll('.star');
-        const ratings = this.getRatings(this.dayId, index);
-        const currentRating = ratings[currentUser] || 0;
-        
-        // 高亮当前用户的评分
-        stars.forEach((star, i) => {
-            if (i < currentRating) {
-                star.classList.add('active');
-            }
-            star.addEventListener('click', () => {
-                this.setRating(this.dayId, index, i + 1);
-                // 重新渲染卡片
-                this.renderCards();
-                // 重新绑定事件
-                if (!this.sortMode) {
-                    this.attachEventListeners();
-                }
-                this.attachCardEventsForAll();
-            });
-        });
-        
         // 图片上传事件
         const imageUploadBtn = card.querySelector('.image-upload-btn');
         const imageUploadInput = card.querySelector('.image-upload-input');
@@ -557,16 +516,16 @@ class CardSlider {
             });
         }
         
-        // 行程项like事件
-        card.querySelectorAll('.like-btn[data-section]').forEach(btn => {
+        // 计划项like事件
+        card.querySelectorAll('.plan-item-like-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                const section = btn.dataset.section;
+                const planIndex = parseInt(btn.dataset.planIndex);
                 // 保存当前滚动位置
                 const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                this.toggleItemLike(this.dayId, index, section);
+                this.togglePlanItemLike(this.dayId, index, planIndex);
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
@@ -582,9 +541,9 @@ class CardSlider {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                const section = btn.dataset.section;
+                const planIndex = parseInt(btn.dataset.planIndex);
                 const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                this.toggleItemLike(this.dayId, index, section);
+                this.togglePlanItemLike(this.dayId, index, planIndex);
                 this.renderCards();
                 if (!this.sortMode) {
                     this.attachEventListeners();
@@ -680,23 +639,6 @@ class CardSlider {
         autoSyncToGist();
     }
     
-    // 获取评分
-    getRatings(dayId, itemIndex) {
-        const key = `trip_ratings_${dayId}_${itemIndex}`;
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : {};
-    }
-    
-    // 设置评分
-    setRating(dayId, itemIndex, rating) {
-        const key = `trip_ratings_${dayId}_${itemIndex}`;
-        const ratings = this.getRatings(dayId, itemIndex);
-        ratings[currentUser] = rating;
-        localStorage.setItem(key, JSON.stringify(ratings));
-        // 自动同步到Gist
-        autoSyncToGist();
-    }
-    
     // 格式化时间
     formatTime(timestamp) {
         const date = new Date(timestamp);
@@ -748,6 +690,23 @@ class CardSlider {
             likes[section] = { userA: false, userB: false };
         }
         likes[section][currentUser] = !likes[section][currentUser];
+        localStorage.setItem(key, JSON.stringify(likes));
+        // 自动同步到Gist
+        autoSyncToGist();
+    }
+    
+    // 获取计划项点赞
+    getPlanItemLikes(dayId, itemIndex, planIndex) {
+        const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : { userA: false, userB: false };
+    }
+    
+    // 切换计划项点赞
+    togglePlanItemLike(dayId, itemIndex, planIndex) {
+        const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
+        const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex);
+        likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
         // 自动同步到Gist
         autoSyncToGist();
@@ -1084,6 +1043,18 @@ class CardSlider {
         div.textContent = text;
         return div.innerHTML;
     }
+    
+    // 转义HTML但保留<br>标签
+    escapeHtmlKeepBr(text) {
+        if (!text) return '';
+        // 先转义所有HTML
+        const div = document.createElement('div');
+        div.textContent = text;
+        let escaped = div.innerHTML;
+        // 将转义后的<br>还原为实际的<br>标签
+        escaped = escaped.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+        return escaped;
+    }
 
     attachEventListeners() {
         // 排序模式下不绑定滑动事件，避免冲突
@@ -1127,8 +1098,8 @@ class CardSlider {
             target.closest('.card-sort-btn') ||
             target.closest('.comment-submit') ||
             target.closest('.image-upload-btn') ||
-            target.closest('.star') ||
             target.closest('.comment-like-btn') ||
+            target.closest('.plan-item-like-btn') ||
             target.closest('.item-like-btn')
         )) {
             return;
@@ -1671,7 +1642,6 @@ function saveNewItem() {
         time: document.getElementById('new-item-time').value.trim(),
         plan: document.getElementById('new-item-plan').value.trim(),
         note: document.getElementById('new-item-note').value.trim(),
-        rating: '',
         tag: document.getElementById('new-item-tag').value || '其他'
     };
     
@@ -1713,7 +1683,6 @@ function getAllEditedData() {
         cardOrders: {},
         images: {},
         comments: {},
-        ratings: {},
         likes: {},
         timestamp: new Date().toISOString()
     };
@@ -1732,8 +1701,6 @@ function getAllEditedData() {
                 data.images[key] = JSON.parse(localStorage.getItem(key));
             } else if (key.includes('_comments_')) {
                 data.comments[key] = JSON.parse(localStorage.getItem(key));
-            } else if (key.includes('_ratings_')) {
-                data.ratings[key] = JSON.parse(localStorage.getItem(key));
             } else if (key.includes('_likes_')) {
                 data.likes[key] = JSON.parse(localStorage.getItem(key));
             }
