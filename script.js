@@ -242,43 +242,49 @@ class CardSlider {
             }
         }
         
-        if (planData) {
-            // 支持plan为数组或字符串格式
-            // 如果是数组，直接使用；如果是字符串，转换为单元素数组（向后兼容）
-            const planItems = Array.isArray(planData) 
+        // 总是显示计划区域，即使没有计划项也可以添加
+        // 支持plan为数组或字符串格式
+        // 如果是数组，直接使用；如果是字符串，转换为单元素数组（向后兼容）
+        const planItems = planData 
+            ? (Array.isArray(planData) 
                 ? planData.filter(item => item && item.trim().length > 0) // 过滤空项
-                : [planData].filter(item => item && item.trim().length > 0);
-            
-            if (planItems.length > 0) {
-                html += `
-                    <div class="card-section">
-                        <div class="card-section-header">
-                            <div class="card-section-title plan">计划</div>
+                : [planData].filter(item => item && item.trim().length > 0))
+            : [];
+        
+        html += `
+            <div class="card-section">
+                <div class="card-section-header">
+                    <div class="card-section-title plan">计划</div>
+                </div>
+                <ul class="plan-list">
+                    ${planItems.length > 0 ? planItems.map((planItem, planIndex) => {
+                        const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
+                        const planItemLikeCount = (planItemLikes.userA ? 1 : 0) + (planItemLikes.userB ? 1 : 0);
+                    return `
+                        <li class="plan-item">
+                            <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
+                            <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
+                                    data-plan-index="${planIndex}" 
+                                    title="点赞">
+                                <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
+                                <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
+                            </button>
+                        </li>
+                    `;
+                    }).join('') : ''}
+                    <li class="plan-item plan-add-item">
+                        <button class="plan-add-btn" data-card-index="${index}" title="添加计划项">+ 添加计划项</button>
+                        <div class="plan-input-container" style="display: none;">
+                            <input type="text" class="plan-input" placeholder="输入计划项..." />
+                            <div class="plan-input-actions">
+                                <button class="plan-input-confirm">✓</button>
+                                <button class="plan-input-cancel">✕</button>
+                            </div>
                         </div>
-                        <ul class="plan-list">
-                            ${planItems.map((planItem, planIndex) => {
-                                const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
-                                const planItemLikeCount = (planItemLikes.userA ? 1 : 0) + (planItemLikes.userB ? 1 : 0);
-                            return `
-                                <li class="plan-item">
-                                    <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
-                                    <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
-                                            data-plan-index="${planIndex}" 
-                                            title="点赞">
-                                        <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
-                                        <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
-                                    </button>
-                                </li>
-                            `;
-                            }).join('')}
-                            <li class="plan-item plan-add-item">
-                                <button class="plan-add-btn" data-card-index="${index}" title="添加计划项">+ 添加计划项</button>
-                            </li>
-                        </ul>
-                    </div>
-                `;
-            }
-        }
+                    </li>
+                </ul>
+            </div>
+        `;
         
         if (cardData.note) {
             html += `
@@ -381,13 +387,63 @@ class CardSlider {
         
         // 计划项添加按钮
         const planAddBtn = card.querySelector('.plan-add-btn');
-        if (planAddBtn) {
+        const planInputContainer = card.querySelector('.plan-input-container');
+        const planInput = card.querySelector('.plan-input');
+        const planInputConfirm = card.querySelector('.plan-input-confirm');
+        const planInputCancel = card.querySelector('.plan-input-cancel');
+        
+        if (planAddBtn && planInputContainer) {
+            // 点击添加按钮，显示输入框
             planAddBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                this.addPlanItem(index);
+                planAddBtn.style.display = 'none';
+                planInputContainer.style.display = 'flex';
+                planInput.focus();
             });
+            
+            // 确认添加
+            if (planInputConfirm && planInput) {
+                const confirmAdd = () => {
+                    const newItem = planInput.value.trim();
+                    if (newItem) {
+                        this.addPlanItem(index, newItem);
+                    } else {
+                        // 如果为空，恢复按钮显示
+                        planInputContainer.style.display = 'none';
+                        planAddBtn.style.display = 'block';
+                        planInput.value = '';
+                    }
+                };
+                
+                planInputConfirm.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    confirmAdd();
+                });
+                
+                planInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        confirmAdd();
+                    }
+                });
+            }
+            
+            // 取消添加
+            if (planInputCancel) {
+                planInputCancel.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    planInputContainer.style.display = 'none';
+                    planAddBtn.style.display = 'block';
+                    planInput.value = '';
+                });
+            }
         }
         
         // 展开/收起功能
@@ -577,8 +633,9 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const planIndex = parseInt(btn.dataset.planIndex);
-                // 保存当前滚动位置
-                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                // 保存当前滚动位置和卡片滚动位置
+                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const cardScrollTop = card.scrollTop;
                 this.togglePlanItemLike(this.dayId, index, planIndex);
                 this.renderCards();
                 // 重新绑定事件
@@ -586,8 +643,15 @@ class CardSlider {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
-                // 恢复滚动位置
-                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+                // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
+                requestAnimationFrame(() => {
+                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
+                    // 恢复卡片内部滚动位置
+                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
+                    if (newCard) {
+                        newCard.scrollTop = cardScrollTop;
+                    }
+                });
             });
             
             // 也处理触摸事件
@@ -596,14 +660,21 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const planIndex = parseInt(btn.dataset.planIndex);
-                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const cardScrollTop = card.scrollTop;
                 this.togglePlanItemLike(this.dayId, index, planIndex);
                 this.renderCards();
                 if (!this.sortMode) {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
-                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+                requestAnimationFrame(() => {
+                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
+                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
+                    if (newCard) {
+                        newCard.scrollTop = cardScrollTop;
+                    }
+                });
             });
         });
         
@@ -614,8 +685,9 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const commentIndex = parseInt(btn.dataset.commentIndex);
-                // 保存当前滚动位置
-                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                // 保存当前滚动位置和卡片滚动位置
+                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const cardScrollTop = card.scrollTop;
                 this.toggleCommentLike(this.dayId, index, commentIndex);
                 this.renderCards();
                 // 重新绑定事件
@@ -623,8 +695,15 @@ class CardSlider {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
-                // 恢复滚动位置
-                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+                // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
+                requestAnimationFrame(() => {
+                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
+                    // 恢复卡片内部滚动位置
+                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
+                    if (newCard) {
+                        newCard.scrollTop = cardScrollTop;
+                    }
+                });
             });
             
             // 也处理触摸事件
@@ -633,14 +712,21 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const commentIndex = parseInt(btn.dataset.commentIndex);
-                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const cardScrollTop = card.scrollTop;
                 this.toggleCommentLike(this.dayId, index, commentIndex);
                 this.renderCards();
                 if (!this.sortMode) {
                     this.attachEventListeners();
                 }
                 this.attachCardEventsForAll();
-                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+                requestAnimationFrame(() => {
+                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
+                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
+                    if (newCard) {
+                        newCard.scrollTop = cardScrollTop;
+                    }
+                });
             });
         });
         
@@ -849,12 +935,9 @@ class CardSlider {
     }
     
     // 添加计划项
-    addPlanItem(cardIndex) {
+    addPlanItem(cardIndex, newItem) {
         const card = this.cards[cardIndex];
-        if (!card) return;
-        
-        const newItem = prompt('请输入新的计划项：');
-        if (!newItem || !newItem.trim()) return;
+        if (!card || !newItem || !newItem.trim()) return;
         
         // 更新plan数组
         if (!card.plan) {

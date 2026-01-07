@@ -643,6 +643,9 @@ body {
 .plan-add-item {
     border-left-color: #ccc !important;
     background: #f9f9f9 !important;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
 }
 
 .plan-add-item:hover {
@@ -666,6 +669,70 @@ body {
     border-color: #56ab2f;
     color: #56ab2f;
     background: #f0f7f0;
+}
+
+.plan-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    width: 100%;
+}
+
+.plan-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 2px solid #56ab2f;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.plan-input:focus {
+    border-color: #4a9a26;
+    box-shadow: 0 0 0 3px rgba(86, 171, 47, 0.1);
+}
+
+.plan-input-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.plan-input-confirm,
+.plan-input-cancel {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plan-input-confirm {
+    background: #56ab2f;
+    color: white;
+}
+
+.plan-input-confirm:hover {
+    background: #4a9a26;
+    transform: scale(1.05);
+}
+
+.plan-input-cancel {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.plan-input-cancel:hover {
+    background: #d0d0d0;
+    transform: scale(1.05);
 }
 
 .plan-item-text {
