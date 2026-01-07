@@ -146,7 +146,22 @@ class CardSlider {
         const images = this.getImages(this.dayId, index);
         const itemLikes = this.getItemLikes(this.dayId, index);
         
-        const cardTag = cardData.tag || '其他';
+        // 获取标签：优先使用tag字段，如果没有则从localStorage读取，最后才使用category作为标签
+        let cardTag = cardData.tag;
+        if (!cardTag && !cardData.isCustom) {
+            // 对于原始项，检查是否有保存的tag
+            const tagKey = `trip_tag_${this.dayId}_${index}`;
+            const savedTag = localStorage.getItem(tagKey);
+            if (savedTag) {
+                cardTag = savedTag;
+            } else {
+                // 如果没有保存的tag，使用category作为标签（向后兼容）
+                cardTag = cardData.category || '其他';
+            }
+        } else if (!cardTag) {
+            // 自定义项如果没有tag，使用category作为标签
+            cardTag = cardData.category || '其他';
+        }
         const isExpanded = this.getCardExpanded(this.dayId, index);
         let html = `
             <div class="card-header">
@@ -158,7 +173,7 @@ class CardSlider {
                     <div class="card-header-content">
                         <div class="card-category">${this.escapeHtml(cardData.category)}</div>
                         ${cardData.time ? `<div class="card-time">${this.escapeHtml(cardData.time)}</div>` : ''}
-                        <div class="card-tag tag-${cardTag}">${this.getTagLabel(cardTag)}</div>
+                        <div class="card-tag tag-${cardTag}" data-card-index="${index}" data-current-tag="${cardTag}">${this.getTagLabel(cardTag)}</div>
                     </div>
                     <div class="card-header-actions">
                         <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}">
@@ -213,12 +228,26 @@ class CardSlider {
             </div>
         `;
         
-        if (cardData.plan) {
+        // 读取计划项（优先从localStorage读取修改后的数据）
+        let planData = cardData.plan;
+        if (!cardData.isCustom) {
+            const planKey = `trip_plan_${this.dayId}_${index}`;
+            const savedPlan = localStorage.getItem(planKey);
+            if (savedPlan) {
+                try {
+                    planData = JSON.parse(savedPlan);
+                } catch (e) {
+                    // 如果解析失败，使用原始数据
+                }
+            }
+        }
+        
+        if (planData) {
             // 支持plan为数组或字符串格式
             // 如果是数组，直接使用；如果是字符串，转换为单元素数组（向后兼容）
-            const planItems = Array.isArray(cardData.plan) 
-                ? cardData.plan.filter(item => item && item.trim().length > 0) // 过滤空项
-                : [cardData.plan].filter(item => item && item.trim().length > 0);
+            const planItems = Array.isArray(planData) 
+                ? planData.filter(item => item && item.trim().length > 0) // 过滤空项
+                : [planData].filter(item => item && item.trim().length > 0);
             
             if (planItems.length > 0) {
                 html += `
@@ -242,6 +271,9 @@ class CardSlider {
                                 </li>
                             `;
                             }).join('')}
+                            <li class="plan-item plan-add-item">
+                                <button class="plan-add-btn" data-card-index="${index}" title="添加计划项">+ 添加计划项</button>
+                            </li>
                         </ul>
                     </div>
                 `;
@@ -259,7 +291,7 @@ class CardSlider {
             `;
         }
         
-        // 添加留言区域
+        // 添加留言区域（移到备注下面）
         html += `
             <div class="card-section">
                 <div class="card-section-title comment">💬 留言</div>
@@ -333,6 +365,28 @@ class CardSlider {
                 }
                 // 清空input，允许重复选择相同文件
                 e.target.value = '';
+            });
+        }
+        
+        // 标签点击修改
+        const cardTag = card.querySelector('.card-tag');
+        if (cardTag) {
+            cardTag.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.editTag(index);
+            });
+        }
+        
+        // 计划项添加按钮
+        const planAddBtn = card.querySelector('.plan-add-btn');
+        if (planAddBtn) {
+            planAddBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.addPlanItem(index);
             });
         }
         
@@ -754,6 +808,87 @@ class CardSlider {
         return labels[tag] || tag;
     }
     
+    // 编辑标签
+    editTag(cardIndex) {
+        const card = this.cards[cardIndex];
+        if (!card) return;
+        
+        // 获取当前标签（优先使用tag字段，如果没有则使用category作为标签）
+        const currentTag = card.tag || card.category || '其他';
+        const tags = ['景点', '美食', '住宿', '赶路', '其他'];
+        const currentIndex = tags.indexOf(currentTag);
+        const nextIndex = (currentIndex + 1) % tags.length;
+        const newTag = tags[nextIndex];
+        
+        // 只更新tag字段，不修改category（标题）
+        card.tag = newTag;
+        
+        // 保存到localStorage（如果是自定义项）
+        if (card.isCustom) {
+            const customItems = JSON.parse(localStorage.getItem(`trip_custom_items_${this.dayId}`) || '[]');
+            const itemIndex = customItems.findIndex(item => item.id === card.id);
+            if (itemIndex !== -1) {
+                customItems[itemIndex].tag = newTag;
+                localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(customItems));
+            }
+        } else {
+            // 对于原始项，保存tag到单独的存储
+            const tagKey = `trip_tag_${this.dayId}_${cardIndex}`;
+            localStorage.setItem(tagKey, newTag);
+        }
+        
+        // 重新渲染
+        this.renderCards();
+        if (!this.sortMode) {
+            this.attachEventListeners();
+        }
+        this.attachCardEventsForAll();
+        
+        // 自动同步
+        autoSyncToGist();
+    }
+    
+    // 添加计划项
+    addPlanItem(cardIndex) {
+        const card = this.cards[cardIndex];
+        if (!card) return;
+        
+        const newItem = prompt('请输入新的计划项：');
+        if (!newItem || !newItem.trim()) return;
+        
+        // 更新plan数组
+        if (!card.plan) {
+            card.plan = [];
+        }
+        const planItems = Array.isArray(card.plan) ? card.plan : [card.plan];
+        planItems.push(newItem.trim());
+        card.plan = planItems;
+        
+        // 保存到localStorage（如果是自定义项）
+        if (card.isCustom) {
+            const customItems = JSON.parse(localStorage.getItem(`trip_custom_items_${this.dayId}`) || '[]');
+            const itemIndex = customItems.findIndex(item => item.id === card.id);
+            if (itemIndex !== -1) {
+                customItems[itemIndex].plan = planItems;
+                localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(customItems));
+            }
+        } else {
+            // 对于原始项，保存到单独的存储
+            const key = `trip_plan_${this.dayId}_${cardIndex}`;
+            localStorage.setItem(key, JSON.stringify(planItems));
+        }
+        
+        // 重新渲染
+        this.renderCards();
+        if (!this.sortMode) {
+            this.attachEventListeners();
+        }
+        this.attachCardEventsForAll();
+        
+        // 自动同步
+        autoSyncToGist();
+    }
+    
     // 拖拽开始（排序模式）
     handleDragStart(e, card, index) {
         if (!this.sortMode) {
@@ -1073,7 +1208,9 @@ class CardSlider {
             target.closest('.image-upload-btn') ||
             target.closest('.comment-like-btn') ||
             target.closest('.plan-item-like-btn') ||
-            target.closest('.item-like-btn')
+            target.closest('.item-like-btn') ||
+            target.closest('.card-tag') ||
+            target.closest('.plan-add-btn')
         )) {
             return;
         }

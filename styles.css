@@ -170,7 +170,7 @@ body {
 
 .day-header-actions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-start;
     align-items: stretch; /* 确保所有按钮高度一致 */
@@ -206,19 +206,19 @@ body {
 }
 
 .filter-btn {
-    padding: 10px 16px;
+    padding: 6px 12px;
     background: #f5f5f5;
     color: #333;
     border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px; /* 统一按钮高度 */
+    min-height: 32px; /* 统一按钮高度 */
     white-space: nowrap;
 }
 
@@ -435,19 +435,19 @@ body {
 }
 
 .sort-mode-btn {
-    padding: 10px 16px;
+    padding: 6px 12px;
     background: #f5f5f5;
     color: #333;
     border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px; /* 统一按钮高度 */
+    min-height: 32px; /* 统一按钮高度 */
     white-space: nowrap;
 }
 
@@ -505,6 +505,14 @@ body {
     font-size: 12px;
     font-weight: 500;
     margin-top: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.card-tag:hover {
+    opacity: 0.8;
+    transform: scale(1.05);
 }
 
 .tag-景点 {
@@ -630,6 +638,34 @@ body {
 
 .plan-item:last-child {
     margin-bottom: 0;
+}
+
+.plan-add-item {
+    border-left-color: #ccc !important;
+    background: #f9f9f9 !important;
+}
+
+.plan-add-item:hover {
+    background: #f0f0f0 !important;
+}
+
+.plan-add-btn {
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px dashed #999;
+    border-radius: 6px;
+    color: #666;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.plan-add-btn:hover {
+    border-color: #56ab2f;
+    color: #56ab2f;
+    background: #f0f7f0;
 }
 
 .plan-item-text {
@@ -881,16 +917,17 @@ body {
 }
 
 .add-item-btn {
-    padding: 10px 16px;
+    padding: 6px 12px;
     background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
     color: white;
     border: none;
-    border-radius: 8px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
+    min-height: 32px;
     align-items: center;
     justify-content: center;
     min-height: 40px; /* 统一按钮高度 */
@@ -1116,6 +1153,18 @@ body {
 
     .day-header h2 {
         font-size: 16px;
+    }
+    
+    .day-header-actions {
+        gap: 6px;
+    }
+    
+    .add-item-btn,
+    .filter-btn,
+    .sort-mode-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+        min-height: 28px;
     }
 
     .cards-container {
