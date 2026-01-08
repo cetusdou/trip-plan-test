@@ -127,30 +127,7 @@
                     <button class="modal-close" onclick="closeSyncConfig()">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="config-section" style="display: none;">
-                        <label>同步方式：</label>
-                        <select id="sync-type-select" onchange="toggleSyncType()">
-                            <option value="firebase" selected>Firebase Realtime Database（实时同步）</option>
-                            <option value="gist">GitHub Gist（已弃用）</option>
-                        </select>
-                    </div>
-                    
-                    <!-- GitHub Gist 配置（已隐藏） -->
-                    <div id="gist-config" class="sync-config-panel" style="display: none;">
-                        <div class="config-section">
-                            <label for="github-token-input">GitHub Personal Access Token：</label>
-                            <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxx">
-                            <small>需要创建GitHub Token，勾选gist权限。点击下方链接查看教程</small>
-                            <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token" target="_blank" class="help-link">如何创建Token？</a>
-                        </div>
-                        <div class="config-section">
-                            <label for="gist-id-input">Gist ID（首次使用留空，会自动创建）：</label>
-                            <input type="text" id="gist-id-input" placeholder="留空则自动创建新的Gist">
-                            <small>如果已经创建过Gist，可以输入Gist ID直接使用</small>
-                        </div>
-                    </div>
-                    
-                    <!-- Firebase 配置（默认显示） -->
+                    <!-- Firebase 配置 -->
                     <div id="firebase-config" class="sync-config-panel">
                         <div class="config-section">
                             <label for="firebase-api-key">API Key：</label>
@@ -231,8 +208,9 @@
         </div>
     </div>
 
-    <!-- 引入数据文件 -->
-    <script src="data.js"></script>
+    <!-- 数据从数据库或缓存加载，不再使用data.js -->
+    <!-- 引入统一数据结构工具 -->
+    <script src="trip-data-structure.js"></script>
     <!-- 不再从config.js导入token，token缓存在localStorage中 -->
     <!-- Firebase SDK (如果使用Firebase同步) -->
     <script type="module">
@@ -268,7 +246,7 @@
         window.dispatchEvent(new CustomEvent('firebaseReady'));
     </script>
     <!-- 引入同步功能 -->
-    <script src="sync.js"></script>
+    <!-- 只使用Firebase同步，不再使用Gist -->
     <script src="sync-firebase.js"></script>
     <!-- 引入逻辑文件 -->
     <script src="script.js"></script>

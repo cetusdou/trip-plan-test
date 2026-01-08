@@ -1,6 +1,85 @@
 // 数据同步功能 - 使用Firebase Realtime Database
 // Firebase SDK 通过 ES6 模块在 index.html 中加载
 
+// 合并统一结构数据
+function mergeUnifiedData(localData, remoteData) {
+    // 合并days数组
+    const mergedDays = [];
+    const dayMap = new Map();
+    
+    // 先添加本地days
+    (localData.days || []).forEach(day => {
+        dayMap.set(day.id, { ...day });
+    });
+    
+    // 合并远程days
+    (remoteData.days || []).forEach(remoteDay => {
+        const localDay = dayMap.get(remoteDay.id);
+        if (localDay) {
+            // 合并items
+            const itemMap = new Map();
+            (localDay.items || []).forEach(item => {
+                itemMap.set(item.id, { ...item });
+            });
+            
+            // 合并远程items
+            (remoteDay.items || []).forEach(remoteItem => {
+                const localItem = itemMap.get(remoteItem.id);
+                if (localItem) {
+                    // 合并item属性（优先使用更新的）
+                    const localUpdated = new Date(localItem._updatedAt || 0);
+                    const remoteUpdated = new Date(remoteItem._updatedAt || 0);
+                    if (remoteUpdated > localUpdated) {
+                        // 远程更新，使用远程数据
+                        itemMap.set(remoteItem.id, { ...remoteItem });
+                    } else {
+                        // 本地更新，保留本地数据，但合并comments和images
+                        localItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
+                        localItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
+                        itemMap.set(remoteItem.id, localItem);
+                    }
+                } else {
+                    // 远程有新item，添加
+                    itemMap.set(remoteItem.id, { ...remoteItem });
+                }
+            });
+            
+            localDay.items = Array.from(itemMap.values());
+        } else {
+            // 远程有新day，添加
+            dayMap.set(remoteDay.id, { ...remoteDay });
+        }
+    });
+    
+    mergedDays.push(...Array.from(dayMap.values()));
+    
+    return {
+        ...remoteData,
+        days: mergedDays,
+        _version: Math.max(localData._version || 0, remoteData._version || 0),
+        _lastSync: new Date().toISOString()
+    };
+}
+
+// 合并留言数组（使用哈希值去重）
+function mergeComments(localComments, remoteComments) {
+    const commentMap = new Map();
+    localComments.forEach(c => {
+        if (c._hash) commentMap.set(c._hash, c);
+    });
+    remoteComments.forEach(c => {
+        if (c._hash && !commentMap.has(c._hash)) {
+            commentMap.set(c._hash, c);
+        }
+    });
+    return Array.from(commentMap.values());
+}
+
+// 合并数组（去重）
+function mergeArrays(localArray, remoteArray) {
+    return Array.from(new Set([...localArray, ...remoteArray]));
+}
+
 class DataSyncFirebase {
     constructor() {
         this.database = null;
@@ -113,9 +192,36 @@ class DataSyncFirebase {
         return this.isInitialized && this.database !== null;
     }
 
-    // 获取所有本地数据（与Gist版本兼容）
+    // 获取所有本地数据（优先使用统一结构）
     getAllLocalData() {
         const data = {};
+        
+        // 优先使用统一结构
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                data['trip_unified_data'] = JSON.stringify(unifiedData);
+                // 仍然包含其他配置数据（如果有）
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('trip_') && 
+                        !key.includes('_token') && 
+                        !key.includes('_gist_id') && 
+                        !key.includes('_auto_sync') &&
+                        !key.includes('_current_user') &&
+                        !key.includes('_firebase_config') &&
+                        key !== 'trip_unified_data') {
+                        // 只包含配置类数据，不包含已迁移到统一结构的数据
+                        if (key.includes('_config') || key.includes('_password')) {
+                            data[key] = localStorage.getItem(key);
+                        }
+                    }
+                }
+                return data;
+            }
+        }
+        
+        // 如果没有统一结构，回退到旧的分散存储方式
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('trip_') && 
@@ -130,8 +236,21 @@ class DataSyncFirebase {
         return data;
     }
 
-    // 设置所有本地数据（与Gist版本兼容）
+    // 设置所有本地数据（优先使用统一结构）
     setAllLocalData(data) {
+        // 优先处理统一结构数据
+        if (data['trip_unified_data'] && typeof tripDataStructure !== 'undefined') {
+            try {
+                const unifiedData = JSON.parse(data['trip_unified_data']);
+                tripDataStructure.saveUnifiedData(unifiedData);
+                // 删除统一数据键，避免重复处理
+                delete data['trip_unified_data'];
+            } catch (e) {
+                console.warn('解析统一数据失败:', e);
+            }
+        }
+        
+        // 处理其他数据
         Object.keys(data).forEach(key => {
             localStorage.setItem(key, data[key]);
         });
@@ -260,6 +379,28 @@ class DataSyncFirebase {
                 
                 // 本地有数据，使用合并策略
                 const mergedData = { ...localData };
+                
+                // 优先处理统一结构数据
+                if (remoteData['trip_unified_data'] || localData['trip_unified_data']) {
+                    const localUnified = localData['trip_unified_data'] ? JSON.parse(localData['trip_unified_data']) : null;
+                    const remoteUnified = remoteData['trip_unified_data'] ? JSON.parse(remoteData['trip_unified_data']) : null;
+                    
+                    if (remoteUnified && localUnified) {
+                        // 合并两个统一结构
+                        const mergedUnified = mergeUnifiedData(localUnified, remoteUnified);
+                        mergedData['trip_unified_data'] = JSON.stringify(mergedUnified);
+                    } else if (remoteUnified) {
+                        // 只有远程有统一结构，使用远程的
+                        mergedData['trip_unified_data'] = remoteData['trip_unified_data'];
+                    } else if (localUnified) {
+                        // 只有本地有统一结构，保留本地的
+                        mergedData['trip_unified_data'] = localData['trip_unified_data'];
+                    }
+                    
+                    // 删除已处理的键，避免重复处理
+                    delete remoteData['trip_unified_data'];
+                    delete localData['trip_unified_data'];
+                }
                 
                 Object.keys(remoteData).forEach(key => {
                     if (!localData[key]) {

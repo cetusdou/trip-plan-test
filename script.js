@@ -421,6 +421,19 @@ function checkWritePermission() {
 
 // 将函数暴露到全局，供其他模块使用
 window.checkWritePermission = checkWritePermission;
+// 更新同步状态显示
+function updateSyncStatus(message, type = 'info') {
+    const statusEl = document.getElementById('sync-status');
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = `sync-status ${type}`;
+        setTimeout(() => {
+            statusEl.textContent = '';
+            statusEl.className = 'sync-status';
+        }, 3000);
+    }
+}
+
 window.handleLogin = handleLogin;
 window.showInitPasswordModal = showInitPasswordModal;
 window.initPasswords = initPasswords;
@@ -470,7 +483,17 @@ class CardSlider {
         this.sortMode = !this.sortMode;
         
         // 重新应用保存的顺序（确保使用最新的顺序）
-        const day = tripData.days.find(d => d.id === this.dayId);
+        let day = null;
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                day = tripDataStructure.getDayData(unifiedData, this.dayId);
+            }
+        }
+        if (!day) {
+            const tripData = loadTripData();
+            day = tripData.days?.find(d => d.id === this.dayId);
+        }
         if (day) {
             const customItems = getCustomItems(this.dayId);
             const allItems = [...day.items, ...customItems];
@@ -529,10 +552,32 @@ class CardSlider {
         card.dataset.index = index;
         card.dataset.dayId = this.dayId;
         card.dataset.itemIndex = index;
+        // 保存itemId以便后续使用统一结构
+        if (cardData.id) {
+            card.dataset.itemId = cardData.id;
+        }
         
-        // 获取留言数据
-        const comments = this.getComments(this.dayId, index);
-        const images = this.getImages(this.dayId, index);
+        // 获取留言数据和图片（优先从统一结构读取）
+        const itemId = cardData.id || null;
+        let comments = [];
+        let images = [];
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    comments = item.comments || [];
+                    images = item.images || [];
+                }
+            }
+        }
+        // 如果没有从统一结构获取到，使用旧方法
+        if (comments.length === 0) {
+            comments = this.getComments(this.dayId, index);
+        }
+        if (images.length === 0) {
+            images = this.getImages(this.dayId, index);
+        }
         const itemLikes = this.getItemLikes(this.dayId, index);
         
         // 获取标签：优先使用tag字段，如果没有则从localStorage读取，最后才使用category作为标签
@@ -560,8 +605,19 @@ class CardSlider {
                         <button class="card-sort-btn card-sort-down" data-index="${index}" title="下移">▼</button>
                     </div>
                     <div class="card-header-content">
-                        <div class="card-category">${this.escapeHtml(cardData.category)}</div>
-                        ${cardData.time ? `<div class="card-time">${this.escapeHtml(cardData.time)}</div>` : ''}
+                        <div class="card-category-container" data-card-index="${index}">
+                            <span class="card-category-display">${this.escapeHtml(cardData.category)}</span>
+                            <input type="text" class="card-category-input" value="${this.escapeHtml(cardData.category)}" style="display: none;" />
+                        </div>
+                        <div class="card-time-container" data-card-index="${index}">
+                            ${cardData.time ? `
+                                <span class="card-time-display">${this.escapeHtml(cardData.time)}</span>
+                                <input type="time" class="card-time-input" value="${this.formatTimeForInput(cardData.time)}" style="display: none;" />
+                            ` : `
+                                <span class="card-time-display" style="display: none;">--:--</span>
+                                <input type="time" class="card-time-input" value="" style="display: none;" />
+                            `}
+                        </div>
                         <div class="card-tag tag-${cardTag}" data-card-index="${index}" data-current-tag="${cardTag}">${this.getTagLabel(cardTag)}</div>
                     </div>
                     <div class="card-header-actions">
@@ -569,9 +625,7 @@ class CardSlider {
                         <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}">
                             ${isExpanded ? '▼' : '▶'}
                         </button>
-                        ${cardData.isCustom ? `
-                            <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项">🗑️</button>
-                        ` : ''}
+                        <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -619,8 +673,25 @@ class CardSlider {
         `;
         
         // 读取计划项（优先从localStorage读取修改后的数据）
-        let planData = cardData.plan;
-        if (!cardData.isCustom) {
+        // 优先从统一结构读取plan数据
+        let planData = null;
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item && item.plan) {
+                    planData = item.plan;
+                }
+            }
+        }
+        
+        // 如果统一结构没有plan数据，使用cardData.plan
+        if (!planData) {
+            planData = cardData.plan;
+        }
+        
+        // 如果还是没有，尝试从旧的存储方式读取（仅对非自定义项）
+        if (!planData && !cardData.isCustom) {
             const planKey = `trip_plan_${this.dayId}_${index}`;
             const savedPlan = localStorage.getItem(planKey);
             if (savedPlan) {
@@ -710,7 +781,10 @@ class CardSlider {
                     <div class="card-section-header">
                         <div class="card-section-title note">备注</div>
                     </div>
-                    <div class="card-section-content note-content">${cardData.note}</div>
+                    <div class="card-section-content note-content-container" data-card-index="${index}">
+                        <div class="note-content-display">${cardData.note || ''}</div>
+                        <textarea class="note-content-input" style="display: none;" placeholder="输入备注...">${this.escapeHtml(cardData.note || '')}</textarea>
+                    </div>
                 </div>
             `;
         }
@@ -724,10 +798,11 @@ class CardSlider {
                         const commentLikes = this.getCommentLikes(this.dayId, index, commentIndex);
                         const commentLikeCount = (commentLikes.mrb ? 1 : 0) + (commentLikes.djy ? 1 : 0);
                         return `
-                        <div class="comment-item ${comment.user === 'mrb' ? 'user-a' : 'user-b'}">
+                        <div class="comment-item ${comment.user === 'mrb' ? 'user-a' : 'user-b'}" data-comment-hash="${comment._hash || ''}">
                             <div class="comment-header">
                                 <span class="comment-user">${comment.user === 'mrb' ? '👤 mrb' : '👤 djy'}</span>
                                 <span class="comment-time">${this.formatTime(comment.timestamp)}</span>
+                                <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">🗑️</button>
                             </div>
                             <div class="comment-content">${this.escapeHtml(comment.message)}</div>
                             <button class="comment-like-btn ${commentLikes[currentUser] ? 'liked' : ''}" 
@@ -756,6 +831,168 @@ class CardSlider {
     }
     
     attachCardEvents(card, index) {
+        // 时间编辑事件
+        const timeContainer = card.querySelector('.card-time-container');
+        if (timeContainer) {
+            const timeDisplay = timeContainer.querySelector('.card-time-display');
+            const timeInput = timeContainer.querySelector('.card-time-input');
+            
+            if (timeDisplay && timeInput) {
+                // 点击显示区域，切换到编辑模式
+                timeDisplay.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!checkWritePermission()) return;
+                    
+                    timeDisplay.style.display = 'none';
+                    timeInput.style.display = 'inline-block';
+                    timeInput.focus();
+                    timeInput.select();
+                });
+                
+                // 时间输入框失去焦点时保存
+                timeInput.addEventListener('blur', () => {
+                    const newTime = timeInput.value;
+                    if (newTime) {
+                        // 格式化时间为 HH:mm
+                        const formattedTime = this.formatTimeForDisplay(newTime);
+                        timeDisplay.textContent = formattedTime;
+                        
+                        // 保存到统一结构
+                        const cardData = this.cards[index];
+                        if (cardData) {
+                            cardData.time = formattedTime;
+                            
+                            const itemId = cardData.id;
+                            if (itemId && typeof tripDataStructure !== 'undefined') {
+                                const unifiedData = tripDataStructure.loadUnifiedData();
+                                if (unifiedData) {
+                                    const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                                    if (item) {
+                                        item.time = formattedTime;
+                                        item._updatedAt = new Date().toISOString();
+                                        tripDataStructure.saveUnifiedData(unifiedData);
+                                        triggerImmediateUpload();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    timeDisplay.style.display = 'inline-block';
+                    timeInput.style.display = 'none';
+                });
+                
+                // 按Enter键保存
+                timeInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        timeInput.blur();
+                    }
+                });
+            }
+        }
+        
+        // 分类（category）编辑事件
+        const categoryContainer = card.querySelector('.card-category-container');
+        if (categoryContainer) {
+            const categoryDisplay = categoryContainer.querySelector('.card-category-display');
+            const categoryInput = categoryContainer.querySelector('.card-category-input');
+            
+            if (categoryDisplay && categoryInput) {
+                categoryDisplay.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!checkWritePermission()) return;
+                    
+                    categoryDisplay.style.display = 'none';
+                    categoryInput.style.display = 'inline-block';
+                    categoryInput.focus();
+                    categoryInput.select();
+                });
+                
+                categoryInput.addEventListener('blur', () => {
+                    const newCategory = categoryInput.value.trim();
+                    if (newCategory) {
+                        categoryDisplay.textContent = newCategory;
+                        
+                        // 保存到统一结构
+                        const cardData = this.cards[index];
+                        if (cardData) {
+                            cardData.category = newCategory;
+                            
+                            const itemId = cardData.id;
+                            if (itemId && typeof tripDataStructure !== 'undefined') {
+                                const unifiedData = tripDataStructure.loadUnifiedData();
+                                if (unifiedData) {
+                                    const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                                    if (item) {
+                                        item.category = newCategory;
+                                        item._updatedAt = new Date().toISOString();
+                                        tripDataStructure.saveUnifiedData(unifiedData);
+                                        triggerImmediateUpload();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    categoryDisplay.style.display = 'inline-block';
+                    categoryInput.style.display = 'none';
+                });
+                
+                categoryInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        categoryInput.blur();
+                    }
+                });
+            }
+        }
+        
+        // 备注（note）编辑事件
+        const noteContainer = card.querySelector('.note-content-container');
+        if (noteContainer) {
+            const noteDisplay = noteContainer.querySelector('.note-content-display');
+            const noteInput = noteContainer.querySelector('.note-content-input');
+            
+            if (noteDisplay && noteInput) {
+                noteDisplay.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!checkWritePermission()) return;
+                    
+                    noteDisplay.style.display = 'none';
+                    noteInput.style.display = 'block';
+                    noteInput.focus();
+                });
+                
+                noteInput.addEventListener('blur', () => {
+                    const newNote = noteInput.value.trim();
+                    noteDisplay.innerHTML = this.escapeHtmlKeepBr(newNote || '');
+                    
+                    // 保存到统一结构
+                    const cardData = this.cards[index];
+                    if (cardData) {
+                        cardData.note = newNote;
+                        
+                        const itemId = cardData.id;
+                        if (itemId && typeof tripDataStructure !== 'undefined') {
+                            const unifiedData = tripDataStructure.loadUnifiedData();
+                            if (unifiedData) {
+                                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                                if (item) {
+                                    item.note = newNote;
+                                    item._updatedAt = new Date().toISOString();
+                                    tripDataStructure.saveUnifiedData(unifiedData);
+                                    triggerImmediateUpload();
+                                }
+                            }
+                        }
+                    }
+                    
+                    noteDisplay.style.display = 'block';
+                    noteInput.style.display = 'none';
+                });
+            }
+        }
+        
         // 图片上传事件
         const imageUploadBtn = card.querySelector('.image-upload-btn');
         const imageUploadInput = card.querySelector('.image-upload-input');
@@ -920,7 +1157,8 @@ class CardSlider {
                     
                     Promise.all(readers).then(imageUrls => {
                         const currentImages = this.getImages(this.dayId, index);
-                        this.setImages(this.dayId, index, [...currentImages, ...imageUrls]);
+                        const itemId = card.dataset.itemId || null;
+                        this.setImages(this.dayId, index, [...currentImages, ...imageUrls], itemId);
                         this.renderCards();
                         // 重新绑定事件
                         if (!this.sortMode) {
@@ -982,8 +1220,18 @@ class CardSlider {
             if (planInputConfirm && planInput) {
                 const confirmAdd = async () => {
                     const newItem = planInput.value.trim();
+                    console.log('确认添加计划项:', newItem, 'cardIndex:', index);
                     if (newItem) {
-                        await this.addPlanItem(index, newItem);
+                        try {
+                            await this.addPlanItem(index, newItem);
+                            console.log('addPlanItem 执行完成');
+                            // 重置输入框和UI状态
+                            planInput.value = '';
+                            planInputContainer.style.display = 'none';
+                            planAddBtn.style.display = 'block';
+                        } catch (error) {
+                            console.error('添加计划项失败:', error);
+                        }
                     } else {
                         // 如果为空，恢复按钮显示
                         planInputContainer.style.display = 'none';
@@ -1005,6 +1253,18 @@ class CardSlider {
                         e.stopPropagation();
                         confirmAdd();
                     }
+                });
+            }
+            
+            // 取消按钮
+            if (planInputCancel) {
+                planInputCancel.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    planInput.value = '';
+                    planInputContainer.style.display = 'none';
+                    planAddBtn.style.display = 'block';
                 });
             }
             
@@ -1178,7 +1438,8 @@ class CardSlider {
                     e.stopPropagation();
                     const images = this.getImages(this.dayId, index);
                     images.splice(btnIndex, 1);
-                    this.setImages(this.dayId, index, images);
+                    const itemId = card.dataset.itemId || null;
+                    this.setImages(this.dayId, index, images, itemId);
                     this.renderCards();
                     // 重新绑定事件
                     if (!this.sortMode) {
@@ -1189,14 +1450,32 @@ class CardSlider {
             });
         }
         
-        // 删除自定义行程项
+        // 删除行程项（所有卡片都可以删除）
         const deleteBtn = card.querySelector('.delete-item-btn');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 if (confirm('确定要删除这个行程项吗？')) {
                     const itemId = deleteBtn.dataset.itemId;
-                    deleteCustomItem(this.dayId, itemId);
+                    if (itemId) {
+                        // 优先使用统一结构的删除方法
+                        if (typeof tripDataStructure !== 'undefined') {
+                            const unifiedData = tripDataStructure.loadUnifiedData();
+                            if (unifiedData) {
+                                const success = tripDataStructure.deleteItemData(unifiedData, this.dayId, itemId);
+                                if (success) {
+                                    tripDataStructure.saveUnifiedData(unifiedData);
+                                    triggerImmediateUpload();
+                                    // 重新渲染
+                                    showDay(this.dayId);
+                                    return;
+                                }
+                            }
+                        }
+                        // 回退到旧方法（仅自定义项）
+                        deleteCustomItem(this.dayId, itemId);
+                    }
                 }
             });
         }
@@ -1357,7 +1636,8 @@ class CardSlider {
         commentSubmit.addEventListener('click', async () => {
             const message = commentInput.value.trim();
             if (message) {
-                await this.addComment(this.dayId, index, message);
+                const itemId = card.dataset.itemId || null;
+                await this.addComment(this.dayId, index, message, itemId);
                 commentInput.value = '';
                 // 重新渲染卡片
                 this.renderCards();
@@ -1376,21 +1656,89 @@ class CardSlider {
                 commentSubmit.click();
             }
         });
+        
+        // 删除留言按钮
+        const commentDeleteBtns = card.querySelectorAll('.comment-delete-btn');
+        commentDeleteBtns.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (confirm('确定要删除这条留言吗？')) {
+                    const commentHash = btn.dataset.commentHash;
+                    if (commentHash) {
+                        await this.deleteComment(this.dayId, index, commentHash);
+                        // 重新渲染
+                        this.renderCards();
+                        if (!this.sortMode) {
+                            this.attachEventListeners();
+                        }
+                        this.attachCardEventsForAll();
+                    }
+                }
+            });
+        });
+    }
+    
+    // 删除留言
+    async deleteComment(dayId, itemIndex, commentHash) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
+        const comments = this.getComments(dayId, itemIndex);
+        const commentIndex = comments.findIndex(c => c._hash === commentHash);
+        
+        if (commentIndex === -1) return;
+        
+        // 从数组中删除
+        comments.splice(commentIndex, 1);
+        
+        // 优先保存到统一结构
+        const card = this.cards[itemIndex];
+        const itemId = card?.id;
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    item.comments = comments;
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    triggerImmediateUpload();
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
+        const key = `trip_comments_${dayId}_${itemIndex}`;
+        localStorage.setItem(key, JSON.stringify(comments));
+        triggerImmediateUpload();
     }
     
     // 获取留言
     getComments(dayId, itemIndex) {
+        // 优先从统一结构读取
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const day = tripDataStructure.getDayData(unifiedData, dayId);
+                if (day && day.items[itemIndex]) {
+                    return day.items[itemIndex].comments || [];
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = `trip_comments_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : [];
     }
     
     // 添加留言
-    async addComment(dayId, itemIndex, message) {
+    async addComment(dayId, itemIndex, message, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const key = `trip_comments_${dayId}_${itemIndex}`;
         const comments = this.getComments(dayId, itemIndex);
         
         // 生成时间戳
@@ -1407,12 +1755,31 @@ class CardSlider {
         }
         
         // 添加新留言，包含哈希值
-        comments.push({
+        const newComment = {
             user: currentUser,
             message: message,
             timestamp: timestamp,
             _hash: hash // 添加哈希值用于去重
-        });
+        };
+        comments.push(newComment);
+        
+        // 优先保存到统一结构
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    item.comments = comments;
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    triggerImmediateUpload();
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
+        const key = `trip_comments_${dayId}_${itemIndex}`;
         localStorage.setItem(key, JSON.stringify(comments));
         // 自动同步
         autoSyncToGist();
@@ -1437,16 +1804,44 @@ class CardSlider {
     
     // 获取图片（多张）
     getImages(dayId, itemIndex) {
+        // 优先从统一结构读取
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const day = tripDataStructure.getDayData(unifiedData, dayId);
+                if (day && day.items[itemIndex]) {
+                    return day.items[itemIndex].images || [];
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = `trip_images_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : [];
     }
     
     // 设置图片（多张）
-    setImages(dayId, itemIndex, imageUrls) {
+    setImages(dayId, itemIndex, imageUrls, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
+        // 优先保存到统一结构
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    item.images = imageUrls || [];
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    triggerImmediateUpload();
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = `trip_images_${dayId}_${itemIndex}`;
         if (imageUrls && imageUrls.length > 0) {
             localStorage.setItem(key, JSON.stringify(imageUrls));
@@ -1563,7 +1958,32 @@ class CardSlider {
         // 只更新tag字段，不修改category（标题）
         card.tag = newTag;
         
-        // 保存到localStorage（如果是自定义项）
+        // 优先保存到统一结构
+        const itemId = card.id;
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    item.tag = newTag;
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    
+                    // 重新渲染
+                    this.renderCards();
+                    if (!this.sortMode) {
+                        this.attachEventListeners();
+                    }
+                    this.attachCardEventsForAll();
+                    
+                    // 立即触发上传
+                    triggerImmediateUpload();
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         if (card.isCustom) {
             const customItems = JSON.parse(localStorage.getItem(`trip_custom_items_${this.dayId}`) || '[]');
             const itemIndex = customItems.findIndex(item => item.id === card.id);
@@ -1590,11 +2010,19 @@ class CardSlider {
     
     // 添加计划项
     async addPlanItem(cardIndex, newItem) {
+        console.log('addPlanItem 被调用:', { cardIndex, newItem, dayId: this.dayId });
         // 检查写权限
-        if (!checkWritePermission()) return;
+        if (!checkWritePermission()) {
+            console.warn('没有写权限');
+            return;
+        }
         
         const card = this.cards[cardIndex];
-        if (!card || !newItem || !newItem.trim()) return;
+        console.log('card对象:', card, 'card.id:', card?.id);
+        if (!card || !newItem || !newItem.trim()) {
+            console.warn('card或newItem无效');
+            return;
+        }
         
         const trimmedItem = newItem.trim();
         
@@ -1631,12 +2059,58 @@ class CardSlider {
             _text: trimmedItem,
             _hash: hash,
             _timestamp: timestamp,
-            _user: currentUser
+            _user: currentUser,
+            _deleted: false
         };
         planItems.push(newPlanItem);
         card.plan = planItems;
         
-        // 保存到localStorage（如果是自定义项）
+        // 优先保存到统一结构
+        const itemId = card.id;
+        console.log('准备保存到统一结构:', { itemId, dayId: this.dayId, planItemsCount: planItems.length });
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            console.log('统一数据:', unifiedData ? '存在' : '不存在');
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                console.log('找到的item:', item ? '存在' : '不存在', itemId);
+                if (item) {
+                    console.log('更新item.plan，旧plan长度:', item.plan?.length || 0, '新plan长度:', planItems.length);
+                    item.plan = planItems;
+                    item._updatedAt = new Date().toISOString();
+                    const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
+                    console.log('保存结果:', saveSuccess);
+                    
+                    if (saveSuccess !== false) {
+                        // 更新this.cards数组中的card对象，保持同步
+                        card.plan = planItems;
+                        console.log('card.plan已更新，准备重新渲染');
+                        
+                        // 重新渲染
+                        this.renderCards();
+                        console.log('重新渲染完成');
+                        if (!this.sortMode) {
+                            this.attachEventListeners();
+                        }
+                        this.attachCardEventsForAll();
+                        
+                        // 立即触发上传
+                        triggerImmediateUpload();
+                        return;
+                    } else {
+                        console.warn('保存到统一结构失败，使用旧存储方式');
+                    }
+                } else {
+                    console.warn(`未找到item: ${itemId}，使用旧存储方式`);
+                }
+            } else {
+                console.warn('统一数据不存在，使用旧存储方式');
+            }
+        } else {
+            console.warn('itemId不存在或tripDataStructure未定义，使用旧存储方式', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+        }
+        
+        // 回退到旧的存储方式
         if (card.isCustom) {
             const customItems = JSON.parse(localStorage.getItem(`trip_custom_items_${this.dayId}`) || '[]');
             const itemIndex = customItems.findIndex(item => item.id === card.id);
@@ -1945,7 +2419,36 @@ class CardSlider {
     
     // 保存卡片顺序
     saveCardOrder() {
-        // 构建顺序信息 - 使用更可靠的唯一标识
+        // 优先更新统一结构中的order字段
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                if (day) {
+                    // 更新每个item的order字段
+                    this.cards.forEach((card, idx) => {
+                        if (card.id) {
+                            const item = tripDataStructure.getItemData(unifiedData, this.dayId, card.id);
+                            if (item) {
+                                item.order = idx;
+                                item._updatedAt = new Date().toISOString();
+                            }
+                        }
+                    });
+                    
+                    // 保存统一结构
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    triggerImmediateUpload();
+                    
+                    // 同时更新this.cards数组中的order字段
+                    this.cards.forEach((card, idx) => {
+                        card.order = idx;
+                    });
+                }
+            }
+        }
+        
+        // 构建顺序信息 - 使用更可靠的唯一标识（用于向后兼容）
         const orderInfo = this.cards.map((item, idx) => {
             // 对于自定义项，使用id；对于原始项，使用category+time组合作为唯一标识
             let uniqueId;
@@ -1954,8 +2457,20 @@ class CardSlider {
             } else {
                 // 原始项：使用category + time + plan的前几个字符作为唯一标识
                 const time = item.time || '';
-                const plan = (item.plan || '').substring(0, 20);
-                uniqueId = `${item.category || 'item'}_${time}_${plan}`.replace(/\s+/g, '_');
+                let planStr = '';
+                if (item.plan) {
+                    if (Array.isArray(item.plan)) {
+                        // plan是数组，取第一个非删除项的文本
+                        const firstPlan = item.plan.find(p => !p._deleted);
+                        if (firstPlan) {
+                            planStr = typeof firstPlan === 'string' ? firstPlan : (firstPlan._text || '');
+                        }
+                    } else if (typeof item.plan === 'string') {
+                        planStr = item.plan;
+                    }
+                }
+                planStr = planStr.substring(0, 20);
+                uniqueId = `${item.category || 'item'}_${time}_${planStr}`.replace(/\s+/g, '_');
             }
             
             return {
@@ -1966,7 +2481,7 @@ class CardSlider {
             };
         });
         
-        // 保存顺序
+        // 保存顺序（向后兼容）
         const orderKey = `trip_card_order_${this.dayId}`;
         localStorage.setItem(orderKey, JSON.stringify(orderInfo));
         
@@ -1975,9 +2490,6 @@ class CardSlider {
         if (newCustomItems.length > 0) {
             localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(newCustomItems));
         }
-        
-        // 自动同步到Gist
-        autoSyncToGist();
     }
     
     // 保存卡片数据并同步
@@ -2019,6 +2531,44 @@ class CardSlider {
         escaped = escaped.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
         return escaped;
     }
+    
+    // 格式化时间为HTML time input格式 (HH:mm)
+    formatTimeForInput(timeStr) {
+        if (!timeStr) return '';
+        // 尝试解析各种时间格式
+        // 支持格式: "14:30", "14:30:00", "2:30 PM", "14:30:00.000" 等
+        const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(AM|PM))?/i);
+        if (timeMatch) {
+            let hours = parseInt(timeMatch[1]);
+            const minutes = timeMatch[2];
+            const ampm = timeMatch[3];
+            
+            // 处理12小时制
+            if (ampm) {
+                if (ampm.toUpperCase() === 'PM' && hours !== 12) {
+                    hours += 12;
+                } else if (ampm.toUpperCase() === 'AM' && hours === 12) {
+                    hours = 0;
+                }
+            }
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+        return '';
+    }
+    
+    // 格式化时间为显示格式 (HH:mm)
+    formatTimeForDisplay(timeStr) {
+        if (!timeStr) return '';
+        // 如果是HTML time input格式 (HH:mm)，直接返回
+        const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+            const hours = parseInt(timeMatch[1]);
+            const minutes = timeMatch[2];
+            return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+        return timeStr;
+    }
 
     // 滑动相关代码已移至 card-slider-swipe.js（备用）
 }
@@ -2034,20 +2584,7 @@ function loadConfigFromURL() {
     const gistId = urlParams.get('gist_id') || urlParams.get('gistId');
     const autoSync = urlParams.get('auto_sync') === 'true' || urlParams.get('autoSync') === 'true';
     
-    if (token && typeof dataSync !== 'undefined') {
-        dataSync.setToken(token);
-        updateSyncStatus('Token已从URL导入', 'success');
-    }
-    
-    if (gistId && typeof dataSync !== 'undefined') {
-        dataSync.setGistId(gistId);
-        updateSyncStatus('Gist ID已从URL导入', 'success');
-    }
-    
-    if (autoSync && typeof dataSync !== 'undefined') {
-        dataSync.setAutoSync(true);
-        updateSyncStatus('自动同步已启用', 'success');
-    }
+    // Gist相关功能已移除，只使用Firebase
     
     // 如果从URL导入了配置，清除URL参数（保护隐私）
     if (token || gistId || autoSync) {
@@ -2057,9 +2594,30 @@ function loadConfigFromURL() {
 }
 
 // 页面初始化
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // 首先从URL加载配置
     loadConfigFromURL();
+    
+    // 执行数据迁移（合并最新的分散数据）
+    if (typeof tripDataStructure !== 'undefined' && typeof tripData !== 'undefined') {
+        try {
+            const existingData = tripDataStructure.loadUnifiedData();
+            const needsMigration = !existingData || existingData._version !== tripDataStructure.DATA_STRUCTURE_VERSION;
+            
+            if (needsMigration) {
+                console.log('执行数据迁移（首次迁移）...');
+                await tripDataStructure.migrateToUnifiedStructure(tripData, false);
+                console.log('数据迁移完成');
+            } else {
+                // 即使已有统一数据，也合并最新的分散数据（可能有新的留言、图片等）
+                console.log('已存在统一结构数据，合并最新的分散数据...');
+                await tripDataStructure.migrateToUnifiedStructure(tripData, false);
+                console.log('数据合并完成');
+            }
+        } catch (error) {
+            console.error('数据迁移失败:', error);
+        }
+    }
     
     // 检查登录状态（等待Firebase初始化后）
     setTimeout(() => {
@@ -2114,7 +2672,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         // 先尝试从Firebase下载数据（静默，不显示错误）
                         dataSyncFirebase.download().then(result => {
                             if (result.success) {
-                                // 下载成功后，重新显示当前日期以刷新数据
+                                // 下载成功后，缓存数据并重新渲染
+                                const unifiedData = tripDataStructure.loadUnifiedData();
+                                if (unifiedData) {
+                                    // 缓存tripData结构
+                                    localStorage.setItem('trip_data_cache', JSON.stringify({
+                                        title: unifiedData.title || '行程计划',
+                                        overview: unifiedData.overview || [],
+                                        days: unifiedData.days || []
+                                    }));
+                                }
+                                // 重新渲染总览和导航
+                                renderOverview();
+                                renderNavigation();
+                                // 重新显示当前日期以刷新数据
                                 if (currentDayId) {
                                     showDay(currentDayId);
                                 }
@@ -2138,24 +2709,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             window.addEventListener('firebaseReady', initFirebase, { once: true });
         }
-    } else if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
-        // 先尝试从 Gist 下载数据（静默，不显示错误）
-        dataSync.download().then(result => {
-            if (result.success) {
-                // 下载成功后，重新显示当前日期以刷新数据
-                if (currentDayId) {
-                    showDay(currentDayId);
-                }
-            }
-        }).catch(() => {
-            // 静默处理错误，不影响页面正常使用
-        });
-        
-        // 如果启用自动同步，初始化自动同步
-        if (dataSync.autoSyncEnabled) {
-            dataSync.setAutoSync(true);
-        }
     }
+    // 只使用Firebase同步，不再支持Gist
     
     // 点击模态框外部关闭
     const modal = document.getElementById('sync-config-modal');
@@ -2179,17 +2734,104 @@ function initUserSelector() {
     });
 }
 
+// 从统一结构或缓存加载tripData
+function loadTripData() {
+    // 优先从统一结构加载
+    if (typeof tripDataStructure !== 'undefined') {
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (unifiedData) {
+            return {
+                title: unifiedData.title || '行程计划',
+                overview: unifiedData.overview || [],
+                days: unifiedData.days || []
+            };
+        }
+    }
+    
+    // 如果没有统一结构，尝试从localStorage缓存加载
+    const cachedData = localStorage.getItem('trip_data_cache');
+    if (cachedData) {
+        try {
+            return JSON.parse(cachedData);
+        } catch (e) {
+            console.warn('解析缓存数据失败:', e);
+        }
+    }
+    
+    // 如果都没有，返回空结构（等待从数据库加载）
+    return {
+        title: '行程计划',
+        overview: [],
+        days: []
+    };
+}
+
 // 渲染总览
 function renderOverview() {
     const header = document.querySelector('.header');
+    const tripData = loadTripData();
     if (header && tripData) {
-        header.innerHTML = `<h1>${tripData.title}</h1>`;
+        header.innerHTML = `
+            <div class="header-title-container">
+                <h1 class="header-title-display">${tripData.title || '行程计划'}</h1>
+                <input type="text" class="header-title-input" value="${tripData.title || '行程计划'}" style="display: none;" />
+            </div>
+        `;
+        
+        // 添加标题编辑事件
+        const titleDisplay = header.querySelector('.header-title-display');
+        const titleInput = header.querySelector('.header-title-input');
+        
+        if (titleDisplay && titleInput) {
+            titleDisplay.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!checkWritePermission()) return;
+                
+                titleDisplay.style.display = 'none';
+                titleInput.style.display = 'block';
+                titleInput.focus();
+                titleInput.select();
+            });
+            
+            titleInput.addEventListener('blur', () => {
+                const newTitle = titleInput.value.trim();
+                if (newTitle) {
+                    titleDisplay.textContent = newTitle;
+                    
+                    // 保存到统一结构
+                    if (typeof tripDataStructure !== 'undefined') {
+                        const unifiedData = tripDataStructure.loadUnifiedData();
+                        if (unifiedData) {
+                            unifiedData.title = newTitle;
+                            tripDataStructure.saveUnifiedData(unifiedData);
+                            triggerImmediateUpload();
+                        }
+                    }
+                    
+                    // 更新缓存
+                    const tripData = loadTripData();
+                    tripData.title = newTitle;
+                    localStorage.setItem('trip_data_cache', JSON.stringify(tripData));
+                }
+                
+                titleDisplay.style.display = 'block';
+                titleInput.style.display = 'none';
+            });
+            
+            titleInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    titleInput.blur();
+                }
+            });
+        }
     }
 }
 
 // 渲染导航
 function renderNavigation() {
     const navContainer = document.querySelector('.nav-container');
+    const tripData = loadTripData();
     if (!navContainer || !tripData) return;
     
     let html = '<h2>行程总览</h2><ul class="nav-list">';
@@ -2223,14 +2865,98 @@ function showDay(dayId) {
     currentDayId = dayId;
     // 更新全局变量，供实时同步回调使用
     window.currentDayId = currentDayId;
-    const day = tripData.days.find(d => d.id === dayId);
-    if (!day) return;
+    
+    // 优先使用统一数据结构
+    let day = null;
+    let allItems = [];
+    
+    if (typeof tripDataStructure !== 'undefined') {
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (unifiedData) {
+            day = tripDataStructure.getDayData(unifiedData, dayId);
+            if (day) {
+                // 过滤掉已删除的项，并按order排序
+                allItems = day.items
+                    .filter(item => !item._deleted)
+                    .sort((a, b) => (a.order || 0) - (b.order || 0));
+                // 确保所有items都有id
+                allItems.forEach((item, index) => {
+                    if (!item.id) {
+                        console.warn(`统一结构中的item缺少id，生成临时id:`, item);
+                        item.id = `${dayId}_item_${index}_${Date.now()}`;
+                    }
+                });
+            }
+        }
+    }
+    
+    // 如果没有统一数据，尝试从缓存或data.js加载
+    if (!day) {
+        // 优先从缓存加载（如果有）
+        const cachedData = localStorage.getItem('trip_data_cache');
+        let cachedTripData = null;
+        if (cachedData) {
+            try {
+                cachedTripData = JSON.parse(cachedData);
+                day = cachedTripData.days?.find(d => d.id === dayId);
+            } catch (e) {
+                console.warn('解析缓存数据失败:', e);
+            }
+        }
+        
+        // 如果缓存也没有，尝试从统一结构初始化（如果统一结构存在但没有这个day）
+        if (!day && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData && unifiedData.days) {
+                day = unifiedData.days.find(d => d.id === dayId);
+            }
+        }
+        
+        if (!day) {
+            console.warn(`未找到日期数据: ${dayId}`);
+            return;
+        }
+        
+        const customItems = getCustomItems(dayId);
+        allItems = [...day.items, ...customItems];
+        
+        // 为所有项添加id和tag属性（如果还没有的话）
+        allItems.forEach((item, index) => {
+            // 确保每个item都有id
+            if (!item.id) {
+                if (item.isCustom) {
+                    // 自定义项应该有id，如果没有则生成
+                    item.id = item.id || `custom_${dayId}_${Date.now()}_${index}`;
+                } else {
+                    // 原始项生成id
+                    item.id = `${dayId}_item_${index}_${Date.now()}`;
+                }
+            }
+            
+            // 添加tag属性
+            if (!item.tag) {
+                if (item.isCustom) {
+                    item.tag = item.tag || item.category || '其他';
+                } else {
+                    const tagKey = `trip_tag_${dayId}_${index}`;
+                    const savedTag = localStorage.getItem(tagKey);
+                    item.tag = savedTag || item.category || '其他';
+                }
+            }
+        });
+        
+        // 应用保存的顺序
+        allItems = applyCardOrder(dayId, allItems);
+    }
     
     // 更新日期标题
     const dayHeader = document.querySelector('.day-header');
     if (dayHeader) {
         dayHeader.innerHTML = `
-            <h2>${day.title}</h2>
+            <div class="day-title-container">
+                <h2 class="day-title-display">${day.title || ''}</h2>
+                <input type="text" class="day-title-input" value="${day.title || ''}" style="display: none;" />
+            </div>
             <div class="day-header-actions">
                 <button class="add-item-btn" onclick="showAddItemModal('${dayId}')" title="新增行程项">
                     ➕ 新增行程项
@@ -2243,32 +2969,56 @@ function showDay(dayId) {
                 </button>
             </div>
         `;
+        
+        // 添加日期标题编辑事件
+        const dayTitleDisplay = dayHeader.querySelector('.day-title-display');
+        const dayTitleInput = dayHeader.querySelector('.day-title-input');
+        
+        if (dayTitleDisplay && dayTitleInput) {
+            dayTitleDisplay.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!checkWritePermission()) return;
+                
+                dayTitleDisplay.style.display = 'none';
+                dayTitleInput.style.display = 'block';
+                dayTitleInput.focus();
+                dayTitleInput.select();
+            });
+            
+            dayTitleInput.addEventListener('blur', () => {
+                const newTitle = dayTitleInput.value.trim();
+                if (newTitle) {
+                    dayTitleDisplay.textContent = newTitle;
+                    
+                    // 保存到统一结构
+                    if (typeof tripDataStructure !== 'undefined') {
+                        const unifiedData = tripDataStructure.loadUnifiedData();
+                        if (unifiedData) {
+                            const dayData = tripDataStructure.getDayData(unifiedData, dayId);
+                            if (dayData) {
+                                dayData.title = newTitle;
+                                tripDataStructure.saveUnifiedData(unifiedData);
+                                triggerImmediateUpload();
+                            }
+                        }
+                    }
+                }
+                
+                dayTitleDisplay.style.display = 'block';
+                dayTitleInput.style.display = 'none';
+            });
+            
+            dayTitleInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    dayTitleInput.blur();
+                }
+            });
+        }
     }
     
-    // 获取自定义添加的行程项
-    const customItems = getCustomItems(dayId);
-    const allItems = [...day.items, ...customItems];
-    
-    // 为所有项添加tag属性（如果还没有的话），以便筛选时使用
-    allItems.forEach((item, index) => {
-        if (!item.tag) {
-            if (item.isCustom) {
-                // 自定义项：使用tag字段或category
-                item.tag = item.tag || item.category || '其他';
-            } else {
-                // 原始项：从localStorage读取标签
-                const tagKey = `trip_tag_${dayId}_${index}`;
-                const savedTag = localStorage.getItem(tagKey);
-                item.tag = savedTag || item.category || '其他';
-            }
-        }
-    });
-    
-    // 应用保存的顺序
-    const orderedItems = applyCardOrder(dayId, allItems);
-    
     // 应用筛选
-    const filteredItems = applyFilter(orderedItems, dayId);
+    const filteredItems = applyFilter(allItems, dayId);
     
     // 创建卡片容器（滚动模式）
     const cardsContainer = document.getElementById('cards-container');
@@ -2303,8 +3053,21 @@ function applyCardOrder(dayId, items) {
                 key = item.id;
             } else {
                 const time = item.time || '';
-                const plan = (item.plan || '').substring(0, 20);
-                key = `${item.category || 'item'}_${time}_${plan}`.replace(/\s+/g, '_');
+                let planStr = '';
+                if (item.plan) {
+                    if (Array.isArray(item.plan)) {
+                        const firstPlan = item.plan[0];
+                        if (typeof firstPlan === 'string') {
+                            planStr = firstPlan;
+                        } else if (firstPlan && firstPlan._text) {
+                            planStr = firstPlan._text;
+                        }
+                    } else if (typeof item.plan === 'string') {
+                        planStr = item.plan;
+                    }
+                }
+                planStr = (planStr || '').substring(0, 20);
+                key = `${item.category || 'item'}_${time}_${planStr}`.replace(/\s+/g, '_');
             }
             // 如果key已存在，添加索引后缀确保唯一性
             if (itemMap.has(key)) {
@@ -2431,8 +3194,22 @@ function addCustomItem(dayId, itemData) {
         return;
     }
     
+    // 优先保存到统一结构
+    if (typeof tripDataStructure !== 'undefined') {
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (unifiedData) {
+            const newItem = tripDataStructure.addItemData(unifiedData, dayId, itemData);
+            if (newItem) {
+                console.log('成功保存自定义项到统一结构:', newItem);
+                showDay(dayId);
+                triggerImmediateUpload();
+                return;
+            }
+        }
+    }
+    
+    // 回退到旧的存储方式
     const key = `trip_custom_items_${dayId}`;
-    // 获取所有项（包括已删除的），然后添加新项
     const allItems = getAllCustomItems(dayId);
     
     const newItem = {
@@ -2440,7 +3217,7 @@ function addCustomItem(dayId, itemData) {
         id: `custom_${Date.now()}`,
         isCustom: true,
         tag: itemData.tag || '其他',
-        _deleted: false // 确保新项未标记为删除
+        _deleted: false
     };
     
     allItems.push(newItem);
@@ -2465,8 +3242,23 @@ function deleteCustomItem(dayId, itemId) {
     // 检查写权限
     if (!checkWritePermission()) return;
     
+    // 优先保存到统一结构
+    if (typeof tripDataStructure !== 'undefined') {
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (unifiedData) {
+            const success = tripDataStructure.deleteItemData(unifiedData, dayId, itemId);
+            if (success) {
+                console.log('成功删除项（统一结构）:', itemId);
+                showDay(dayId);
+                triggerImmediateUpload();
+                return;
+            }
+        }
+    }
+    
+    // 回退到旧的存储方式
     const key = `trip_custom_items_${dayId}`;
-    const items = getAllCustomItems(dayId); // 使用getAllCustomItems获取所有项（包括已删除的）
+    const items = getAllCustomItems(dayId);
     const itemIndex = items.findIndex(item => item.id === itemId);
     if (itemIndex !== -1) {
         // 使用软删除：标记为 _deleted: true，而不是物理删除
@@ -2554,36 +3346,77 @@ function saveNewItem() {
 
 // 自动同步到Gist（如果已配置）
 let syncTimeout = null;
+// 立即触发上传（不防抖）
+function triggerImmediateUpload() {
+    // 只使用Firebase同步
+    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        return dataSyncFirebase.upload(true).then(result => {
+            if (result.success) {
+                updateSyncStatus('已上传到云端', 'success');
+            } else {
+                updateSyncStatus('上传失败: ' + (result.message || '未知错误'), 'error');
+            }
+            return result;
+        }).catch(error => {
+            console.error('上传失败:', error);
+            updateSyncStatus('上传失败: ' + error.message, 'error');
+            return { success: false, message: error.message };
+        });
+    } else {
+        console.log('Firebase未配置，跳过上传');
+        return Promise.resolve({ success: false, message: 'Firebase未配置' });
+    }
+}
+
 function autoSyncToGist() {
-    // 防抖，避免频繁同步
+    // 防抖，避免频繁同步（仅使用Firebase）
     if (syncTimeout) {
         clearTimeout(syncTimeout);
     }
     
     syncTimeout = setTimeout(() => {
-        // 检查使用的同步方式（默认使用 Firebase）
-        const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
-        let syncInstance = null;
-        
-        if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
-            syncInstance = dataSyncFirebase;
-        } else if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
-            syncInstance = dataSync;
+        // 只使用Firebase同步
+        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+            dataSyncFirebase.upload().then(result => {
+                if (result.success) {
+                    updateSyncStatus('已自动同步', 'success');
+                }
+            }).catch(() => {
+                // 静默处理错误
+            });
         }
-        
-        if (!syncInstance) {
-            // 未配置，不执行同步
-            return;
-        }
-        
-        syncInstance.upload().then(result => {
-            if (result.success) {
-                updateSyncStatus('已自动同步', 'success');
-            }
-        }).catch(() => {
-            // 静默处理错误
-        });
     }, 2000); // 2秒后同步
+}
+
+// 手动上传函数（供按钮调用）
+function syncUpload() {
+    triggerImmediateUpload();
+}
+
+// 手动下载函数（供按钮调用）
+function syncDownload() {
+    // 只使用Firebase同步
+    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        updateSyncStatus('正在下载...', 'info');
+        dataSyncFirebase.download().then(result => {
+            if (result.success) {
+                updateSyncStatus('下载成功', 'success');
+                // 刷新当前页面显示
+                renderOverview();
+                renderNavigation();
+                if (currentDayId) {
+                    showDay(currentDayId);
+                }
+            } else {
+                updateSyncStatus('下载失败: ' + (result.message || '未知错误'), 'error');
+            }
+        }).catch(error => {
+            console.error('下载失败:', error);
+            updateSyncStatus('下载失败: ' + error.message, 'error');
+        });
+    } else {
+        updateSyncStatus('Firebase未配置', 'error');
+    }
 }
 
 // 获取所有编辑的数据

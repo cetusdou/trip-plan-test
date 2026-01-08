@@ -31,10 +31,35 @@ class DataSync {
         localStorage.setItem('trip_gist_id', gistId);
     }
 
-    // 获取所有本地数据
+    // 获取所有本地数据（优先使用统一结构）
     getAllLocalData() {
         const data = {};
-        // 获取所有localStorage中以trip_开头的键（除了配置项）
+        
+        // 优先使用统一结构
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                data['trip_unified_data'] = JSON.stringify(unifiedData);
+                // 仍然包含其他配置数据（如果有）
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('trip_') && 
+                        !key.includes('_token') && 
+                        !key.includes('_gist_id') && 
+                        !key.includes('_auto_sync') &&
+                        !key.includes('_current_user') &&
+                        key !== 'trip_unified_data') {
+                        // 只包含配置类数据，不包含已迁移到统一结构的数据
+                        if (key.includes('_config') || key.includes('_password')) {
+                            data[key] = localStorage.getItem(key);
+                        }
+                    }
+                }
+                return data;
+            }
+        }
+        
+        // 如果没有统一结构，回退到旧的分散存储方式
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('trip_') && 
@@ -45,19 +70,24 @@ class DataSync {
                 data[key] = localStorage.getItem(key);
             }
         }
-        // 确保包含所有需要同步的数据类型：
-        // - trip_plan_* (新增的计划项)
-        // - trip_card_order_* (卡片顺序)
-        // - trip_comments_* (留言)
-        // - trip_tag_* (标签)
-        // - trip_custom_items_* (自定义项)
-        // - trip_images_* (图片)
-        // - trip_*_likes_* (点赞数据)
         return data;
     }
 
     // 设置所有本地数据
     setAllLocalData(data) {
+        // 优先处理统一结构数据
+        if (data['trip_unified_data'] && typeof tripDataStructure !== 'undefined') {
+            try {
+                const unifiedData = JSON.parse(data['trip_unified_data']);
+                tripDataStructure.saveUnifiedData(unifiedData);
+                // 删除统一数据键，避免重复处理
+                delete data['trip_unified_data'];
+            } catch (e) {
+                console.warn('解析统一数据失败:', e);
+            }
+        }
+        
+        // 处理其他数据
         Object.keys(data).forEach(key => {
             localStorage.setItem(key, data[key]);
         });
