@@ -3113,6 +3113,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 检查登录状态（等待Firebase初始化后）
     // 先显示登录界面，然后检查是否有保存的登录状态
     showLoginUI();
+    
+    // 添加登录按钮事件监听器（支持移动端）
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+        // 点击事件
+        loginBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleLogin();
+        });
+        
+        // 触摸事件（移动端）
+        loginBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleLogin();
+        });
+    }
+    
+    // 添加密码输入框的回车键事件（移动端兼容）
+    const passwordInput = document.getElementById('login-password');
+    if (passwordInput) {
+        // 支持 Enter 键和移动端虚拟键盘的完成按钮
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleLogin();
+            }
+        });
+        
+        // 移动端虚拟键盘的完成按钮
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                e.preventDefault();
+                handleLogin();
+            }
+        });
+    }
+    
     setTimeout(() => {
         checkLoginStatus();
     }, 1000);

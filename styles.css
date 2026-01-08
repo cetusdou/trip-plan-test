@@ -64,16 +64,31 @@ body {
 }
 
 .form-input {
-    padding: 10px;
+    padding: 12px;
     border: 2px solid #e0e0e0;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 16px; /* 移动端防止自动缩放 */
     transition: border-color 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
+    /* 移动端优化 */
+    -webkit-appearance: none;
+    appearance: none; /* 标准属性 */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    min-height: 44px; /* 移动端最小点击区域 */
 }
 
 .form-input:focus {
     outline: none;
     border-color: #56ab2f;
+}
+
+/* 移动端输入框优化 */
+@media (max-width: 768px) {
+    .form-input {
+        font-size: 16px; /* 防止 iOS 自动缩放 */
+    }
 }
 
 .btn-login {
@@ -86,6 +101,12 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+    /* 移动端优化 */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    min-height: 44px; /* 移动端最小点击区域 */
+    width: 100%;
+    display: block;
 }
 
 .btn-login:hover {
@@ -95,6 +116,7 @@ body {
 
 .btn-login:active {
     transform: translateY(0);
+    background: linear-gradient(135deg, #4a9a26 0%, #8fc952 100%);
 }
 
 .btn-link {
@@ -2022,6 +2044,23 @@ body {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    /* 移动端优化 */
+    margin: 20px;
+    position: relative;
+}
+
+/* 移动端模态框优化 */
+@media (max-width: 768px) {
+    .modal {
+        padding: 10px;
+    }
+    
+    .modal-content {
+        margin: 0;
+        max-width: 100%;
+        max-height: calc(100vh - 20px);
+        border-radius: 8px;
+    }
 }
 
 .modal-header {
