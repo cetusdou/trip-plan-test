@@ -495,8 +495,24 @@ class CardSlider {
             day = tripData.days?.find(d => d.id === this.dayId);
         }
         if (day) {
+            // 从统一结构加载数据时，需要过滤已删除的项
+            let dayItems = day.items || [];
+            if (typeof tripDataStructure !== 'undefined') {
+                const unifiedData = tripDataStructure.loadUnifiedData();
+                if (unifiedData) {
+                    const unifiedDay = tripDataStructure.getDayData(unifiedData, this.dayId);
+                    if (unifiedDay && unifiedDay.items) {
+                        // 过滤掉已删除的项
+                        dayItems = unifiedDay.items.filter(item => !item._deleted);
+                    }
+                }
+            } else {
+                // 如果没有统一结构，也过滤已删除的项（如果有_deleted属性）
+                dayItems = dayItems.filter(item => !item._deleted);
+            }
+            
             const customItems = getCustomItems(this.dayId);
-            const allItems = [...day.items, ...customItems];
+            const allItems = [...dayItems, ...customItems];
             
             // 为所有项添加tag属性
             allItems.forEach((item, index) => {
@@ -513,8 +529,10 @@ class CardSlider {
             
             const orderedItems = applyCardOrder(this.dayId, allItems);
             const filteredItems = applyFilter(orderedItems, this.dayId);
+            // 再次确保过滤掉已删除的项
+            const finalItems = filteredItems.filter(item => !item._deleted);
             // 更新cards数组为最新的顺序
-            this.cards = filteredItems;
+            this.cards = finalItems;
         }
         
         this.renderCards();
@@ -575,10 +593,10 @@ class CardSlider {
         }
         // 如果没有从统一结构获取到，使用旧方法
         if (comments.length === 0) {
-            comments = this.getComments(this.dayId, index);
+            comments = this.getComments(this.dayId, index, itemId);
         }
         if (images.length === 0) {
-            images = this.getImages(this.dayId, index);
+            images = this.getImages(this.dayId, index, itemId);
         }
         // 如果没有从统一结构获取到spend，使用cardData中的spend
         if (spendItems.length === 0 && cardData.spend) {
@@ -1164,8 +1182,8 @@ class CardSlider {
                     });
                     
                     Promise.all(readers).then(imageUrls => {
-                        const currentImages = this.getImages(this.dayId, index);
                         const itemId = card.dataset.itemId || null;
+                        const currentImages = this.getImages(this.dayId, index, itemId);
                         this.setImages(this.dayId, index, [...currentImages, ...imageUrls], itemId);
                         this.renderCards();
                         // 重新绑定事件
@@ -1420,7 +1438,8 @@ class CardSlider {
         const carousel = card.querySelector('.image-carousel');
         if (carousel) {
             let currentIndex = 0;
-            const images = this.getImages(this.dayId, index);
+            const itemId = card.dataset.itemId || null;
+            const images = this.getImages(this.dayId, index, itemId);
             const track = carousel.querySelector('.carousel-track');
             const prevBtn = carousel.querySelector('.carousel-prev');
             const nextBtn = carousel.querySelector('.carousel-next');
@@ -1491,9 +1510,9 @@ class CardSlider {
             removeBtns.forEach((btn, btnIndex) => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const images = this.getImages(this.dayId, index);
-                    images.splice(btnIndex, 1);
                     const itemId = card.dataset.itemId || null;
+                    const images = this.getImages(this.dayId, index, itemId);
+                    images.splice(btnIndex, 1);
                     this.setImages(this.dayId, index, images, itemId);
                     this.renderCards();
                     // 重新绑定事件
@@ -1701,7 +1720,8 @@ class CardSlider {
                 if (confirm('确定要删除这条留言吗？')) {
                     const commentHash = btn.dataset.commentHash;
                     if (commentHash) {
-                        await this.deleteComment(this.dayId, index, commentHash);
+                        const itemId = card.dataset.itemId || null;
+                        await this.deleteComment(this.dayId, index, commentHash, itemId);
                         // 重新渲染
                         this.renderCards();
                         // 重新绑定事件
@@ -1918,11 +1938,11 @@ class CardSlider {
     }
     
     // 删除留言
-    async deleteComment(dayId, itemIndex, commentHash) {
+    async deleteComment(dayId, itemIndex, commentHash, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const comments = this.getComments(dayId, itemIndex);
+        const comments = this.getComments(dayId, itemIndex, itemId);
         const commentIndex = comments.findIndex(c => c._hash === commentHash);
         
         if (commentIndex === -1) return;
@@ -1954,19 +1974,19 @@ class CardSlider {
     }
     
     // 获取留言
-    getComments(dayId, itemIndex) {
-        // 优先从统一结构读取
-        if (typeof tripDataStructure !== 'undefined') {
+    getComments(dayId, itemIndex, itemId = null) {
+        // 优先从统一结构读取（使用itemId）
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                const day = tripDataStructure.getDayData(unifiedData, dayId);
-                if (day && day.items[itemIndex]) {
-                    return day.items[itemIndex].comments || [];
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    return item.comments || [];
                 }
             }
         }
         
-        // 回退到旧的存储方式
+        // 回退到旧的存储方式（使用itemIndex）
         const key = `trip_comments_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : [];
@@ -1977,7 +1997,7 @@ class CardSlider {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const comments = this.getComments(dayId, itemIndex);
+        const comments = this.getComments(dayId, itemIndex, itemId);
         
         // 生成时间戳
         const timestamp = Date.now();
@@ -2041,19 +2061,19 @@ class CardSlider {
     }
     
     // 获取图片（多张）
-    getImages(dayId, itemIndex) {
-        // 优先从统一结构读取
-        if (typeof tripDataStructure !== 'undefined') {
+    getImages(dayId, itemIndex, itemId = null) {
+        // 优先从统一结构读取（使用itemId）
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                const day = tripDataStructure.getDayData(unifiedData, dayId);
-                if (day && day.items[itemIndex]) {
-                    return day.items[itemIndex].images || [];
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    return item.images || [];
                 }
             }
         }
         
-        // 回退到旧的存储方式
+        // 回退到旧的存储方式（使用itemIndex）
         const key = `trip_images_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : [];
@@ -3264,10 +3284,13 @@ function showDay(dayId) {
 
 // 应用卡片顺序
 function applyCardOrder(dayId, items) {
+    // 先过滤掉已删除的项
+    const validItems = items.filter(item => !item._deleted);
+    
     const orderKey = `trip_card_order_${dayId}`;
     const orderData = localStorage.getItem(orderKey);
     if (!orderData) {
-        return items;
+        return validItems;
     }
     
     try {
@@ -3275,7 +3298,7 @@ function applyCardOrder(dayId, items) {
         const orderedItems = [];
         // 创建映射：对于自定义项使用id，对于原始项使用category+time+plan组合
         const itemMap = new Map();
-        items.forEach(item => {
+        validItems.forEach(item => {
             let key;
             if (item.isCustom && item.id) {
                 key = item.id;
@@ -3369,10 +3392,28 @@ function toggleSortMode() {
     
     // 如果currentSlider不存在或日期不匹配，重新创建
     if (!currentSlider || currentSlider.dayId !== currentDayId) {
+        const tripData = loadTripData();
         const day = tripData.days.find(d => d.id === currentDayId);
         if (!day) return;
+        
+        // 从统一结构加载数据时，需要过滤已删除的项
+        let dayItems = day.items || [];
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const unifiedDay = tripDataStructure.getDayData(unifiedData, currentDayId);
+                if (unifiedDay && unifiedDay.items) {
+                    // 过滤掉已删除的项
+                    dayItems = unifiedDay.items.filter(item => !item._deleted);
+                }
+            }
+        } else {
+            // 如果没有统一结构，也过滤已删除的项（如果有_deleted属性）
+            dayItems = dayItems.filter(item => !item._deleted);
+        }
+        
         const customItems = getCustomItems(currentDayId);
-        const allItems = [...day.items, ...customItems];
+        const allItems = [...dayItems, ...customItems];
         
         // 为所有项添加tag属性
         allItems.forEach((item, index) => {
@@ -3389,7 +3430,9 @@ function toggleSortMode() {
         
         const orderedItems = applyCardOrder(currentDayId, allItems);
         const filteredItems = applyFilter(orderedItems, currentDayId);
-        currentSlider = new CardSlider('cards-container', filteredItems, currentDayId);
+        // 再次确保过滤掉已删除的项
+        const finalItems = filteredItems.filter(item => !item._deleted);
+        currentSlider = new CardSlider('cards-container', finalItems, currentDayId);
     }
     
     currentSlider.toggleSortMode();
