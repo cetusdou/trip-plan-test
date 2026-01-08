@@ -602,7 +602,7 @@ class CardSlider {
         if (spendItems.length === 0 && cardData.spend) {
             spendItems = Array.isArray(cardData.spend) ? cardData.spend : [];
         }
-        const itemLikes = this.getItemLikes(this.dayId, index);
+        const itemLikes = this.getItemLikes(this.dayId, index, itemId);
         
         // 获取标签：优先使用tag字段，如果没有则从localStorage读取，最后才使用category作为标签
         let cardTag = cardData.tag;
@@ -761,7 +761,7 @@ class CardSlider {
                     ${planItems.length > 0 ? planItems.map((planItem, planIndex) => {
                         // 支持新旧两种格式：字符串或对象
                         const planItemText = typeof planItem === 'string' ? planItem : (planItem._text || planItem);
-                        const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
+                        const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex, itemId);
                         const planItemLikeCount = (planItemLikes.mrb ? 1 : 0) + (planItemLikes.djy ? 1 : 0);
                     return `
                         <li class="plan-item">
@@ -866,7 +866,7 @@ class CardSlider {
                 <div class="card-section-title comment">💬 留言</div>
                 <div class="comments-container">
                     ${comments.map((comment, commentIndex) => {
-                        const commentLikes = this.getCommentLikes(this.dayId, index, commentIndex);
+                        const commentLikes = this.getCommentLikes(this.dayId, index, commentIndex, itemId);
                         const commentLikeCount = (commentLikes.mrb ? 1 : 0) + (commentLikes.djy ? 1 : 0);
                         return `
                         <div class="comment-item ${comment.user === 'mrb' ? 'user-a' : 'user-b'}" data-comment-hash="${comment._hash || ''}">
@@ -1586,10 +1586,11 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const planIndex = parseInt(btn.dataset.planIndex);
+                const itemId = card.dataset.itemId || null;
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
-                this.togglePlanItemLike(this.dayId, index, planIndex);
+                this.togglePlanItemLike(this.dayId, index, planIndex, itemId);
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
@@ -1613,9 +1614,10 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const planIndex = parseInt(btn.dataset.planIndex);
+                const itemId = card.dataset.itemId || null;
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
-                this.togglePlanItemLike(this.dayId, index, planIndex);
+                this.togglePlanItemLike(this.dayId, index, planIndex, itemId);
                 this.renderCards();
                 if (!this.sortMode) {
                     // 重新绑定事件
@@ -1638,10 +1640,11 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const commentIndex = parseInt(btn.dataset.commentIndex);
+                const itemId = card.dataset.itemId || null;
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
-                this.toggleCommentLike(this.dayId, index, commentIndex);
+                this.toggleCommentLike(this.dayId, index, commentIndex, itemId);
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
@@ -1665,9 +1668,10 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const commentIndex = parseInt(btn.dataset.commentIndex);
+                const itemId = card.dataset.itemId || null;
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
-                this.toggleCommentLike(this.dayId, index, commentIndex);
+                this.toggleCommentLike(this.dayId, index, commentIndex, itemId);
                 this.renderCards();
                 if (!this.sortMode) {
                     // 重新绑定事件
@@ -1951,8 +1955,11 @@ class CardSlider {
         comments.splice(commentIndex, 1);
         
         // 优先保存到统一结构
-        const card = this.cards[itemIndex];
-        const itemId = card?.id;
+        // 如果itemId参数为null，尝试从card获取
+        if (!itemId) {
+            const card = this.cards[itemIndex];
+            itemId = card?.id || null;
+        }
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
@@ -2111,19 +2118,25 @@ class CardSlider {
     }
     
     // 获取行程项点赞
-    getItemLikes(dayId, itemIndex) {
-        const key = `trip_item_likes_${dayId}_${itemIndex}`;
+    getItemLikes(dayId, itemIndex, itemId = null) {
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_item_likes_${dayId}_${itemId}`
+            : `trip_item_likes_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : {};
     }
     
     // 切换行程项点赞
-    toggleItemLike(dayId, itemIndex, section) {
+    toggleItemLike(dayId, itemIndex, section, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const key = `trip_item_likes_${dayId}_${itemIndex}`;
-        const likes = this.getItemLikes(dayId, itemIndex);
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_item_likes_${dayId}_${itemId}`
+            : `trip_item_likes_${dayId}_${itemIndex}`;
+        const likes = this.getItemLikes(dayId, itemIndex, itemId);
         if (!likes[section]) {
             likes[section] = { mrb: false, djy: false };
         }
@@ -2134,19 +2147,25 @@ class CardSlider {
     }
     
     // 获取计划项点赞
-    getPlanItemLikes(dayId, itemIndex, planIndex) {
-        const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
+    getPlanItemLikes(dayId, itemIndex, planIndex, itemId = null) {
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
+            : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : { mrb: false, djy: false };
     }
     
     // 切换计划项点赞
-    togglePlanItemLike(dayId, itemIndex, planIndex) {
+    togglePlanItemLike(dayId, itemIndex, planIndex, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
-        const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex);
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
+            : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
+        const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex, itemId);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
         // 自动同步
@@ -2154,19 +2173,25 @@ class CardSlider {
     }
     
     // 获取留言点赞
-    getCommentLikes(dayId, itemIndex, commentIndex) {
-        const key = `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
+    getCommentLikes(dayId, itemIndex, commentIndex, itemId = null) {
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
+            : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const data = localStorage.getItem(key);
         return data ? JSON.parse(data) : { mrb: false, djy: false };
     }
     
     // 切换留言点赞
-    toggleCommentLike(dayId, itemIndex, commentIndex) {
+    toggleCommentLike(dayId, itemIndex, commentIndex, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        const key = `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
-        const likes = this.getCommentLikes(dayId, itemIndex, commentIndex);
+        // 优先使用itemId生成key（如果提供）
+        const key = itemId 
+            ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
+            : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
+        const likes = this.getCommentLikes(dayId, itemIndex, commentIndex, itemId);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
         // 自动同步
