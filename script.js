@@ -753,7 +753,7 @@ class CardSlider {
                                         data-plan-index="${planIndex}" 
                                         title="点赞">
                                     <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
-                                    <span class="like-count">${planItemLikeCount > 0 ? planItemLikeCount : ''}</span>
+                                    ${planItemLikeCount > 0 ? `<span class="like-count">${planItemLikeCount}</span>` : ''}
                                 </button>
                                 <button class="plan-item-delete-btn" 
                                         data-card-index="${index}"
@@ -861,7 +861,7 @@ class CardSlider {
                             <button class="comment-like-btn ${commentLikes[currentUser] ? 'liked' : ''}" 
                                     data-comment-index="${commentIndex}" title="点赞">
                                 <span class="like-icon">${commentLikes[currentUser] ? '❤️' : '🤍'}</span>
-                                <span class="like-count">${commentLikeCount > 0 ? commentLikeCount : ''}</span>
+                                ${commentLikeCount > 0 ? `<span class="like-count">${commentLikeCount}</span>` : ''}
                             </button>
                         </div>
                     `;
