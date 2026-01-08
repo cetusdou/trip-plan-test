@@ -474,8 +474,22 @@ class CardSlider {
         if (day) {
             const customItems = getCustomItems(this.dayId);
             const allItems = [...day.items, ...customItems];
+            
+            // 为所有项添加tag属性
+            allItems.forEach((item, index) => {
+                if (!item.tag) {
+                    if (item.isCustom) {
+                        item.tag = item.tag || item.category || '其他';
+                    } else {
+                        const tagKey = `trip_tag_${this.dayId}_${index}`;
+                        const savedTag = localStorage.getItem(tagKey);
+                        item.tag = savedTag || item.category || '其他';
+                    }
+                }
+            });
+            
             const orderedItems = applyCardOrder(this.dayId, allItems);
-            const filteredItems = applyFilter(orderedItems);
+            const filteredItems = applyFilter(orderedItems, this.dayId);
             // 更新cards数组为最新的顺序
             this.cards = filteredItems;
         }
@@ -2235,11 +2249,26 @@ function showDay(dayId) {
     const customItems = getCustomItems(dayId);
     const allItems = [...day.items, ...customItems];
     
+    // 为所有项添加tag属性（如果还没有的话），以便筛选时使用
+    allItems.forEach((item, index) => {
+        if (!item.tag) {
+            if (item.isCustom) {
+                // 自定义项：使用tag字段或category
+                item.tag = item.tag || item.category || '其他';
+            } else {
+                // 原始项：从localStorage读取标签
+                const tagKey = `trip_tag_${dayId}_${index}`;
+                const savedTag = localStorage.getItem(tagKey);
+                item.tag = savedTag || item.category || '其他';
+            }
+        }
+    });
+    
     // 应用保存的顺序
     const orderedItems = applyCardOrder(dayId, allItems);
     
     // 应用筛选
-    const filteredItems = applyFilter(orderedItems);
+    const filteredItems = applyFilter(orderedItems, dayId);
     
     // 创建卡片容器（滚动模式）
     const cardsContainer = document.getElementById('cards-container');
@@ -2311,10 +2340,12 @@ function applyCardOrder(dayId, items) {
 
 // 应用筛选
 let currentFilter = null;
-function applyFilter(items) {
+function applyFilter(items, dayId) {
     if (!currentFilter) return items;
+    
     return items.filter(item => {
-        const tag = item.tag || '其他';
+        // 使用item.tag（在showDay中已经为所有项添加了tag属性）
+        const tag = item.tag || item.category || '其他';
         return currentFilter === 'all' || tag === currentFilter;
     });
 }
@@ -2351,41 +2382,82 @@ function toggleSortMode() {
         if (!day) return;
         const customItems = getCustomItems(currentDayId);
         const allItems = [...day.items, ...customItems];
+        
+        // 为所有项添加tag属性
+        allItems.forEach((item, index) => {
+            if (!item.tag) {
+                if (item.isCustom) {
+                    item.tag = item.tag || item.category || '其他';
+                } else {
+                    const tagKey = `trip_tag_${currentDayId}_${index}`;
+                    const savedTag = localStorage.getItem(tagKey);
+                    item.tag = savedTag || item.category || '其他';
+                }
+            }
+        });
+        
         const orderedItems = applyCardOrder(currentDayId, allItems);
-        const filteredItems = applyFilter(orderedItems);
+        const filteredItems = applyFilter(orderedItems, currentDayId);
         currentSlider = new CardSlider('cards-container', filteredItems, currentDayId);
     }
     
     currentSlider.toggleSortMode();
 }
 
-// 获取自定义添加的行程项
-function getCustomItems(dayId) {
+// 获取自定义添加的行程项（包括已删除的，用于保存）
+function getAllCustomItems(dayId) {
     const key = `trip_custom_items_${dayId}`;
     const data = localStorage.getItem(key);
     return data ? JSON.parse(data) : [];
 }
 
+// 获取自定义添加的行程项（过滤掉已删除的，用于显示）
+function getCustomItems(dayId) {
+    const allItems = getAllCustomItems(dayId);
+    // 过滤掉已删除的项
+    return allItems.filter(item => !item._deleted);
+}
+
 // 添加自定义行程项
 function addCustomItem(dayId, itemData) {
     // 检查写权限
-    if (!checkWritePermission()) return;
+    if (!checkWritePermission()) {
+        console.error('添加自定义项失败：没有写权限');
+        return;
+    }
+    
+    if (!dayId) {
+        console.error('添加自定义项失败：dayId为空');
+        return;
+    }
     
     const key = `trip_custom_items_${dayId}`;
-    const items = getCustomItems(dayId);
+    // 获取所有项（包括已删除的），然后添加新项
+    const allItems = getAllCustomItems(dayId);
+    
     const newItem = {
         ...itemData,
         id: `custom_${Date.now()}`,
         isCustom: true,
-        tag: itemData.tag || '其他'
+        tag: itemData.tag || '其他',
+        _deleted: false // 确保新项未标记为删除
     };
-    items.push(newItem);
-    localStorage.setItem(key, JSON.stringify(items));
     
-    // 自动同步
-    autoSyncToGist();
+    allItems.push(newItem);
     
-    showDay(dayId);
+    try {
+        localStorage.setItem(key, JSON.stringify(allItems));
+        console.log('成功保存自定义项:', newItem);
+        
+        // 自动同步
+        autoSyncToGist();
+        
+        // 刷新显示
+        showDay(dayId);
+    } catch (error) {
+        console.error('保存到localStorage失败:', error);
+        alert('保存失败：' + error.message);
+    }
 }
 
 // 删除自定义行程项（使用软删除）
@@ -2394,7 +2466,7 @@ function deleteCustomItem(dayId, itemId) {
     if (!checkWritePermission()) return;
     
     const key = `trip_custom_items_${dayId}`;
-    const items = getCustomItems(dayId);
+    const items = getAllCustomItems(dayId); // 使用getAllCustomItems获取所有项（包括已删除的）
     const itemIndex = items.findIndex(item => item.id === itemId);
     if (itemIndex !== -1) {
         // 使用软删除：标记为 _deleted: true，而不是物理删除
@@ -2437,12 +2509,25 @@ function closeAddItemModal() {
 // 保存新增的行程项
 function saveNewItem() {
     // 检查写权限
-    if (!checkWritePermission()) return;
+    if (!checkWritePermission()) {
+        console.error('保存失败：没有写权限');
+        return;
+    }
     
     const modal = document.getElementById('add-item-modal');
-    if (!modal) return;
+    if (!modal) {
+        console.error('保存失败：找不到模态框');
+        alert('保存失败：找不到表单');
+        return;
+    }
     
     const dayId = modal.dataset.dayId;
+    if (!dayId) {
+        console.error('保存失败：dayId为空');
+        alert('保存失败：日期ID无效');
+        return;
+    }
+    
     const category = document.getElementById('new-item-category').value.trim();
     
     if (!category) {
@@ -2458,8 +2543,13 @@ function saveNewItem() {
         tag: document.getElementById('new-item-tag').value || '其他'
     };
     
-    addCustomItem(dayId, itemData);
-    closeAddItemModal();
+    try {
+        addCustomItem(dayId, itemData);
+        closeAddItemModal();
+    } catch (error) {
+        console.error('保存行程项时出错:', error);
+        alert('保存失败：' + error.message);
+    }
 }
 
 // 自动同步到Gist（如果已配置）
