@@ -97,7 +97,7 @@ async function handleLogin() {
     
     // 验证用户名
     if (!username || (username !== 'mrb' && username !== 'djy')) {
-        updateSyncStatus('用户名必须是 mrb 或 djy', 'error');
+        updateSyncStatus('用户名不存在', 'error');
         return;
     }
     
