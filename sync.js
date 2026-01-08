@@ -737,3 +737,115 @@ function importData() {
     input.click();
 }
 
+// 留言去重函数
+async function deduplicateComments() {
+    try {
+        updateSyncStatus('正在扫描留言...', 'info');
+        
+        // 获取所有留言相关的localStorage键
+        const commentKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('trip_comments_')) {
+                commentKeys.push(key);
+            }
+        }
+        
+        if (commentKeys.length === 0) {
+            updateSyncStatus('没有找到留言数据', 'info');
+            return;
+        }
+        
+        let totalComments = 0;
+        let totalRemoved = 0;
+        let totalHashesAdded = 0;
+        
+        // 遍历所有留言键
+        for (const key of commentKeys) {
+            try {
+                const data = localStorage.getItem(key);
+                if (!data) continue;
+                
+                const comments = JSON.parse(data);
+                if (!Array.isArray(comments) || comments.length === 0) continue;
+                
+                totalComments += comments.length;
+                
+                // 为没有哈希值的旧留言生成哈希值
+                for (const comment of comments) {
+                    if (!comment._hash && comment.message && comment.user && comment.timestamp) {
+                        comment._hash = await generateContentHash(comment.message, comment.user, comment.timestamp);
+                        totalHashesAdded++;
+                    }
+                }
+                
+                // 基于哈希值去重，保留最早的留言
+                const seenHashes = new Map();
+                const uniqueComments = [];
+                
+                // 先按时间戳排序，确保保留最早的
+                const sortedComments = [...comments].sort((a, b) => {
+                    const timeA = a.timestamp || 0;
+                    const timeB = b.timestamp || 0;
+                    return timeA - timeB;
+                });
+                
+                for (const comment of sortedComments) {
+                    // 如果有哈希值，使用哈希值去重
+                    if (comment._hash) {
+                        if (!seenHashes.has(comment._hash)) {
+                            seenHashes.set(comment._hash, true);
+                            uniqueComments.push(comment);
+                        } else {
+                            totalRemoved++;
+                        }
+                    } else {
+                        // 没有哈希值的旧数据，使用内容+用户组合去重（忽略时间戳）
+                        // 因为相同用户发送的相同内容应该被认为是重复的
+                        const fallbackKey = `${comment.message}|${comment.user}`;
+                        if (!seenHashes.has(fallbackKey)) {
+                            seenHashes.set(fallbackKey, true);
+                            uniqueComments.push(comment);
+                        } else {
+                            totalRemoved++;
+                        }
+                    }
+                }
+                
+                // 如果去重后有变化，更新localStorage
+                if (uniqueComments.length !== comments.length) {
+                    localStorage.setItem(key, JSON.stringify(uniqueComments));
+                }
+            } catch (error) {
+                console.error(`处理 ${key} 时出错:`, error);
+            }
+        }
+        
+        // 显示结果
+        let message = `去重完成！\n`;
+        message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        message += `扫描留言数: ${totalComments}\n`;
+        message += `删除重复: ${totalRemoved} 条\n`;
+        message += `保留留言: ${totalComments - totalRemoved} 条\n`;
+        if (totalHashesAdded > 0) {
+            message += `为旧留言生成哈希值: ${totalHashesAdded} 条\n`;
+        }
+        message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        message += `已清理 ${commentKeys.length} 个位置的留言数据`;
+        
+        updateSyncStatus(message, totalRemoved > 0 ? 'success' : 'info');
+        
+        // 如果删除了重复留言，刷新当前页面显示
+        if (totalRemoved > 0 && typeof window.currentDayId !== 'undefined' && window.currentDayId) {
+            if (typeof window.showDay === 'function') {
+                setTimeout(() => {
+                    window.showDay(window.currentDayId);
+                }, 500);
+            }
+        }
+    } catch (error) {
+        console.error('去重时出错:', error);
+        updateSyncStatus(`去重失败: ${error.message}`, 'error');
+    }
+}
+

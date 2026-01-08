@@ -279,6 +279,8 @@ class DataSyncFirebase {
                                     if (localItem._deleted) {
                                         // 如果远程也有相同的项且未删除，保留它（可能是其他用户恢复了）
                                         const remoteItem = remoteParsed.find(r => {
+                                            // 优先使用哈希值匹配（最可靠）
+                                            if (localItem._hash && r._hash) return localItem._hash === r._hash;
                                             // 使用id或其他唯一标识符匹配
                                             if (localItem.id && r.id) return localItem.id === r.id;
                                             if (localItem._text && r._text) return localItem._text === r._text;
@@ -296,6 +298,8 @@ class DataSyncFirebase {
                                     if (remoteItem._deleted) {
                                         // 从本地也删除该项
                                         const localIndex = merged.findIndex(localItem => {
+                                            // 优先使用哈希值匹配
+                                            if (localItem._hash && remoteItem._hash) return localItem._hash === remoteItem._hash;
                                             if (localItem.id && remoteItem.id) return localItem.id === remoteItem.id;
                                             if (localItem._text && remoteItem._text) return localItem._text === remoteItem._text;
                                             return JSON.stringify(localItem) === JSON.stringify(remoteItem);
@@ -306,30 +310,39 @@ class DataSyncFirebase {
                                         return;
                                     }
                                     
-                                    // 检查是否已存在
-                                    const itemStr = JSON.stringify(remoteItem);
+                                    // 检查是否已存在（优先使用哈希值匹配）
                                     const exists = merged.some(existing => {
-                                        // 优先使用id匹配
+                                        // 优先使用哈希值匹配（最可靠，用于留言和计划项去重）
+                                        if (existing._hash && remoteItem._hash) {
+                                            return existing._hash === remoteItem._hash;
+                                        }
+                                        // 其次使用id匹配
                                         if (existing.id && remoteItem.id) {
                                             return existing.id === remoteItem.id;
                                         }
+                                        // 再次使用_text匹配（计划项）
                                         if (existing._text && remoteItem._text) {
                                             return existing._text === remoteItem._text;
                                         }
-                                        return JSON.stringify(existing) === itemStr;
+                                        // 最后使用完整对象匹配
+                                        return JSON.stringify(existing) === JSON.stringify(remoteItem);
                                     });
                                     if (!exists) {
                                         merged.push(remoteItem);
                                     } else {
                                         // 如果已存在，更新它（保留本地未删除的项，但更新其他属性）
                                         const existingIndex = merged.findIndex(existing => {
+                                            // 优先使用哈希值匹配
+                                            if (existing._hash && remoteItem._hash) {
+                                                return existing._hash === remoteItem._hash;
+                                            }
                                             if (existing.id && remoteItem.id) {
                                                 return existing.id === remoteItem.id;
                                             }
                                             if (existing._text && remoteItem._text) {
                                                 return existing._text === remoteItem._text;
                                             }
-                                            return JSON.stringify(existing) === itemStr;
+                                            return JSON.stringify(existing) === JSON.stringify(remoteItem);
                                         });
                                         if (existingIndex !== -1 && !merged[existingIndex]._deleted) {
                                             // 合并属性，但保留 _deleted 状态（如果本地未删除）
@@ -426,6 +439,9 @@ class DataSyncFirebase {
                                     const merged = localParsed.filter(localItem => {
                                         if (localItem._deleted) {
                                             const remoteItem = remoteParsed.find(r => {
+                                                // 优先使用哈希值匹配（最可靠）
+                                                if (localItem._hash && r._hash) return localItem._hash === r._hash;
+                                                // 使用id或其他唯一标识符匹配
                                                 if (localItem.id && r.id) return localItem.id === r.id;
                                                 if (localItem._text && r._text) return localItem._text === r._text;
                                                 return JSON.stringify(localItem) === JSON.stringify(r);
@@ -438,38 +454,51 @@ class DataSyncFirebase {
                                     // 添加远程的新项或更新的项
                                     remoteParsed.forEach(remoteItem => {
                                         if (remoteItem._deleted) {
-                                            const localIndex = merged.findIndex(localItem => {
-                                                if (localItem.id && remoteItem.id) return localItem.id === remoteItem.id;
-                                                if (localItem._text && remoteItem._text) return localItem._text === remoteItem._text;
-                                                return JSON.stringify(localItem) === JSON.stringify(remoteItem);
-                                            });
+                                        const localIndex = merged.findIndex(localItem => {
+                                            // 优先使用哈希值匹配
+                                            if (localItem._hash && remoteItem._hash) return localItem._hash === remoteItem._hash;
+                                            if (localItem.id && remoteItem.id) return localItem.id === remoteItem.id;
+                                            if (localItem._text && remoteItem._text) return localItem._text === remoteItem._text;
+                                            return JSON.stringify(localItem) === JSON.stringify(remoteItem);
+                                        });
                                             if (localIndex !== -1) {
                                                 merged.splice(localIndex, 1);
                                             }
                                             return;
                                         }
                                         
-                                        const itemStr = JSON.stringify(remoteItem);
+                                        // 检查是否已存在（优先使用哈希值匹配）
                                         const exists = merged.some(existing => {
+                                            // 优先使用哈希值匹配（最可靠，用于留言和计划项去重）
+                                            if (existing._hash && remoteItem._hash) {
+                                                return existing._hash === remoteItem._hash;
+                                            }
+                                            // 其次使用id匹配
                                             if (existing.id && remoteItem.id) {
                                                 return existing.id === remoteItem.id;
                                             }
+                                            // 再次使用_text匹配（计划项）
                                             if (existing._text && remoteItem._text) {
                                                 return existing._text === remoteItem._text;
                                             }
-                                            return JSON.stringify(existing) === itemStr;
+                                            // 最后使用完整对象匹配
+                                            return JSON.stringify(existing) === JSON.stringify(remoteItem);
                                         });
                                         if (!exists) {
                                             merged.push(remoteItem);
                                         } else {
                                             const existingIndex = merged.findIndex(existing => {
+                                                // 优先使用哈希值匹配
+                                                if (existing._hash && remoteItem._hash) {
+                                                    return existing._hash === remoteItem._hash;
+                                                }
                                                 if (existing.id && remoteItem.id) {
                                                     return existing.id === remoteItem.id;
                                                 }
                                                 if (existing._text && remoteItem._text) {
                                                     return existing._text === remoteItem._text;
                                                 }
-                                                return JSON.stringify(existing) === itemStr;
+                                                return JSON.stringify(existing) === JSON.stringify(remoteItem);
                                             });
                                             if (existingIndex !== -1 && !merged[existingIndex]._deleted) {
                                                 merged[existingIndex] = { ...merged[existingIndex], ...remoteItem, _deleted: merged[existingIndex]._deleted || false };

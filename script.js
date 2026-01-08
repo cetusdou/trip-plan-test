@@ -15,6 +15,18 @@ async function hashPassword(password) {
     return hashHex;
 }
 
+// 生成内容哈希值（用于去重）
+async function generateContentHash(content, user, timestamp) {
+    // 使用内容、用户和时间戳生成哈希，确保唯一性
+    const hashString = `${content}|${user}|${timestamp}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(hashString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex.substring(0, 16); // 使用前16位作为短哈希
+}
+
 // 检查是否已登录
 function checkLoginStatus() {
     const savedUser = localStorage.getItem('trip_current_user');
@@ -615,13 +627,13 @@ class CardSlider {
             if (Array.isArray(planData)) {
                 planItems = planData
                     .map(item => {
-                        // 如果是对象且标记为删除，返回null
+                        // 如果是对象且标记为删除，返回null（不显示）
                         if (typeof item === 'object' && item._deleted) {
                             return null;
                         }
-                        // 如果是对象，提取文本
+                        // 如果是对象，保留对象本身（用于后续渲染时提取_text）
                         if (typeof item === 'object' && item._text) {
-                            return item._text;
+                            return item;
                         }
                         // 如果是字符串，直接返回
                         if (typeof item === 'string') {
@@ -629,7 +641,7 @@ class CardSlider {
                         }
                         return null;
                     })
-                    .filter(item => item !== null && item.trim().length > 0);
+                    .filter(item => item !== null && (typeof item === 'string' ? item.trim().length > 0 : true));
             } else if (typeof planData === 'string') {
                 planItems = [planData].filter(item => item && item.trim().length > 0);
             }
@@ -642,11 +654,13 @@ class CardSlider {
                 </div>
                 <ul class="plan-list">
                     ${planItems.length > 0 ? planItems.map((planItem, planIndex) => {
+                        // 支持新旧两种格式：字符串或对象
+                        const planItemText = typeof planItem === 'string' ? planItem : (planItem._text || planItem);
                         const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
                         const planItemLikeCount = (planItemLikes.mrb ? 1 : 0) + (planItemLikes.djy ? 1 : 0);
                     return `
                         <li class="plan-item">
-                            <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
+                            <span class="plan-item-text">${this.escapeHtmlKeepBr(planItemText)}</span>
                             <div class="plan-item-actions">
                                 <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
                                         data-plan-index="${planIndex}" 
@@ -952,10 +966,10 @@ class CardSlider {
             
             // 确认添加
             if (planInputConfirm && planInput) {
-                const confirmAdd = () => {
+                const confirmAdd = async () => {
                     const newItem = planInput.value.trim();
                     if (newItem) {
-                        this.addPlanItem(index, newItem);
+                        await this.addPlanItem(index, newItem);
                     } else {
                         // 如果为空，恢复按钮显示
                         planInputContainer.style.display = 'none';
@@ -1326,10 +1340,10 @@ class CardSlider {
         const commentInput = card.querySelector('.comment-input');
         const commentSubmit = card.querySelector('.comment-submit');
         
-        commentSubmit.addEventListener('click', () => {
+        commentSubmit.addEventListener('click', async () => {
             const message = commentInput.value.trim();
             if (message) {
-                this.addComment(this.dayId, index, message);
+                await this.addComment(this.dayId, index, message);
                 commentInput.value = '';
                 // 重新渲染卡片
                 this.renderCards();
@@ -1358,16 +1372,32 @@ class CardSlider {
     }
     
     // 添加留言
-    addComment(dayId, itemIndex, message) {
+    async addComment(dayId, itemIndex, message) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
         const key = `trip_comments_${dayId}_${itemIndex}`;
         const comments = this.getComments(dayId, itemIndex);
+        
+        // 生成时间戳
+        const timestamp = Date.now();
+        
+        // 生成哈希值
+        const hash = await generateContentHash(message, currentUser, timestamp);
+        
+        // 检查是否已存在相同哈希的留言（防止重复）
+        const existingComment = comments.find(c => c._hash === hash);
+        if (existingComment) {
+            // 如果已存在，不重复添加
+            return;
+        }
+        
+        // 添加新留言，包含哈希值
         comments.push({
             user: currentUser,
             message: message,
-            timestamp: Date.now()
+            timestamp: timestamp,
+            _hash: hash // 添加哈希值用于去重
         });
         localStorage.setItem(key, JSON.stringify(comments));
         // 自动同步
@@ -1545,19 +1575,51 @@ class CardSlider {
     }
     
     // 添加计划项
-    addPlanItem(cardIndex, newItem) {
+    async addPlanItem(cardIndex, newItem) {
         // 检查写权限
         if (!checkWritePermission()) return;
         
         const card = this.cards[cardIndex];
         if (!card || !newItem || !newItem.trim()) return;
         
+        const trimmedItem = newItem.trim();
+        
         // 更新plan数组
         if (!card.plan) {
             card.plan = [];
         }
         const planItems = Array.isArray(card.plan) ? card.plan : [card.plan];
-        planItems.push(newItem.trim());
+        
+        // 生成时间戳和哈希值
+        const timestamp = Date.now();
+        const hash = await generateContentHash(trimmedItem, currentUser, timestamp);
+        
+        // 检查是否已存在相同哈希的计划项（防止重复）
+        const existingItem = planItems.find(item => {
+            if (typeof item === 'string') {
+                // 如果是字符串，需要检查是否有对应的哈希值存储
+                return false; // 旧数据没有哈希，允许添加
+            } else if (typeof item === 'object') {
+                // 如果是对象，检查哈希值
+                if (item._deleted) return false; // 已删除的项不算
+                return item._hash === hash;
+            }
+            return false;
+        });
+        
+        if (existingItem) {
+            // 如果已存在，不重复添加
+            return;
+        }
+        
+        // 添加新计划项，包含哈希值
+        const newPlanItem = {
+            _text: trimmedItem,
+            _hash: hash,
+            _timestamp: timestamp,
+            _user: currentUser
+        };
+        planItems.push(newPlanItem);
         card.plan = planItems;
         
         // 保存到localStorage（如果是自定义项）
