@@ -406,9 +406,77 @@ function showSyncConfig() {
     const modal = document.getElementById('sync-config-modal');
     if (modal) {
         modal.style.display = 'flex';
-        document.getElementById('github-token-input').value = dataSync.githubToken || '';
-        document.getElementById('gist-id-input').value = dataSync.gistId || '';
-        document.getElementById('auto-sync-checkbox').checked = dataSync.autoSyncEnabled;
+        
+        // 检查当前使用的同步方式
+        const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+        const syncTypeSelect = document.getElementById('sync-type-select');
+        if (syncTypeSelect) {
+            syncTypeSelect.value = syncType;
+            toggleSyncType();
+        }
+        
+        // 加载Gist配置
+        const tokenInput = document.getElementById('github-token-input');
+        const gistIdInput = document.getElementById('gist-id-input');
+        if (tokenInput) tokenInput.value = dataSync.githubToken || '';
+        if (gistIdInput) gistIdInput.value = dataSync.gistId || '';
+        
+        // 加载Firebase配置（优先使用默认配置）
+        const apiKeyInput = document.getElementById('firebase-api-key');
+        const authDomainInput = document.getElementById('firebase-auth-domain');
+        const databaseUrlInput = document.getElementById('firebase-database-url');
+        const projectIdInput = document.getElementById('firebase-project-id');
+        const databasePathInput = document.getElementById('firebase-database-path');
+        
+        if (window.firebaseConfig) {
+            // 使用默认配置填充
+            if (apiKeyInput) apiKeyInput.value = window.firebaseConfig.apiKey || '';
+            if (authDomainInput) authDomainInput.value = window.firebaseConfig.authDomain || '';
+            if (databaseUrlInput) databaseUrlInput.value = window.firebaseConfig.databaseURL || '';
+            if (projectIdInput) projectIdInput.value = window.firebaseConfig.projectId || '';
+            if (databasePathInput) databasePathInput.value = 'trip_plan_data';
+        } else {
+            // 从localStorage加载配置
+            const firebaseConfig = localStorage.getItem('trip_firebase_config');
+            if (firebaseConfig) {
+                try {
+                    const config = JSON.parse(firebaseConfig);
+                    if (apiKeyInput) apiKeyInput.value = config.apiKey || '';
+                    if (authDomainInput) authDomainInput.value = config.authDomain || '';
+                    if (databaseUrlInput) databaseUrlInput.value = config.databaseURL || '';
+                    if (projectIdInput) projectIdInput.value = config.projectId || '';
+                    if (databasePathInput) databasePathInput.value = config.databasePath || 'trip_plan_data';
+                } catch (e) {
+                    // 忽略解析错误
+                }
+            }
+        }
+        
+        const autoSyncCheckbox = document.getElementById('auto-sync-checkbox');
+        if (autoSyncCheckbox) {
+            autoSyncCheckbox.checked = dataSync.autoSyncEnabled;
+        }
+    }
+}
+
+// 切换同步方式显示
+function toggleSyncType() {
+    const syncTypeSelect = document.getElementById('sync-type-select');
+    if (!syncTypeSelect) return;
+    
+    const syncType = syncTypeSelect.value;
+    const gistConfig = document.getElementById('gist-config');
+    const firebaseConfig = document.getElementById('firebase-config');
+    const autoSyncDesc = document.getElementById('auto-sync-desc');
+    
+    if (syncType === 'gist') {
+        if (gistConfig) gistConfig.style.display = 'block';
+        if (firebaseConfig) firebaseConfig.style.display = 'none';
+        if (autoSyncDesc) autoSyncDesc.textContent = '（每30秒自动上传）';
+    } else {
+        if (gistConfig) gistConfig.style.display = 'none';
+        if (firebaseConfig) firebaseConfig.style.display = 'block';
+        if (autoSyncDesc) autoSyncDesc.textContent = '（实时同步，数据变化时自动同步）';
     }
 }
 
@@ -421,25 +489,118 @@ function closeSyncConfig() {
 }
 
 // 保存同步配置
-function saveSyncConfig() {
-    const token = document.getElementById('github-token-input').value.trim();
-    const gistId = document.getElementById('gist-id-input').value.trim();
-    const autoSync = document.getElementById('auto-sync-checkbox').checked;
-
-    if (token) {
-        dataSync.setToken(token);
-    }
-    if (gistId) {
-        dataSync.setGistId(gistId);
-    }
-    dataSync.setAutoSync(autoSync);
-
-    updateSyncStatus('配置已保存', 'success');
-    closeSyncConfig();
+async function saveSyncConfig() {
+    const syncType = document.getElementById('sync-type-select').value;
+    localStorage.setItem('trip_sync_type', syncType);
     
-    // 如果配置完成，尝试自动同步
-    if (dataSync.isConfigured()) {
-        dataSync.upload();
+    if (syncType === 'gist') {
+        // 保存Gist配置
+        const token = document.getElementById('github-token-input').value.trim();
+        const gistId = document.getElementById('gist-id-input').value.trim();
+        const autoSync = document.getElementById('auto-sync-checkbox').checked;
+
+        if (token) {
+            dataSync.setToken(token);
+        }
+        if (gistId) {
+            dataSync.setGistId(gistId);
+        }
+        dataSync.setAutoSync(autoSync);
+
+        updateSyncStatus('配置已保存', 'success');
+        closeSyncConfig();
+        
+        // 如果配置完成，尝试自动同步
+        if (dataSync.isConfigured()) {
+            dataSync.upload();
+        }
+    } else {
+        // 保存Firebase配置
+        const apiKeyInput = document.getElementById('firebase-api-key');
+        const authDomainInput = document.getElementById('firebase-auth-domain');
+        const databaseUrlInput = document.getElementById('firebase-database-url');
+        const projectIdInput = document.getElementById('firebase-project-id');
+        const databasePathInput = document.getElementById('firebase-database-path');
+        const autoSyncCheckbox = document.getElementById('auto-sync-checkbox');
+        
+        if (!apiKeyInput || !authDomainInput || !databaseUrlInput || !projectIdInput || !autoSyncCheckbox) return;
+        
+        const apiKey = apiKeyInput.value.trim();
+        const authDomain = authDomainInput.value.trim();
+        const databaseURL = databaseUrlInput.value.trim();
+        const projectId = projectIdInput.value.trim();
+        const databasePath = databasePathInput.value.trim() || 'trip_plan_data';
+        const autoSync = autoSyncCheckbox.checked;
+        
+        // 如果使用默认配置（从index.html加载的），可以直接使用
+        if (window.firebaseConfig && window.firebaseDatabase && !apiKey && !authDomain && !databaseURL && !projectId) {
+            // 使用已加载的Firebase配置
+            const defaultConfig = {
+                ...window.firebaseConfig,
+                databasePath: databasePath
+            };
+            const result = await dataSyncFirebase.initialize(defaultConfig);
+            if (result.success) {
+                dataSyncFirebase.setAutoSync(autoSync);
+                updateSyncStatus('Firebase配置已保存并初始化成功（使用默认配置）', 'success');
+                closeSyncConfig();
+                if (autoSync) {
+                    dataSyncFirebase.download();
+                }
+                return;
+            }
+        }
+        
+        // 如果填写了配置信息，使用填写的配置
+        if (!apiKey || !authDomain || !databaseURL || !projectId) {
+            // 如果Firebase已加载，尝试使用默认配置
+            if (window.firebaseConfig && window.firebaseDatabase) {
+                const defaultConfig = {
+                    ...window.firebaseConfig,
+                    databasePath: databasePath
+                };
+                const result = await dataSyncFirebase.initialize(defaultConfig);
+                if (result.success) {
+                    dataSyncFirebase.setAutoSync(autoSync);
+                    updateSyncStatus('Firebase配置已保存并初始化成功（使用默认配置）', 'success');
+                    closeSyncConfig();
+                    if (autoSync) {
+                        dataSyncFirebase.download();
+                    }
+                    return;
+                }
+            }
+            updateSyncStatus('请填写完整的Firebase配置信息，或使用默认配置', 'error');
+            return;
+        }
+        
+        const firebaseConfig = {
+            apiKey: apiKey,
+            authDomain: authDomain,
+            databaseURL: databaseURL,
+            projectId: projectId,
+            databasePath: databasePath
+        };
+        
+        // 初始化Firebase
+        if (typeof dataSyncFirebase === 'undefined') {
+            updateSyncStatus('Firebase同步模块未加载，请确保已引入sync-firebase.js', 'error');
+            return;
+        }
+        
+        const result = await dataSyncFirebase.initialize(firebaseConfig);
+        if (result.success) {
+            dataSyncFirebase.setAutoSync(autoSync);
+            updateSyncStatus('Firebase配置已保存并初始化成功', 'success');
+            closeSyncConfig();
+            
+            // 如果启用自动同步，尝试下载数据
+            if (autoSync) {
+                dataSyncFirebase.download();
+            }
+        } else {
+            updateSyncStatus(result.message, 'error');
+        }
     }
 }
 
@@ -470,7 +631,19 @@ async function syncUpload() {
 // 手动同步（下载）- 使用覆盖模式，完全替换本地数据
 async function syncDownload() {
     updateSyncStatus('正在下载...', 'info');
-    const result = await dataSync.download(false); // false = 覆盖模式
+    
+    // 检查使用的同步方式
+    const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+    let syncInstance = dataSync;
+    
+    if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        syncInstance = dataSyncFirebase;
+    } else if (!dataSync.isConfigured()) {
+        updateSyncStatus('请先配置同步方式', 'error');
+        return;
+    }
+    
+    const result = await syncInstance.download(false); // false = 覆盖模式
     updateSyncStatus(result.message, result.success ? 'success' : 'error');
     // 不再自动跳转，让用户看到同步信息
     // 如果需要刷新数据，可以手动点击日期链接

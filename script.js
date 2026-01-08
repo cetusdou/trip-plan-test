@@ -1481,8 +1481,69 @@ document.addEventListener('DOMContentLoaded', () => {
     // 返回顶部按钮
     initBackToTop();
     
-    // 如果已配置同步，页面加载时自动从 Gist 下载数据（合并策略）
-    if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
+    // 如果已配置同步，页面加载时自动下载数据（合并策略）
+    const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+    
+    if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined') {
+        // 等待Firebase加载完成
+        const initFirebase = async () => {
+            // 如果Firebase已加载，使用默认配置初始化
+            if (window.firebaseConfig && window.firebaseDatabase) {
+                const defaultConfig = {
+                    ...window.firebaseConfig,
+                    databasePath: 'trip_plan_data'
+                };
+                const result = await dataSyncFirebase.initialize(defaultConfig);
+                if (result.success) {
+                    // 先尝试从Firebase下载数据（静默，不显示错误）
+                    dataSyncFirebase.download().then(result => {
+                        if (result.success) {
+                            // 下载成功后，重新显示当前日期以刷新数据
+                            if (currentDayId) {
+                                showDay(currentDayId);
+                            }
+                        }
+                    }).catch(() => {
+                        // 静默处理错误，不影响页面正常使用
+                    });
+                    
+                    // 如果启用自动同步，初始化实时同步
+                    if (dataSyncFirebase.autoSyncEnabled) {
+                        dataSyncFirebase.setAutoSync(true);
+                    }
+                }
+            } else {
+                // 尝试从localStorage加载配置
+                dataSyncFirebase.loadConfig().then(result => {
+                    if (result.success && dataSyncFirebase.isConfigured()) {
+                        // 先尝试从Firebase下载数据（静默，不显示错误）
+                        dataSyncFirebase.download().then(result => {
+                            if (result.success) {
+                                // 下载成功后，重新显示当前日期以刷新数据
+                                if (currentDayId) {
+                                    showDay(currentDayId);
+                                }
+                            }
+                        }).catch(() => {
+                            // 静默处理错误，不影响页面正常使用
+                        });
+                        
+                        // 如果启用自动同步，初始化实时同步
+                        if (dataSyncFirebase.autoSyncEnabled) {
+                            dataSyncFirebase.setAutoSync(true);
+                        }
+                    }
+                });
+            }
+        };
+        
+        // 如果Firebase已加载，直接初始化；否则等待加载完成
+        if (window.firebaseLoaded) {
+            initFirebase();
+        } else {
+            window.addEventListener('firebaseReady', initFirebase, { once: true });
+        }
+    } else if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
         // 先尝试从 Gist 下载数据（静默，不显示错误）
         dataSync.download().then(result => {
             if (result.success) {
@@ -1804,18 +1865,28 @@ function saveNewItem() {
 // 自动同步到Gist（如果已配置）
 let syncTimeout = null;
 function autoSyncToGist() {
-    // 如果未配置Gist，不执行
-    if (typeof dataSync === 'undefined' || !dataSync.isConfigured()) {
-        return;
-    }
-    
     // 防抖，避免频繁同步
     if (syncTimeout) {
         clearTimeout(syncTimeout);
     }
     
     syncTimeout = setTimeout(() => {
-        dataSync.upload().then(result => {
+        // 检查使用的同步方式
+        const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+        let syncInstance = null;
+        
+        if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+            syncInstance = dataSyncFirebase;
+        } else if (typeof dataSync !== 'undefined' && dataSync.isConfigured()) {
+            syncInstance = dataSync;
+        }
+        
+        if (!syncInstance) {
+            // 未配置，不执行同步
+            return;
+        }
+        
+        syncInstance.upload().then(result => {
             if (result.success) {
                 updateSyncStatus('已自动同步', 'success');
             }
