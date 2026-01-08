@@ -407,8 +407,8 @@ function showSyncConfig() {
     if (modal) {
         modal.style.display = 'flex';
         
-        // 检查当前使用的同步方式
-        const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+        // 检查当前使用的同步方式（默认使用 Firebase）
+        const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
         const syncTypeSelect = document.getElementById('sync-type-select');
         if (syncTypeSelect) {
             syncTypeSelect.value = syncType;
@@ -608,15 +608,39 @@ async function saveSyncConfig() {
 async function syncUpload() {
     updateSyncStatus('正在上传...', 'info');
     
-    // 检查要上传的数据
-    const dataToUpload = dataSync.getAllLocalData();
+    // 检查使用的同步方式（默认使用 Firebase）
+    const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
+    let syncInstance = dataSync;
+    
+    // 根据同步类型选择正确的同步实例
+    if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        syncInstance = dataSyncFirebase;
+    } else if (syncType === 'gist' && dataSync.isConfigured()) {
+        syncInstance = dataSync;
+    } else if (syncType === 'firebase') {
+        // 如果 Firebase 未配置，提示用户
+        if (typeof dataSyncFirebase === 'undefined' || !dataSyncFirebase.isConfigured()) {
+            updateSyncStatus('Firebase 未配置，请先配置 Firebase', 'error');
+            return;
+        }
+        syncInstance = dataSyncFirebase;
+    } else {
+        updateSyncStatus('请先配置同步方式', 'error');
+        return;
+    }
+    
+    // 检查要上传的数据（用于显示统计信息）
+    const dataToUpload = syncInstance.getAllLocalData();
     const dataKeys = Object.keys(dataToUpload);
     const planKeys = dataKeys.filter(k => k.includes('trip_plan_'));
     const orderKeys = dataKeys.filter(k => k.includes('trip_card_order_'));
     const commentKeys = dataKeys.filter(k => k.includes('trip_comments_'));
     const tagKeys = dataKeys.filter(k => k.includes('trip_tag_'));
     
-    const result = await dataSync.upload();
+    // 手动同步时，Firebase使用立即上传模式（immediate = true），Gist 不需要参数
+    const result = syncType === 'firebase' 
+        ? await syncInstance.upload(true)  // Firebase 需要 immediate 参数
+        : await syncInstance.upload();     // Gist 不需要参数
     
     if (result.success) {
         const summary = `同步成功！\n包含：${dataKeys.length} 个数据项\n- 计划项: ${planKeys.length}\n- 卡片顺序: ${orderKeys.length}\n- 留言: ${commentKeys.length}\n- 标签: ${tagKeys.length}`;
@@ -632,8 +656,8 @@ async function syncUpload() {
 async function syncDownload() {
     updateSyncStatus('正在下载...', 'info');
     
-    // 检查使用的同步方式
-    const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+    // 检查使用的同步方式（默认使用 Firebase）
+    const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
     let syncInstance = dataSync;
     
     if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {

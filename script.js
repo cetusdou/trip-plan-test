@@ -1,27 +1,419 @@
 // 当前用户管理
-let currentUser = localStorage.getItem('trip_current_user') || 'userA';
+let currentUser = null; // 初始为null，需要登录
+let isLoggedIn = false; // 登录状态
 let currentDayId = 'day1';
+// 将 currentDayId 和 showDay 暴露到全局，供实时同步回调使用
+window.currentDayId = currentDayId;
 
-// 用户管理函数
-function setCurrentUser(user) {
-    currentUser = user;
-    localStorage.setItem('trip_current_user', user);
-    updateUserSelector();
-    // 重新渲染当前卡片以更新留言和评分
-    if (currentDayId) {
-        showDay(currentDayId);
+// 简单的密码哈希函数（使用SHA-256）
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
+// 检查是否已登录
+function checkLoginStatus() {
+    const savedUser = localStorage.getItem('trip_current_user');
+    const savedPasswordHash = localStorage.getItem('trip_password_hash');
+    if (savedUser && savedPasswordHash) {
+        // 验证保存的密码hash是否有效（需要从Firebase验证）
+        verifyStoredPassword(savedUser, savedPasswordHash);
+    } else {
+        showLoginUI();
     }
 }
 
-function updateUserSelector() {
-    document.querySelectorAll('.user-btn').forEach(btn => {
-        if (btn.dataset.user === currentUser) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
+// 显示登录界面
+function showLoginUI() {
+    const loginContainer = document.getElementById('user-login-container');
+    const loggedInContainer = document.getElementById('user-logged-in');
+    if (loginContainer) loginContainer.style.display = 'block';
+    if (loggedInContainer) loggedInContainer.style.display = 'none';
+    isLoggedIn = false;
+    currentUser = null;
 }
+
+// 显示已登录界面
+function showLoggedInUI(user) {
+    const loginContainer = document.getElementById('user-login-container');
+    const loggedInContainer = document.getElementById('user-logged-in');
+    const userNameSpan = document.getElementById('logged-in-user-name');
+    
+    if (loginContainer) loginContainer.style.display = 'none';
+    if (loggedInContainer) loggedInContainer.style.display = 'flex';
+    if (userNameSpan) userNameSpan.textContent = user === 'mrb' ? '👤 mrb' : '👤 djy';
+    
+    isLoggedIn = true;
+    currentUser = user;
+    localStorage.setItem('trip_current_user', user);
+}
+
+// 处理登录
+async function handleLogin() {
+    // 添加调试信息
+    console.log('handleLogin 被调用');
+    
+    const usernameEl = document.getElementById('login-username');
+    const passwordEl = document.getElementById('login-password');
+    
+    if (!usernameEl || !passwordEl) {
+        alert('找不到登录表单元素，请刷新页面重试');
+        return;
+    }
+    
+    const username = usernameEl.value;
+    const password = passwordEl.value;
+    
+    if (!password) {
+        updateSyncStatus('请输入密码', 'error');
+        return;
+    }
+    
+    updateSyncStatus('正在验证密码...', 'info');
+    
+    try {
+        // 测试模式：使用明文密码（不进行hash）
+        console.log('使用明文密码验证（测试模式）');
+        
+        // 检查Firebase是否可用
+        console.log('检查Firebase配置...');
+        console.log('window.firebaseDatabase:', typeof window.firebaseDatabase);
+        
+        if (typeof window.firebaseDatabase === 'undefined') {
+            alert('Firebase数据库未初始化，请刷新页面重试');
+            updateSyncStatus('Firebase数据库未初始化', 'error');
+            return;
+        }
+        
+        // 从Firebase读取密码配置
+        console.log('从Firebase读取密码配置...');
+        const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+        
+        // 检查数据库URL
+        console.log('数据库URL:', window.firebaseDatabase.app.options.databaseURL);
+        
+        // 先尝试读取根路径，看看有什么数据
+        const rootRef = ref(window.firebaseDatabase, '/');
+        const rootSnapshot = await get(rootRef);
+        const rootData = rootSnapshot.val();
+        console.log('根路径数据:', rootData);
+        console.log('根路径数据键:', rootData ? Object.keys(rootData) : '无数据');
+        
+        let passwords;
+        
+        // 方法1：直接从根路径数据中获取（优先使用）
+        if (rootData) {
+            // 尝试不同的键名格式
+            if (rootData.user_passwords) {
+                console.log('从根路径数据中获取密码 (user_passwords)');
+                passwords = rootData.user_passwords;
+            } else if (rootData['"user_passwords"']) {
+                console.log('从根路径数据中获取密码 ("user_passwords")');
+                passwords = rootData['"user_passwords"'];
+            } else {
+                // 遍历所有键，查找可能的密码数据
+                console.warn('user_passwords 路径不存在，检查其他路径...');
+                for (const key in rootData) {
+                    console.log(`发现路径: ${key}`, rootData[key]);
+                    // 尝试匹配可能的键名（包括带引号的）
+                    if (key === 'user_passwords' || key === '"user_passwords"') {
+                        passwords = rootData[key];
+                        console.log('从根路径中找到密码数据:', passwords);
+                        break;
+                    }
+                }
+            }
+            console.log('读取到的密码数据:', passwords);
+        }
+        
+        // 方法2：如果方法1失败，尝试直接读取 user_passwords 路径
+        if (!passwords) {
+            console.log('尝试直接读取 user_passwords 路径...');
+            const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
+            console.log('读取密码路径:', passwordsRef.toString());
+            
+            try {
+                const snapshot = await get(passwordsRef);
+                console.log('Snapshot对象:', snapshot);
+                console.log('Snapshot存在:', snapshot.exists());
+                console.log('Snapshot值:', snapshot.val());
+                passwords = snapshot.val();
+                console.log('读取到的密码数据:', passwords);
+                
+                // 如果读取失败，尝试使用不同的方法
+                if (!passwords && snapshot.exists()) {
+                    console.warn('数据存在但值为null，可能是权限问题');
+                }
+            } catch (readError) {
+                console.error('读取密码时出错:', readError);
+                console.error('错误代码:', readError.code);
+                console.error('错误消息:', readError.message);
+                if (readError.code === 'PERMISSION_DENIED') {
+                    alert('Firebase数据库权限被拒绝。请检查数据库规则，确保允许读取 user_passwords 路径。\n\n建议的规则：\n{\n  "rules": {\n    "user_passwords": {\n      ".read": true,\n      ".write": true\n    }\n  }\n}');
+                }
+                throw readError;
+            }
+        }
+        
+        console.log('准备验证密码...');
+        console.log('passwords对象:', passwords);
+        console.log('passwords类型:', typeof passwords);
+        console.log('passwords是否为null:', passwords === null);
+        console.log('passwords是否为undefined:', passwords === undefined);
+        console.log('username:', username);
+        console.log('输入的密码:', password);
+        
+        // 尝试不同的方式访问密码数据
+        let storedPassword = null;
+        if (passwords) {
+            // 方法1：直接属性访问（不带引号）
+            storedPassword = passwords[username];
+            console.log('方法1 - passwords[username]:', storedPassword);
+            
+            // 方法2：尝试带引号的键名（因为Firebase可能存储了带引号的键）
+            if (!storedPassword) {
+                const quotedKey = `"${username}"`;
+                storedPassword = passwords[quotedKey];
+                console.log(`方法2 - passwords["${username}"]:`, storedPassword);
+            }
+            
+            // 方法3：遍历所有键，进行模糊匹配
+            if (!storedPassword) {
+                const keys = Object.keys(passwords);
+                console.log('passwords的键:', keys);
+                console.log('passwords的值:', Object.values(passwords));
+                
+                // 尝试遍历查找（支持带引号和不带引号的键）
+                for (const key in passwords) {
+                    console.log(`键: ${key}, 值: ${passwords[key]}, 类型: ${typeof passwords[key]}`);
+                    // 匹配：key === username 或 key === "username" 或 key === '"username"'
+                    if (key === username || key === `"${username}"` || key === `'"${username}"'`) {
+                        storedPassword = passwords[key];
+                        console.log('找到匹配的键:', key, '密码:', storedPassword);
+                        break;
+                    }
+                    // 也尝试去掉键的引号后比较
+                    const keyWithoutQuotes = key.replace(/^["']|["']$/g, '');
+                    if (keyWithoutQuotes === username) {
+                        storedPassword = passwords[key];
+                        console.log('通过去引号匹配找到键:', key, '密码:', storedPassword);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        console.log('最终获取的密码:', storedPassword);
+        console.log('passwords[username]:', passwords ? passwords[username] : 'passwords为空');
+        
+        if (!passwords) {
+            console.error('passwords为空，无法验证');
+            updateSyncStatus('无法读取密码数据', 'error');
+            return;
+        }
+        
+        if (!storedPassword) {
+            console.error('该用户的密码不存在');
+            console.log('可用的用户:', Object.keys(passwords));
+            updateSyncStatus('该用户密码未初始化，请先初始化密码', 'error');
+            return;
+        }
+        
+        // 验证密码（明文比较）
+        console.log('开始密码比较...');
+        console.log('存储的密码:', storedPassword);
+        console.log('输入的密码:', password);
+        console.log('存储的密码类型:', typeof storedPassword);
+        console.log('输入的密码类型:', typeof password);
+        console.log('密码是否匹配:', storedPassword === password);
+        
+        if (storedPassword === password) {
+            // 登录成功
+            console.log('密码验证成功，登录成功！');
+            // 保存明文密码到localStorage（测试模式）
+            localStorage.setItem('trip_password_hash', password);
+            showLoggedInUI(username);
+            updateSyncStatus('登录成功！', 'success');
+            
+            // 重新渲染当前页面
+            if (currentDayId) {
+                showDay(currentDayId);
+            }
+        } else {
+            console.log('密码验证失败');
+            console.log('存储的密码类型:', typeof passwords[username]);
+            console.log('输入的密码类型:', typeof password);
+            console.log('存储的密码长度:', passwords[username] ? passwords[username].length : 0);
+            console.log('输入的密码长度:', password ? password.length : 0);
+            updateSyncStatus('密码错误', 'error');
+        }
+    } catch (error) {
+        updateSyncStatus(`登录失败: ${error.message}`, 'error');
+    }
+}
+
+// 验证存储的密码（用于页面刷新后保持登录状态）
+async function verifyStoredPassword(user, storedPassword) {
+    try {
+        if (typeof window.firebaseDatabase === 'undefined') {
+            showLoginUI();
+            return;
+        }
+        
+        const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+        const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
+        const snapshot = await get(passwordsRef);
+        const passwords = snapshot.val();
+        
+        // 测试模式：明文比较
+        if (passwords && passwords[user] === storedPassword) {
+            // 密码验证成功，保持登录状态
+            showLoggedInUI(user);
+        } else {
+            // 密码验证失败，需要重新登录
+            localStorage.removeItem('trip_password_hash');
+            localStorage.removeItem('trip_current_user');
+            showLoginUI();
+        }
+    } catch (error) {
+        console.error('验证存储密码时出错:', error);
+        showLoginUI();
+    }
+}
+
+// 退出登录
+function handleLogout() {
+    localStorage.removeItem('trip_password_hash');
+    localStorage.removeItem('trip_current_user');
+    showLoginUI();
+    updateSyncStatus('已退出登录', 'info');
+}
+
+// 显示初始化密码模态框
+function showInitPasswordModal() {
+    // 添加调试信息
+    console.log('showInitPasswordModal 被调用');
+    
+    const modal = document.getElementById('init-password-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('模态框已显示');
+    } else {
+        alert('找不到初始化密码模态框，请检查页面是否完整加载');
+        console.error('找不到 init-password-modal 元素');
+    }
+}
+
+// 关闭初始化密码模态框
+function closeInitPasswordModal() {
+    const modal = document.getElementById('init-password-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        // 清空输入
+        document.getElementById('init-mrb-password').value = '';
+        document.getElementById('init-djy-password').value = '';
+    }
+}
+
+// 初始化密码
+async function initPasswords() {
+    // 添加调试信息
+    console.log('initPasswords 被调用');
+    
+    const mrbPasswordEl = document.getElementById('init-mrb-password');
+    const djyPasswordEl = document.getElementById('init-djy-password');
+    
+    if (!mrbPasswordEl || !djyPasswordEl) {
+        alert('找不到密码输入框，请检查页面是否完整加载');
+        return;
+    }
+    
+    const mrbPassword = mrbPasswordEl.value;
+    const djyPassword = djyPasswordEl.value;
+    
+    if (!mrbPassword || !djyPassword) {
+        updateSyncStatus('请为两个用户都设置密码', 'error');
+        return;
+    }
+    
+    if (mrbPassword.length < 4 || djyPassword.length < 4) {
+        updateSyncStatus('密码长度至少为4位', 'error');
+        return;
+    }
+    
+    updateSyncStatus('正在初始化密码...', 'info');
+    
+    try {
+        // 测试模式：使用明文密码（不进行hash）
+        console.log('使用明文密码存储（测试模式）');
+        
+        // 检查Firebase是否可用
+        console.log('检查Firebase配置...');
+        console.log('window.firebaseDatabase:', typeof window.firebaseDatabase);
+        
+        if (typeof window.firebaseDatabase === 'undefined') {
+            alert('Firebase数据库未初始化，请刷新页面重试');
+            updateSyncStatus('Firebase数据库未初始化', 'error');
+            return;
+        }
+        
+        console.log('保存密码到Firebase（明文）...');
+        const { ref, set, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+        const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
+        console.log('保存密码路径:', passwordsRef.toString());
+        console.log('准备保存的数据（明文）:', { mrb: mrbPassword, djy: djyPassword });
+        
+        try {
+            await set(passwordsRef, {
+                mrb: mrbPassword,
+                djy: djyPassword
+            });
+            console.log('密码保存成功！');
+            
+            // 验证保存是否成功
+            const verifySnapshot = await get(passwordsRef);
+            const verifyData = verifySnapshot.val();
+            console.log('验证保存结果:', verifyData ? '成功' : '失败');
+            console.log('保存的数据:', verifyData);
+            
+            if (verifyData && verifyData.mrb && verifyData.djy) {
+                updateSyncStatus('密码初始化成功！现在可以登录了', 'success');
+                closeInitPasswordModal();
+            } else {
+                throw new Error('保存后验证失败，数据可能未正确写入');
+            }
+        } catch (setError) {
+            console.error('保存密码时出错:', setError);
+            throw setError; // 重新抛出错误，让外层catch处理
+        }
+    } catch (error) {
+        console.error('初始化密码时出错:', error);
+        console.error('错误堆栈:', error.stack);
+        alert(`初始化失败: ${error.message}\n请查看控制台获取详细信息`);
+        updateSyncStatus(`初始化失败: ${error.message}`, 'error');
+    }
+}
+
+// 检查写权限（只有登录后才能写入）
+function checkWritePermission() {
+    if (!isLoggedIn || !currentUser) {
+        updateSyncStatus('请先登录才能进行此操作', 'error');
+        return false;
+    }
+    return true;
+}
+
+// 将函数暴露到全局，供其他模块使用
+window.checkWritePermission = checkWritePermission;
+window.handleLogin = handleLogin;
+window.showInitPasswordModal = showInitPasswordModal;
+window.initPasswords = initPasswords;
+window.closeInitPasswordModal = closeInitPasswordModal;
+window.handleLogout = handleLogout;
 
 // 卡片显示逻辑（滚动模式）
 class CardSlider {
@@ -217,11 +609,31 @@ class CardSlider {
         // 总是显示计划区域，即使没有计划项也可以添加
         // 支持plan为数组或字符串格式
         // 如果是数组，直接使用；如果是字符串，转换为单元素数组（向后兼容）
-        const planItems = planData 
-            ? (Array.isArray(planData) 
-                ? planData.filter(item => item && item.trim().length > 0) // 过滤空项
-                : [planData].filter(item => item && item.trim().length > 0))
-            : [];
+        // 处理plan数据，支持字符串和对象格式，过滤已删除的项
+        let planItems = [];
+        if (planData) {
+            if (Array.isArray(planData)) {
+                planItems = planData
+                    .map(item => {
+                        // 如果是对象且标记为删除，返回null
+                        if (typeof item === 'object' && item._deleted) {
+                            return null;
+                        }
+                        // 如果是对象，提取文本
+                        if (typeof item === 'object' && item._text) {
+                            return item._text;
+                        }
+                        // 如果是字符串，直接返回
+                        if (typeof item === 'string') {
+                            return item;
+                        }
+                        return null;
+                    })
+                    .filter(item => item !== null && item.trim().length > 0);
+            } else if (typeof planData === 'string') {
+                planItems = [planData].filter(item => item && item.trim().length > 0);
+            }
+        }
         
         html += `
             <div class="card-section">
@@ -231,7 +643,7 @@ class CardSlider {
                 <ul class="plan-list">
                     ${planItems.length > 0 ? planItems.map((planItem, planIndex) => {
                         const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex);
-                        const planItemLikeCount = (planItemLikes.userA ? 1 : 0) + (planItemLikes.userB ? 1 : 0);
+                        const planItemLikeCount = (planItemLikes.mrb ? 1 : 0) + (planItemLikes.djy ? 1 : 0);
                     return `
                         <li class="plan-item">
                             <span class="plan-item-text">${this.escapeHtmlKeepBr(planItem)}</span>
@@ -282,11 +694,11 @@ class CardSlider {
                 <div class="comments-container">
                     ${comments.map((comment, commentIndex) => {
                         const commentLikes = this.getCommentLikes(this.dayId, index, commentIndex);
-                        const commentLikeCount = (commentLikes.userA ? 1 : 0) + (commentLikes.userB ? 1 : 0);
+                        const commentLikeCount = (commentLikes.mrb ? 1 : 0) + (commentLikes.djy ? 1 : 0);
                         return `
-                        <div class="comment-item ${comment.user === 'userA' ? 'user-a' : 'user-b'}">
+                        <div class="comment-item ${comment.user === 'mrb' ? 'user-a' : 'user-b'}">
                             <div class="comment-header">
-                                <span class="comment-user">${comment.user === 'userA' ? '👤 用户A' : '👤 用户B'}</span>
+                                <span class="comment-user">${comment.user === 'mrb' ? '👤 mrb' : '👤 djy'}</span>
                                 <span class="comment-time">${this.formatTime(comment.timestamp)}</span>
                             </div>
                             <div class="comment-content">${this.escapeHtml(comment.message)}</div>
@@ -947,6 +1359,9 @@ class CardSlider {
     
     // 添加留言
     addComment(dayId, itemIndex, message) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const key = `trip_comments_${dayId}_${itemIndex}`;
         const comments = this.getComments(dayId, itemIndex);
         comments.push({
@@ -955,7 +1370,7 @@ class CardSlider {
             timestamp: Date.now()
         });
         localStorage.setItem(key, JSON.stringify(comments));
-        // 自动同步到Gist
+        // 自动同步
         autoSyncToGist();
     }
     
@@ -985,13 +1400,16 @@ class CardSlider {
     
     // 设置图片（多张）
     setImages(dayId, itemIndex, imageUrls) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const key = `trip_images_${dayId}_${itemIndex}`;
         if (imageUrls && imageUrls.length > 0) {
             localStorage.setItem(key, JSON.stringify(imageUrls));
         } else {
             localStorage.removeItem(key);
         }
-        // 自动同步到Gist
+        // 自动同步
         autoSyncToGist();
     }
     
@@ -1004,14 +1422,17 @@ class CardSlider {
     
     // 切换行程项点赞
     toggleItemLike(dayId, itemIndex, section) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const key = `trip_item_likes_${dayId}_${itemIndex}`;
         const likes = this.getItemLikes(dayId, itemIndex);
         if (!likes[section]) {
-            likes[section] = { userA: false, userB: false };
+            likes[section] = { mrb: false, djy: false };
         }
         likes[section][currentUser] = !likes[section][currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步到Gist
+        // 自动同步
         autoSyncToGist();
     }
     
@@ -1019,16 +1440,19 @@ class CardSlider {
     getPlanItemLikes(dayId, itemIndex, planIndex) {
         const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : { userA: false, userB: false };
+        return data ? JSON.parse(data) : { mrb: false, djy: false };
     }
     
     // 切换计划项点赞
     togglePlanItemLike(dayId, itemIndex, planIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const key = `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步到Gist
+        // 自动同步
         autoSyncToGist();
     }
     
@@ -1036,16 +1460,19 @@ class CardSlider {
     getCommentLikes(dayId, itemIndex, commentIndex) {
         const key = `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : { userA: false, userB: false };
+        return data ? JSON.parse(data) : { mrb: false, djy: false };
     }
     
     // 切换留言点赞
     toggleCommentLike(dayId, itemIndex, commentIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const key = `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const likes = this.getCommentLikes(dayId, itemIndex, commentIndex);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步到Gist
+        // 自动同步
         autoSyncToGist();
     }
     
@@ -1076,6 +1503,9 @@ class CardSlider {
     
     // 编辑标签
     editTag(cardIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const card = this.cards[cardIndex];
         if (!card) return;
         
@@ -1116,6 +1546,9 @@ class CardSlider {
     
     // 添加计划项
     addPlanItem(cardIndex, newItem) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         const card = this.cards[cardIndex];
         if (!card || !newItem || !newItem.trim()) return;
         
@@ -1137,6 +1570,67 @@ class CardSlider {
             }
         } else {
             // 对于原始项，保存到单独的存储
+            const key = `trip_plan_${this.dayId}_${cardIndex}`;
+            localStorage.setItem(key, JSON.stringify(planItems));
+        }
+        
+        // 重新渲染
+        this.renderCards();
+        if (!this.sortMode) {
+            this.attachEventListeners();
+        }
+        this.attachCardEventsForAll();
+        
+        // 自动同步
+        autoSyncToGist();
+    }
+    
+    // 删除计划项（使用软删除）
+    deletePlanItem(cardIndex, planIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
+        const card = this.cards[cardIndex];
+        if (!card) return;
+        
+        // 获取plan数组
+        if (!card.plan) {
+            card.plan = [];
+        }
+        const planItems = Array.isArray(card.plan) ? card.plan : [card.plan];
+        
+        // 检查索引是否有效
+        if (planIndex < 0 || planIndex >= planItems.length) return;
+        
+        // 使用软删除：将计划项转换为对象并标记为删除
+        const planItem = planItems[planIndex];
+        if (typeof planItem === 'string') {
+            // 如果是字符串，转换为对象并标记删除
+            planItems[planIndex] = {
+                _text: planItem,
+                _deleted: true,
+                _deletedAt: new Date().toISOString()
+            };
+        } else if (typeof planItem === 'object') {
+            // 如果已经是对象，添加删除标记
+            planItems[planIndex] = {
+                ...planItem,
+                _deleted: true,
+                _deletedAt: new Date().toISOString()
+            };
+        }
+        
+        card.plan = planItems;
+        
+        // 保存到localStorage
+        if (card.isCustom) {
+            const customItems = JSON.parse(localStorage.getItem(`trip_custom_items_${this.dayId}`) || '[]');
+            const itemIndex = customItems.findIndex(item => item.id === card.id);
+            if (itemIndex !== -1) {
+                customItems[itemIndex].plan = planItems;
+                localStorage.setItem(`trip_custom_items_${this.dayId}`, JSON.stringify(customItems));
+            }
+        } else {
             const key = `trip_plan_${this.dayId}_${cardIndex}`;
             localStorage.setItem(key, JSON.stringify(planItems));
         }
@@ -1333,6 +1827,9 @@ class CardSlider {
     
     // 上移卡片
     moveCardUp(index) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         if (index <= 0) {
             return; // 已经在最上面
         }
@@ -1351,6 +1848,9 @@ class CardSlider {
     
     // 下移卡片
     moveCardDown(index) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         if (index >= this.cards.length - 1) {
             return; // 已经在最下面
         }
@@ -1404,8 +1904,25 @@ class CardSlider {
         autoSyncToGist();
     }
     
+    // 保存卡片数据并同步
+    saveCard(cardIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
+        // 保存卡片顺序（如果顺序有变化）
+        this.saveCardOrder();
+        
+        // 触发自动同步
+        autoSyncToGist();
+        
+        updateSyncStatus('卡片已保存并同步', 'success');
+    }
+    
     // 重新排序卡片（保留用于兼容）
     reorderCards(fromIndex, toIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
         this.saveCardOrder();
     }
 
@@ -1468,8 +1985,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 首先从URL加载配置
     loadConfigFromURL();
     
-    // 初始化用户选择器
-    initUserSelector();
+    // 检查登录状态（等待Firebase初始化后）
+    setTimeout(() => {
+        checkLoginStatus();
+    }, 1000);
     
     // 渲染总览和导航
     renderOverview();
@@ -1482,7 +2001,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initBackToTop();
     
     // 如果已配置同步，页面加载时自动下载数据（合并策略）
-    const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+    const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
     
     if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined') {
         // 等待Firebase加载完成
@@ -1626,6 +2145,8 @@ function renderNavigation() {
 // 显示指定日期的行程
 function showDay(dayId) {
     currentDayId = dayId;
+    // 更新全局变量，供实时同步回调使用
+    window.currentDayId = currentDayId;
     const day = tripData.days.find(d => d.id === dayId);
     if (!day) return;
     
@@ -1785,6 +2306,9 @@ function getCustomItems(dayId) {
 
 // 添加自定义行程项
 function addCustomItem(dayId, itemData) {
+    // 检查写权限
+    if (!checkWritePermission()) return;
+    
     const key = `trip_custom_items_${dayId}`;
     const items = getCustomItems(dayId);
     const newItem = {
@@ -1796,23 +2320,34 @@ function addCustomItem(dayId, itemData) {
     items.push(newItem);
     localStorage.setItem(key, JSON.stringify(items));
     
-    // 自动同步到Gist
+    // 自动同步
     autoSyncToGist();
     
     showDay(dayId);
 }
 
-// 删除自定义行程项
+// 删除自定义行程项（使用软删除）
 function deleteCustomItem(dayId, itemId) {
+    // 检查写权限
+    if (!checkWritePermission()) return;
+    
     const key = `trip_custom_items_${dayId}`;
     const items = getCustomItems(dayId);
-    const filtered = items.filter(item => item.id !== itemId);
-    localStorage.setItem(key, JSON.stringify(filtered));
-    
-    // 自动同步到Gist
-    autoSyncToGist();
-    
-    showDay(dayId);
+    const itemIndex = items.findIndex(item => item.id === itemId);
+    if (itemIndex !== -1) {
+        // 使用软删除：标记为 _deleted: true，而不是物理删除
+        items[itemIndex] = {
+            ...items[itemIndex],
+            _deleted: true,
+            _deletedAt: new Date().toISOString()
+        };
+        localStorage.setItem(key, JSON.stringify(items));
+        
+        // 自动同步
+        autoSyncToGist();
+        
+        showDay(dayId);
+    }
 }
 
 // 显示新增行程项模态框
@@ -1839,6 +2374,9 @@ function closeAddItemModal() {
 
 // 保存新增的行程项
 function saveNewItem() {
+    // 检查写权限
+    if (!checkWritePermission()) return;
+    
     const modal = document.getElementById('add-item-modal');
     if (!modal) return;
     
@@ -1871,8 +2409,8 @@ function autoSyncToGist() {
     }
     
     syncTimeout = setTimeout(() => {
-        // 检查使用的同步方式
-        const syncType = localStorage.getItem('trip_sync_type') || 'gist';
+        // 检查使用的同步方式（默认使用 Firebase）
+        const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
         let syncInstance = null;
         
         if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {

@@ -8,13 +8,32 @@
 </head>
 <body>
     <div class="main-container">
-        <!-- 用户选择器 -->
-        <div class="user-selector">
-            <div class="user-selector-label">当前用户：</div>
-            <div class="user-buttons">
-                <button class="user-btn" data-user="userA">👤 用户A</button>
-                <button class="user-btn" data-user="userB">👤 用户B</button>
+        <!-- 用户登录界面 -->
+        <div id="user-login-container" class="user-login-container">
+            <div class="user-login-box">
+                <h3>用户登录</h3>
+                <div class="login-form">
+                    <div class="form-group">
+                        <label for="login-username">选择用户：</label>
+                        <select id="login-username" class="form-input">
+                            <option value="mrb">👤 mrb</option>
+                            <option value="djy">👤 djy</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">密码：</label>
+                        <input type="password" id="login-password" class="form-input" placeholder="请输入密码">
+                    </div>
+                    <button class="btn-login" onclick="handleLogin()">登录</button>
+                    <button class="btn-link" onclick="showInitPasswordModal()" style="margin-top: 10px; font-size: 12px;">首次使用？初始化密码</button>
+                </div>
             </div>
+        </div>
+        
+        <!-- 已登录用户显示 -->
+        <div id="user-logged-in" class="user-selector" style="display: none;">
+            <div class="user-selector-label">当前用户：<span id="logged-in-user-name"></span></div>
+            <button class="btn-logout" onclick="handleLogout()">退出登录</button>
         </div>
 
         <!-- 同步控制栏（可展开） -->
@@ -78,6 +97,31 @@
             </div>
         </div>
 
+        <!-- 初始化密码模态框 -->
+        <div id="init-password-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>初始化用户密码</h3>
+                    <button class="modal-close" onclick="closeInitPasswordModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="init-mrb-password">mrb密码：</label>
+                        <input type="password" id="init-mrb-password" class="form-input" placeholder="设置mrb的密码">
+                    </div>
+                    <div class="form-group">
+                        <label for="init-djy-password">djy密码：</label>
+                        <input type="password" id="init-djy-password" class="form-input" placeholder="设置djy的密码">
+                    </div>
+                    <small style="color: #666; display: block; margin-top: 10px;">⚠️ 密码将存储在Firebase中，请妥善保管。忘记密码需要重新初始化。</small>
+                    <div class="config-actions" style="margin-top: 20px;">
+                        <button class="btn-primary" onclick="initPasswords()">保存密码</button>
+                        <button class="btn-secondary" onclick="closeInitPasswordModal()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 同步配置模态框 -->
         <div id="sync-config-modal" class="modal">
             <div class="modal-content">
@@ -86,16 +130,16 @@
                     <button class="modal-close" onclick="closeSyncConfig()">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="config-section">
+                    <div class="config-section" style="display: none;">
                         <label>同步方式：</label>
                         <select id="sync-type-select" onchange="toggleSyncType()">
-                            <option value="gist">GitHub Gist（推荐，免费）</option>
-                            <option value="firebase">Firebase Realtime Database（实时同步）</option>
+                            <option value="firebase" selected>Firebase Realtime Database（实时同步）</option>
+                            <option value="gist">GitHub Gist（已弃用）</option>
                         </select>
                     </div>
                     
-                    <!-- GitHub Gist 配置 -->
-                    <div id="gist-config" class="sync-config-panel">
+                    <!-- GitHub Gist 配置（已隐藏） -->
+                    <div id="gist-config" class="sync-config-panel" style="display: none;">
                         <div class="config-section">
                             <label for="github-token-input">GitHub Personal Access Token：</label>
                             <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxx">
@@ -109,8 +153,8 @@
                         </div>
                     </div>
                     
-                    <!-- Firebase 配置 -->
-                    <div id="firebase-config" class="sync-config-panel" style="display: none;">
+                    <!-- Firebase 配置（默认显示） -->
+                    <div id="firebase-config" class="sync-config-panel">
                         <div class="config-section">
                             <label for="firebase-api-key">API Key：</label>
                             <input type="text" id="firebase-api-key" placeholder="AIza...">

@@ -9,6 +9,8 @@ class DataSyncFirebase {
         this.autoSyncEnabled = localStorage.getItem('trip_auto_sync') === 'true';
         this.listeners = [];
         this.isInitialized = false;
+        this.uploadDebounceTimer = null; // 上传防抖定时器
+        this.uploadDebounceDelay = 2000; // 防抖延迟时间（2秒）
     }
 
     // 等待 Firebase 加载完成
@@ -68,6 +70,9 @@ class DataSyncFirebase {
             this.get = get;
             this.onValue = onValue;
             this.off = off;
+            
+            // 保存路径信息用于调试
+            this.dbPath = dbPath;
 
             // 保存配置到localStorage
             localStorage.setItem('trip_firebase_config', JSON.stringify(firebaseConfig));
@@ -132,26 +137,60 @@ class DataSyncFirebase {
         });
     }
 
-    // 上传数据到云端
-    async upload() {
-        try {
-            if (!this.isConfigured()) {
-                throw new Error('Firebase未初始化，请先配置');
-            }
-
-            const data = this.getAllLocalData();
-            
-            // 添加时间戳
-            data._lastSync = new Date().toISOString();
-            data._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
-
-            // 上传到Firebase（使用新的 SDK API）
-            await this.set(this.databaseRef, data);
-            
-            return { success: true, message: '同步成功！' };
-        } catch (error) {
-            return { success: false, message: `上传失败: ${error.message}` };
+    // 上传数据到云端（带防抖）
+    async upload(immediate = false) {
+        // 如果不是立即上传，使用防抖
+        if (!immediate && this.uploadDebounceTimer) {
+            clearTimeout(this.uploadDebounceTimer);
         }
+        
+        return new Promise((resolve) => {
+            const doUpload = async () => {
+                try {
+                    if (!this.isConfigured()) {
+                        throw new Error('Firebase未初始化，请先配置');
+                    }
+                    
+                    // 检查写权限
+                    if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
+                        throw new Error('未登录，无法上传数据');
+                    }
+
+                    const data = this.getAllLocalData();
+                    
+                    // 检查数据是否为空
+                    const dataKeys = Object.keys(data);
+                    if (dataKeys.length === 0) {
+                        resolve({ success: false, message: '没有数据需要上传（localStorage为空）' });
+                        return;
+                    }
+                    
+                    // 添加时间戳
+                    data._lastSync = new Date().toISOString();
+                    data._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
+
+                    // 上传到Firebase（使用新的 SDK API）
+                    // 调试信息：显示上传路径和数据项数量
+                    const uploadPath = this.databaseRef.toString();
+                    await this.set(this.databaseRef, data);
+                    
+                    resolve({ 
+                        success: true, 
+                        message: `同步成功！已上传 ${dataKeys.length} 个数据项到路径: ${uploadPath}` 
+                    });
+                } catch (error) {
+                    resolve({ success: false, message: `上传失败: ${error.message}` });
+                }
+            };
+            
+            if (immediate) {
+                // 立即上传（用于手动同步）
+                doUpload();
+            } else {
+                // 防抖上传（用于自动同步）
+                this.uploadDebounceTimer = setTimeout(doUpload, this.uploadDebounceDelay);
+            }
+        });
     }
 
     // 从云端下载数据
@@ -165,8 +204,26 @@ class DataSyncFirebase {
             const snapshot = await this.get(this.databaseRef);
             const remoteData = snapshot.val();
 
+            // 调试信息：检查数据路径和内容
             if (!remoteData) {
-                return { success: false, message: '云端没有数据' };
+                // 尝试检查数据库路径是否正确
+                const pathInfo = this.dbPath || '未知路径';
+                return { 
+                    success: false, 
+                    message: `云端没有数据。\n\n路径: ${pathInfo}\n\n可能的原因：\n1) 数据还未上传（请先点击"上传"按钮）\n2) 数据库路径不匹配（检查配置中的"数据库路径"）\n3) Firebase 数据库规则不允许读取（需要在 Firebase 控制台设置规则）\n\n建议：\n- 在 Firebase 控制台的 Realtime Database 中查看是否有数据\n- 检查数据库路径是否与上传时一致` 
+                };
+            }
+            
+            // 调试信息：检查数据是否为空对象
+            const dataKeys = Object.keys(remoteData);
+            const hasRealData = dataKeys.some(key => key !== '_lastSync' && key !== '_syncUser');
+            
+            if (!hasRealData) {
+                const pathInfo = this.dbPath || '未知路径';
+                return { 
+                    success: false, 
+                    message: `云端数据为空（只有元数据）。\n\n路径: ${pathInfo}\n数据键: ${dataKeys.join(', ')}\n\n请先上传数据，然后再尝试下载。` 
+                };
             }
 
             // 移除元数据
@@ -216,11 +273,68 @@ class DataSyncFirebase {
                             const remoteParsed = JSON.parse(remoteValue);
                             
                             if (Array.isArray(localParsed) && Array.isArray(remoteParsed)) {
-                                const merged = [...localParsed];
-                                remoteParsed.forEach(item => {
-                                    const itemStr = JSON.stringify(item);
-                                    if (!merged.some(existing => JSON.stringify(existing) === itemStr)) {
-                                        merged.push(item);
+                                // 处理软删除：移除本地已删除的项（如果远程也标记为删除）
+                                const merged = localParsed.filter(localItem => {
+                                    // 如果本地项标记为删除，检查远程是否也有相同的项
+                                    if (localItem._deleted) {
+                                        // 如果远程也有相同的项且未删除，保留它（可能是其他用户恢复了）
+                                        const remoteItem = remoteParsed.find(r => {
+                                            // 使用id或其他唯一标识符匹配
+                                            if (localItem.id && r.id) return localItem.id === r.id;
+                                            if (localItem._text && r._text) return localItem._text === r._text;
+                                            return JSON.stringify(localItem) === JSON.stringify(r);
+                                        });
+                                        // 如果远程项存在且未删除，保留它
+                                        return remoteItem && !remoteItem._deleted;
+                                    }
+                                    return true;
+                                });
+                                
+                                // 添加远程的新项或更新的项
+                                remoteParsed.forEach(remoteItem => {
+                                    // 跳过已删除的远程项
+                                    if (remoteItem._deleted) {
+                                        // 从本地也删除该项
+                                        const localIndex = merged.findIndex(localItem => {
+                                            if (localItem.id && remoteItem.id) return localItem.id === remoteItem.id;
+                                            if (localItem._text && remoteItem._text) return localItem._text === remoteItem._text;
+                                            return JSON.stringify(localItem) === JSON.stringify(remoteItem);
+                                        });
+                                        if (localIndex !== -1) {
+                                            merged.splice(localIndex, 1);
+                                        }
+                                        return;
+                                    }
+                                    
+                                    // 检查是否已存在
+                                    const itemStr = JSON.stringify(remoteItem);
+                                    const exists = merged.some(existing => {
+                                        // 优先使用id匹配
+                                        if (existing.id && remoteItem.id) {
+                                            return existing.id === remoteItem.id;
+                                        }
+                                        if (existing._text && remoteItem._text) {
+                                            return existing._text === remoteItem._text;
+                                        }
+                                        return JSON.stringify(existing) === itemStr;
+                                    });
+                                    if (!exists) {
+                                        merged.push(remoteItem);
+                                    } else {
+                                        // 如果已存在，更新它（保留本地未删除的项，但更新其他属性）
+                                        const existingIndex = merged.findIndex(existing => {
+                                            if (existing.id && remoteItem.id) {
+                                                return existing.id === remoteItem.id;
+                                            }
+                                            if (existing._text && remoteItem._text) {
+                                                return existing._text === remoteItem._text;
+                                            }
+                                            return JSON.stringify(existing) === itemStr;
+                                        });
+                                        if (existingIndex !== -1 && !merged[existingIndex]._deleted) {
+                                            // 合并属性，但保留 _deleted 状态（如果本地未删除）
+                                            merged[existingIndex] = { ...merged[existingIndex], ...remoteItem, _deleted: merged[existingIndex]._deleted || false };
+                                        }
                                     }
                                 });
                                 mergedData[key] = JSON.stringify(merged);
@@ -271,9 +385,21 @@ class DataSyncFirebase {
             this.stopRealtimeSync();
 
             // 添加新的监听器（使用新的 Firebase SDK API）
+            // 这是真正的实时同步：当 Firebase 数据库发生变化时，这个回调会自动触发
             const unsubscribe = this.onValue(this.databaseRef, (snapshot) => {
                 const remoteData = snapshot.val();
                 if (remoteData) {
+                    // 避免处理自己刚刚上传的数据（通过检查 _syncUser）
+                    const syncUser = remoteData._syncUser;
+                    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                    
+                    // 如果是自己上传的数据，跳过处理（避免循环刷新）
+                    // 但如果是对方上传的数据，需要处理
+                    if (syncUser && syncUser === currentUser) {
+                        // 这是自己上传的数据，不需要刷新
+                        return;
+                    }
+                    
                     // 移除元数据
                     delete remoteData._lastSync;
                     delete remoteData._syncUser;
@@ -296,11 +422,58 @@ class DataSyncFirebase {
                                 const remoteParsed = JSON.parse(remoteValue);
                                 
                                 if (Array.isArray(localParsed) && Array.isArray(remoteParsed)) {
-                                    const merged = [...localParsed];
-                                    remoteParsed.forEach(item => {
-                                        const itemStr = JSON.stringify(item);
-                                        if (!merged.some(existing => JSON.stringify(existing) === itemStr)) {
-                                            merged.push(item);
+                                    // 处理软删除：移除本地已删除的项（如果远程也标记为删除）
+                                    const merged = localParsed.filter(localItem => {
+                                        if (localItem._deleted) {
+                                            const remoteItem = remoteParsed.find(r => {
+                                                if (localItem.id && r.id) return localItem.id === r.id;
+                                                if (localItem._text && r._text) return localItem._text === r._text;
+                                                return JSON.stringify(localItem) === JSON.stringify(r);
+                                            });
+                                            return remoteItem && !remoteItem._deleted;
+                                        }
+                                        return true;
+                                    });
+                                    
+                                    // 添加远程的新项或更新的项
+                                    remoteParsed.forEach(remoteItem => {
+                                        if (remoteItem._deleted) {
+                                            const localIndex = merged.findIndex(localItem => {
+                                                if (localItem.id && remoteItem.id) return localItem.id === remoteItem.id;
+                                                if (localItem._text && remoteItem._text) return localItem._text === remoteItem._text;
+                                                return JSON.stringify(localItem) === JSON.stringify(remoteItem);
+                                            });
+                                            if (localIndex !== -1) {
+                                                merged.splice(localIndex, 1);
+                                            }
+                                            return;
+                                        }
+                                        
+                                        const itemStr = JSON.stringify(remoteItem);
+                                        const exists = merged.some(existing => {
+                                            if (existing.id && remoteItem.id) {
+                                                return existing.id === remoteItem.id;
+                                            }
+                                            if (existing._text && remoteItem._text) {
+                                                return existing._text === remoteItem._text;
+                                            }
+                                            return JSON.stringify(existing) === itemStr;
+                                        });
+                                        if (!exists) {
+                                            merged.push(remoteItem);
+                                        } else {
+                                            const existingIndex = merged.findIndex(existing => {
+                                                if (existing.id && remoteItem.id) {
+                                                    return existing.id === remoteItem.id;
+                                                }
+                                                if (existing._text && remoteItem._text) {
+                                                    return existing._text === remoteItem._text;
+                                                }
+                                                return JSON.stringify(existing) === itemStr;
+                                            });
+                                            if (existingIndex !== -1 && !merged[existingIndex]._deleted) {
+                                                merged[existingIndex] = { ...merged[existingIndex], ...remoteItem, _deleted: merged[existingIndex]._deleted || false };
+                                            }
                                         }
                                     });
                                     mergedData[key] = JSON.stringify(merged);
@@ -354,13 +527,12 @@ class DataSyncFirebase {
             // 启动实时同步
             this.startRealtimeSync((data) => {
                 // 数据更新时的回调
-                if (typeof updateSyncStatus === 'function') {
-                    updateSyncStatus('数据已实时更新', 'success');
-                }
-                // 刷新当前页面显示
-                if (typeof currentDayId !== 'undefined' && currentDayId) {
-                    if (typeof showDay === 'function') {
-                        showDay(currentDayId);
+                // 注意：这里不显示状态消息，避免频繁提示
+                // 刷新当前页面显示 - 这是真正的实时同步核心
+                if (typeof window.currentDayId !== 'undefined' && window.currentDayId) {
+                    if (typeof window.showDay === 'function') {
+                        // 重新渲染当前日期，实现真正的实时同步
+                        window.showDay(window.currentDayId);
                     }
                 }
             });
@@ -376,6 +548,10 @@ class DataSyncFirebase {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
             this.syncInterval = null;
+        }
+        if (this.uploadDebounceTimer) {
+            clearTimeout(this.uploadDebounceTimer);
+            this.uploadDebounceTimer = null;
         }
     }
 
