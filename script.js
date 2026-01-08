@@ -41,22 +41,37 @@ function checkLoginStatus() {
 
 // 显示登录界面
 function showLoginUI() {
-    const loginContainer = document.getElementById('user-login-container');
+    const loginModal = document.getElementById('login-modal');
     const loggedInContainer = document.getElementById('user-logged-in');
-    if (loginContainer) loginContainer.style.display = 'block';
+    const mainContent = document.getElementById('main-content');
+    
+    if (loginModal) loginModal.style.display = 'flex';
     if (loggedInContainer) loggedInContainer.style.display = 'none';
+    if (mainContent) mainContent.style.display = 'none';
+    
     isLoggedIn = false;
     currentUser = null;
+    
+    // 清空输入框
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    if (usernameInput) usernameInput.value = '';
+    if (passwordInput) passwordInput.value = '';
 }
 
 // 显示已登录界面
 function showLoggedInUI(user) {
-    const loginContainer = document.getElementById('user-login-container');
+    const loginModal = document.getElementById('login-modal');
     const loggedInContainer = document.getElementById('user-logged-in');
+    const mainContent = document.getElementById('main-content');
     const userNameSpan = document.getElementById('logged-in-user-name');
     
-    if (loginContainer) loginContainer.style.display = 'none';
+    // 确保登录弹窗关闭（使用 !important 覆盖 CSS）
+    if (loginModal) {
+        loginModal.style.setProperty('display', 'none', 'important');
+    }
     if (loggedInContainer) loggedInContainer.style.display = 'flex';
+    if (mainContent) mainContent.style.display = 'block';
     if (userNameSpan) userNameSpan.textContent = user === 'mrb' ? '👤 mrb' : '👤 djy';
     
     isLoggedIn = true;
@@ -77,8 +92,14 @@ async function handleLogin() {
         return;
     }
     
-    const username = usernameEl.value;
+    const username = usernameEl.value.trim().toLowerCase();
     const password = passwordEl.value;
+    
+    // 验证用户名
+    if (!username || (username !== 'mrb' && username !== 'djy')) {
+        updateSyncStatus('用户名必须是 mrb 或 djy', 'error');
+        return;
+    }
     
     if (!password) {
         updateSyncStatus('请输入密码', 'error');
@@ -249,11 +270,54 @@ async function handleLogin() {
             // 保存明文密码到localStorage（测试模式）
             localStorage.setItem('trip_password_hash', password);
             showLoggedInUI(username);
-            updateSyncStatus('登录成功！', 'success');
+            updateSyncStatus('登录成功，正在下载数据...', 'info');
             
-            // 重新渲染当前页面
-            if (currentDayId) {
-                showDay(currentDayId);
+            // 登录后第一件事：从数据库拉取数据覆盖本地内容
+            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+                dataSyncFirebase.download(false).then(result => {
+                    if (result.success) {
+                        updateSyncStatus('数据下载成功', 'success');
+                        // 下载完成后渲染内容
+                        renderOverview();
+                        renderNavigation();
+                        if (currentDayId) {
+                            showDay(currentDayId);
+                        } else {
+                            showDay('day1');
+                        }
+                    } else {
+                        updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
+                        // 即使下载失败，也渲染本地内容
+                        renderOverview();
+                        renderNavigation();
+                        if (currentDayId) {
+                            showDay(currentDayId);
+                        } else {
+                            showDay('day1');
+                        }
+                    }
+                }).catch(error => {
+                    console.error('下载失败:', error);
+                    updateSyncStatus('下载失败，使用本地数据', 'error');
+                    // 即使下载失败，也渲染本地内容
+                    renderOverview();
+                    renderNavigation();
+                    if (currentDayId) {
+                        showDay(currentDayId);
+                    } else {
+                        showDay('day1');
+                    }
+                });
+            } else {
+                // Firebase未配置，直接渲染本地内容
+                updateSyncStatus('Firebase未配置，使用本地数据', 'info');
+                renderOverview();
+                renderNavigation();
+                if (currentDayId) {
+                    showDay(currentDayId);
+                } else {
+                    showDay('day1');
+                }
             }
         } else {
             console.log('密码验证失败');
@@ -285,6 +349,55 @@ async function verifyStoredPassword(user, storedPassword) {
         if (passwords && passwords[user] === storedPassword) {
             // 密码验证成功，保持登录状态
             showLoggedInUI(user);
+            updateSyncStatus('正在下载数据...', 'info');
+            
+            // 登录后第一件事：从数据库拉取数据覆盖本地内容
+            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+                dataSyncFirebase.download(false).then(result => {
+                    if (result.success) {
+                        updateSyncStatus('数据下载成功', 'success');
+                        // 下载完成后渲染内容
+                        renderOverview();
+                        renderNavigation();
+                        if (currentDayId) {
+                            showDay(currentDayId);
+                        } else {
+                            showDay('day1');
+                        }
+                    } else {
+                        updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
+                        // 即使下载失败，也渲染本地内容
+                        renderOverview();
+                        renderNavigation();
+                        if (currentDayId) {
+                            showDay(currentDayId);
+                        } else {
+                            showDay('day1');
+                        }
+                    }
+                }).catch(error => {
+                    console.error('下载失败:', error);
+                    updateSyncStatus('下载失败，使用本地数据', 'error');
+                    // 即使下载失败，也渲染本地内容
+                    renderOverview();
+                    renderNavigation();
+                    if (currentDayId) {
+                        showDay(currentDayId);
+                    } else {
+                        showDay('day1');
+                    }
+                });
+            } else {
+                // Firebase未配置，直接渲染本地内容
+                updateSyncStatus('Firebase未配置，使用本地数据', 'info');
+                renderOverview();
+                renderNavigation();
+                if (currentDayId) {
+                    showDay(currentDayId);
+                } else {
+                    showDay('day1');
+                }
+            }
         } else {
             // 密码验证失败，需要重新登录
             localStorage.removeItem('trip_password_hash');
@@ -445,6 +558,8 @@ class CardSlider {
     constructor(containerId, cards, dayId) {
         this.container = document.getElementById(containerId);
         this.cards = cards;
+        // 使用 Map 存储卡片展开状态（基于 itemId，不保存到 localStorage）
+        this.cardExpandedStates = new Map();
         this.dayId = dayId;
         this.sortMode = false; // 排序模式：false=普通查看模式，true=排序模式（显示上下箭头）
         this.init();
@@ -645,7 +760,8 @@ class CardSlider {
             // 自定义项如果没有tag，使用category作为标签
             cardTag = cardData.category || '其他';
         }
-        const isExpanded = this.getCardExpanded(this.dayId, index);
+        // 使用 itemId 获取展开状态
+        const isExpanded = this.getCardExpanded(itemId);
         let html = `
             <div class="card-header">
                 <div class="card-header-main">
@@ -1390,9 +1506,10 @@ class CardSlider {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                const itemId = card.dataset.itemId || null;
                 const isExpanded = expandBtn.dataset.expanded === 'true';
                 const newIsExpanded = !isExpanded;
-                this.setCardExpanded(this.dayId, index, newIsExpanded);
+                this.setCardExpanded(itemId, newIsExpanded);
                 
                 // 直接更新当前卡片的展开状态，避免重新渲染整个卡片列表
                 const cardContent = card.querySelector('.card-content');
@@ -1423,9 +1540,10 @@ class CardSlider {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                const itemId = card.dataset.itemId || null;
                 const isExpanded = expandBtn.dataset.expanded === 'true';
                 const newIsExpanded = !isExpanded;
-                this.setCardExpanded(this.dayId, index, newIsExpanded);
+                this.setCardExpanded(itemId, newIsExpanded);
                 
                 // 直接更新当前卡片的展开状态，避免重新渲染整个卡片列表
                 const cardContent = card.querySelector('.card-content');
@@ -2295,16 +2413,16 @@ class CardSlider {
     }
     
     // 获取卡片展开状态
-    getCardExpanded(dayId, itemIndex) {
-        const key = `trip_card_expanded_${dayId}_${itemIndex}`;
-        const data = localStorage.getItem(key);
-        return data === 'true';
+    // 获取卡片展开状态（基于 itemId，不保存到 localStorage）
+    getCardExpanded(itemId) {
+        if (!itemId) return false;
+        return this.cardExpandedStates.get(itemId) || false;
     }
     
-    // 设置卡片展开状态
-    setCardExpanded(dayId, itemIndex, expanded) {
-        const key = `trip_card_expanded_${dayId}_${itemIndex}`;
-        localStorage.setItem(key, expanded.toString());
+    // 设置卡片展开状态（基于 itemId，不保存到 localStorage）
+    setCardExpanded(itemId, expanded) {
+        if (!itemId) return;
+        this.cardExpandedStates.set(itemId, expanded);
     }
     
     // 获取标签标签
@@ -2993,16 +3111,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // 检查登录状态（等待Firebase初始化后）
+    // 先显示登录界面，然后检查是否有保存的登录状态
+    showLoginUI();
     setTimeout(() => {
         checkLoginStatus();
     }, 1000);
     
-    // 渲染总览和导航
-    renderOverview();
-    renderNavigation();
-    
-    // 默认显示第一天
-    showDay('day1');
+    // 只有在登录后才渲染内容（在showLoggedInUI中调用）
+    // renderOverview();
+    // renderNavigation();
+    // showDay('day1');
     
     // 返回顶部按钮
     initBackToTop();

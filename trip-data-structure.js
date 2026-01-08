@@ -417,9 +417,37 @@ function loadUnifiedData() {
     const data = localStorage.getItem('trip_unified_data');
     if (data) {
         try {
-            return JSON.parse(data);
+            // localStorage.getItem() 总是返回字符串或 null
+            // 如果是字符串，尝试解析
+            if (typeof data === 'string') {
+                // 检查是否是无效的字符串（如 "[object Object]"）
+                const trimmed = data.trim();
+                if (trimmed === '[object Object]' || trimmed === '[object Object]') {
+                    console.warn('统一数据是无效的字符串 "[object Object]"，已清除');
+                    // 清除无效数据
+                    localStorage.removeItem('trip_unified_data');
+                    return null;
+                }
+                // 检查是否是有效的JSON字符串
+                if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                    return JSON.parse(data);
+                } else {
+                    console.warn('统一数据不是有效的JSON字符串:', data.substring(0, 50));
+                    return null;
+                }
+            }
+            // 理论上不应该到达这里，但为了安全起见
+            console.warn('统一数据类型不正确:', typeof data);
+            return null;
         } catch (e) {
-            console.error('加载统一数据失败:', e);
+            console.error('加载统一数据失败:', e, '数据:', typeof data === 'string' ? data.substring(0, 100) : data);
+            // 如果解析失败，可能是数据损坏，清除它
+            try {
+                localStorage.removeItem('trip_unified_data');
+                console.warn('已清除损坏的统一数据');
+            } catch (clearError) {
+                console.error('清除损坏数据失败:', clearError);
+            }
             return null;
         }
     }

@@ -29,7 +29,7 @@ body {
     margin: 0 auto;
 }
 
-/* 用户登录界面 */
+/* 用户登录界面（已改为弹窗，保留样式用于兼容） */
 .user-login-container {
     background: white;
     border-radius: 12px;
@@ -47,7 +47,8 @@ body {
 .login-form {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 20px;
+    padding: 10px 0;
 }
 
 .form-group {
@@ -2006,6 +2007,11 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
+}
+
+/* 登录弹窗默认显示 */
+#login-modal {
+    display: flex !important;
 }
 
 .modal-content {

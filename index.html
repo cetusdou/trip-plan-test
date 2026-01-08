@@ -7,29 +7,29 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="main-container">
-        <!-- 用户登录和数据同步界面（合并） -->
-        <div id="user-login-container" class="user-login-container">
-            <div class="user-login-box">
+    <!-- 登录弹窗（必须在 main-content 外面） -->
+    <div id="login-modal" class="modal" style="display: flex;">
+        <div class="modal-content">
+            <div class="modal-header">
                 <h3>用户登录</h3>
+            </div>
+            <div class="modal-body">
                 <div class="login-form">
                     <div class="form-group">
-                        <label for="login-username">选择用户：</label>
-                        <select id="login-username" class="form-input">
-                            <option value="mrb">👤 mrb</option>
-                            <option value="djy">👤 djy</option>
-                        </select>
+                        <label for="login-username">用户名：</label>
+                        <input type="text" id="login-username" class="form-input" placeholder="请输入用户名（mrb 或 djy）" autocomplete="username">
                     </div>
                     <div class="form-group">
                         <label for="login-password">密码：</label>
-                        <input type="password" id="login-password" class="form-input" placeholder="请输入密码">
+                        <input type="password" id="login-password" class="form-input" placeholder="请输入密码" autocomplete="current-password" onkeypress="if(event.key==='Enter') handleLogin()">
                     </div>
                     <button class="btn-login" onclick="handleLogin()">登录</button>
-                    <button class="btn-link" onclick="showInitPasswordModal()" style="margin-top: 10px; font-size: 12px;">首次使用？初始化密码</button>
                 </div>
             </div>
         </div>
-        
+    </div>
+
+    <div class="main-container" id="main-content" style="display: none;">
         <!-- 已登录用户显示和数据同步（合并） -->
         <div id="user-logged-in" class="user-sync-container" style="display: none;">
             <div class="user-sync-header">

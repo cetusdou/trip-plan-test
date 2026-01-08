@@ -238,21 +238,67 @@ class DataSyncFirebase {
 
     // 设置所有本地数据（优先使用统一结构）
     setAllLocalData(data) {
+        console.log('setAllLocalData 接收到的数据:', Object.keys(data), 'trip_unified_data 类型:', typeof data['trip_unified_data']);
+        
         // 优先处理统一结构数据
         if (data['trip_unified_data'] && typeof tripDataStructure !== 'undefined') {
             try {
-                const unifiedData = JSON.parse(data['trip_unified_data']);
-                tripDataStructure.saveUnifiedData(unifiedData);
+                let unifiedData = data['trip_unified_data'];
+                console.log('处理 trip_unified_data，类型:', typeof unifiedData);
+                
+                // 如果已经是对象，直接使用；如果是字符串，则解析
+                if (typeof unifiedData === 'string') {
+                    // 检查是否是无效的字符串（如 "[object Object]"）
+                    const trimmed = unifiedData.trim();
+                    if (trimmed === '[object Object]' || trimmed === '[object Object]') {
+                        console.warn('统一数据是无效的字符串 "[object Object]"');
+                        unifiedData = null;
+                    } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                        // 是有效的 JSON 字符串，尝试解析
+                        console.log('解析 JSON 字符串，长度:', unifiedData.length);
+                        unifiedData = JSON.parse(unifiedData);
+                        console.log('解析成功，数据类型:', typeof unifiedData);
+                    } else {
+                        console.warn('统一数据不是有效的 JSON 字符串:', trimmed.substring(0, 50));
+                        unifiedData = null;
+                    }
+                } else if (typeof unifiedData === 'object' && unifiedData !== null) {
+                    // 已经是对象，直接使用
+                    console.log('统一数据已经是对象，直接使用');
+                    unifiedData = unifiedData;
+                } else {
+                    console.warn('统一数据格式不正确:', typeof unifiedData);
+                    unifiedData = null;
+                }
+                
+                if (unifiedData) {
+                    console.log('保存统一数据到 localStorage');
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    console.log('保存成功');
+                } else {
+                    console.warn('统一数据为空，跳过保存');
+                }
                 // 删除统一数据键，避免重复处理
                 delete data['trip_unified_data'];
             } catch (e) {
-                console.warn('解析统一数据失败:', e);
+                console.error('解析统一数据失败:', e, '数据:', typeof data['trip_unified_data'] === 'string' ? data['trip_unified_data'].substring(0, 100) : data['trip_unified_data']);
             }
+        } else {
+            console.log('没有 trip_unified_data 或 tripDataStructure 未定义');
         }
         
         // 处理其他数据
         Object.keys(data).forEach(key => {
-            localStorage.setItem(key, data[key]);
+            // 如果值是对象，需要先转换为字符串
+            if (typeof data[key] === 'object' && data[key] !== null) {
+                try {
+                    localStorage.setItem(key, JSON.stringify(data[key]));
+                } catch (e) {
+                    console.warn(`保存数据失败 ${key}:`, e);
+                }
+            } else {
+                localStorage.setItem(key, data[key]);
+            }
         });
     }
 
@@ -335,7 +381,35 @@ class DataSyncFirebase {
             
             // 调试信息：检查数据是否为空对象
             const dataKeys = Object.keys(remoteData);
-            const hasRealData = dataKeys.some(key => key !== '_lastSync' && key !== '_syncUser');
+            console.log('从 Firebase 下载的数据键:', dataKeys);
+            
+            // 检查数据格式：可能是统一数据结构对象，也可能是包含 trip_unified_data 的对象
+            const isUnifiedDataStructure = remoteData.id && remoteData.title && remoteData.days;
+            const hasTripUnifiedData = remoteData.trip_unified_data !== undefined;
+            
+            console.log('数据格式检查:', {
+                isUnifiedDataStructure,
+                hasTripUnifiedData,
+                dataKeys
+            });
+            
+            // 如果 remoteData 本身就是统一数据结构（没有 trip_unified_data 字段）
+            let processedRemoteData = remoteData;
+            if (isUnifiedDataStructure && !hasTripUnifiedData) {
+                console.log('检测到 remoteData 本身就是统一数据结构，转换为 trip_unified_data 格式');
+                // 将整个 remoteData 包装为 trip_unified_data
+                const unifiedDataObj = { ...remoteData };
+                // 移除元数据（这些会在保存时重新添加）
+                delete unifiedDataObj._lastSync;
+                delete unifiedDataObj._syncUser;
+                // 创建新的数据结构
+                processedRemoteData = {
+                    trip_unified_data: JSON.stringify(unifiedDataObj)
+                };
+                console.log('已转换数据格式');
+            }
+            
+            const hasRealData = dataKeys.some(key => key !== '_lastSync' && key !== '_syncUser' && key !== 'trip_unified_data') || processedRemoteData.trip_unified_data;
             
             if (!hasRealData) {
                 const pathInfo = this.dbPath || '未知路径';
@@ -344,10 +418,6 @@ class DataSyncFirebase {
                     message: `云端数据为空（只有元数据）。\n\n路径: ${pathInfo}\n数据键: ${dataKeys.join(', ')}\n\n请先上传数据，然后再尝试下载。` 
                 };
             }
-
-            // 移除元数据
-            delete remoteData._lastSync;
-            delete remoteData._syncUser;
 
             if (merge) {
                 // 智能合并策略（与Gist版本相同）
@@ -373,36 +443,76 @@ class DataSyncFirebase {
                 
                 // 如果本地没有有效数据，直接使用云端数据
                 if (!hasLocalData) {
-                    this.setAllLocalData(remoteData);
-                    return { success: true, message: '同步成功！已从云端加载数据。', data: remoteData };
+                    this.setAllLocalData(processedRemoteData);
+                    return { success: true, message: '同步成功！已从云端加载数据。', data: processedRemoteData };
                 }
                 
                 // 本地有数据，使用合并策略
                 const mergedData = { ...localData };
                 
                 // 优先处理统一结构数据
-                if (remoteData['trip_unified_data'] || localData['trip_unified_data']) {
+                if (processedRemoteData['trip_unified_data'] || localData['trip_unified_data']) {
                     let localUnified = null;
                     let remoteUnified = null;
                     
                     // 安全解析本地统一数据
                     if (localData['trip_unified_data']) {
                         try {
-                            const localValue = localData['trip_unified_data'];
-                            localUnified = typeof localValue === 'string' ? JSON.parse(localValue) : localValue;
+                            let localValue = localData['trip_unified_data'];
+                            // 如果已经是对象，直接使用；如果是字符串，则解析
+                            if (typeof localValue === 'string') {
+                                // 检查是否是无效的字符串（如 "[object Object]"）
+                                const trimmed = localValue.trim();
+                                if (trimmed === '[object Object]' || trimmed === '[object Object]') {
+                                    console.warn('本地统一数据是无效的字符串 "[object Object]"');
+                                    localUnified = null;
+                                } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                                    // 是有效的 JSON 字符串，尝试解析
+                                    localUnified = JSON.parse(localValue);
+                                } else {
+                                    console.warn('本地统一数据不是有效的 JSON 字符串:', trimmed.substring(0, 50));
+                                    localUnified = null;
+                                }
+                            } else if (typeof localValue === 'object' && localValue !== null) {
+                                // 已经是对象，直接使用
+                                localUnified = localValue;
+                            } else {
+                                console.warn('本地统一数据格式不正确:', typeof localValue);
+                                localUnified = null;
+                            }
                         } catch (e) {
-                            console.warn('解析本地统一数据失败:', e);
+                            console.warn('解析本地统一数据失败:', e, '数据:', typeof localData['trip_unified_data'] === 'string' ? localData['trip_unified_data'].substring(0, 100) : localData['trip_unified_data']);
                             localUnified = null;
                         }
                     }
                     
                     // 安全解析远程统一数据
-                    if (remoteData['trip_unified_data']) {
+                    if (processedRemoteData['trip_unified_data']) {
                         try {
-                            const remoteValue = remoteData['trip_unified_data'];
-                            remoteUnified = typeof remoteValue === 'string' ? JSON.parse(remoteValue) : remoteValue;
+                            let remoteValue = processedRemoteData['trip_unified_data'];
+                            // 如果已经是对象，直接使用；如果是字符串，则解析
+                            if (typeof remoteValue === 'string') {
+                                // 检查是否是无效的字符串（如 "[object Object]"）
+                                const trimmed = remoteValue.trim();
+                                if (trimmed === '[object Object]' || trimmed === '[object Object]') {
+                                    console.warn('远程统一数据是无效的字符串 "[object Object]"');
+                                    remoteUnified = null;
+                                } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                                    // 是有效的 JSON 字符串，尝试解析
+                                    remoteUnified = JSON.parse(remoteValue);
+                                } else {
+                                    console.warn('远程统一数据不是有效的 JSON 字符串:', trimmed.substring(0, 50));
+                                    remoteUnified = null;
+                                }
+                            } else if (typeof remoteValue === 'object' && remoteValue !== null) {
+                                // 已经是对象，直接使用
+                                remoteUnified = remoteValue;
+                            } else {
+                                console.warn('远程统一数据格式不正确:', typeof remoteValue);
+                                remoteUnified = null;
+                            }
                         } catch (e) {
-                            console.warn('解析远程统一数据失败:', e);
+                            console.warn('解析远程统一数据失败:', e, '数据:', typeof processedRemoteData['trip_unified_data'] === 'string' ? processedRemoteData['trip_unified_data'].substring(0, 100) : processedRemoteData['trip_unified_data']);
                             remoteUnified = null;
                         }
                     }
@@ -412,25 +522,25 @@ class DataSyncFirebase {
                         const mergedUnified = mergeUnifiedData(localUnified, remoteUnified);
                         mergedData['trip_unified_data'] = JSON.stringify(mergedUnified);
                     } else if (remoteUnified) {
-                        // 只有远程有统一结构，使用远程的
-                        mergedData['trip_unified_data'] = remoteData['trip_unified_data'];
+                        // 只有远程有统一结构，使用远程的（确保是字符串格式）
+                        mergedData['trip_unified_data'] = typeof remoteUnified === 'object' ? JSON.stringify(remoteUnified) : processedRemoteData['trip_unified_data'];
                     } else if (localUnified) {
-                        // 只有本地有统一结构，保留本地的
-                        mergedData['trip_unified_data'] = localData['trip_unified_data'];
+                        // 只有本地有统一结构，保留本地的（确保是字符串格式）
+                        mergedData['trip_unified_data'] = typeof localUnified === 'object' ? JSON.stringify(localUnified) : localData['trip_unified_data'];
                     }
                     
                     // 删除已处理的键，避免重复处理
-                    delete remoteData['trip_unified_data'];
+                    delete processedRemoteData['trip_unified_data'];
                     delete localData['trip_unified_data'];
                 }
                 
-                Object.keys(remoteData).forEach(key => {
+                Object.keys(processedRemoteData).forEach(key => {
                     if (!localData[key]) {
-                        mergedData[key] = remoteData[key];
+                        mergedData[key] = processedRemoteData[key];
                     } else {
                         try {
                             const localValue = localData[key];
-                            const remoteValue = remoteData[key];
+                            const remoteValue = processedRemoteData[key];
                             
                             // 安全解析：如果已经是对象，直接使用；如果是字符串，则解析
                             const localParsed = typeof localValue === 'string' ? JSON.parse(localValue) : localValue;
@@ -542,6 +652,23 @@ class DataSyncFirebase {
                 this.setAllLocalData(mergedData);
             } else {
                 // 直接覆盖模式
+                console.log('覆盖模式：直接使用云端数据', remoteData);
+                // 确保 trip_unified_data 是字符串格式
+                if (remoteData['trip_unified_data']) {
+                    const unifiedData = remoteData['trip_unified_data'];
+                    if (typeof unifiedData === 'object' && unifiedData !== null) {
+                        // 如果是对象，转换为字符串
+                        remoteData['trip_unified_data'] = JSON.stringify(unifiedData);
+                        console.log('已将 trip_unified_data 从对象转换为字符串');
+                    } else if (typeof unifiedData === 'string') {
+                        // 已经是字符串，检查是否是有效的 JSON
+                        const trimmed = unifiedData.trim();
+                        if (trimmed === '[object Object]') {
+                            console.warn('云端 trip_unified_data 是无效的 "[object Object]" 字符串');
+                            delete remoteData['trip_unified_data'];
+                        }
+                    }
+                }
                 this.setAllLocalData(remoteData);
             }
             
