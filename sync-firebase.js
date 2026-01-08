@@ -382,8 +382,30 @@ class DataSyncFirebase {
                 
                 // 优先处理统一结构数据
                 if (remoteData['trip_unified_data'] || localData['trip_unified_data']) {
-                    const localUnified = localData['trip_unified_data'] ? JSON.parse(localData['trip_unified_data']) : null;
-                    const remoteUnified = remoteData['trip_unified_data'] ? JSON.parse(remoteData['trip_unified_data']) : null;
+                    let localUnified = null;
+                    let remoteUnified = null;
+                    
+                    // 安全解析本地统一数据
+                    if (localData['trip_unified_data']) {
+                        try {
+                            const localValue = localData['trip_unified_data'];
+                            localUnified = typeof localValue === 'string' ? JSON.parse(localValue) : localValue;
+                        } catch (e) {
+                            console.warn('解析本地统一数据失败:', e);
+                            localUnified = null;
+                        }
+                    }
+                    
+                    // 安全解析远程统一数据
+                    if (remoteData['trip_unified_data']) {
+                        try {
+                            const remoteValue = remoteData['trip_unified_data'];
+                            remoteUnified = typeof remoteValue === 'string' ? JSON.parse(remoteValue) : remoteValue;
+                        } catch (e) {
+                            console.warn('解析远程统一数据失败:', e);
+                            remoteUnified = null;
+                        }
+                    }
                     
                     if (remoteUnified && localUnified) {
                         // 合并两个统一结构
@@ -410,8 +432,9 @@ class DataSyncFirebase {
                             const localValue = localData[key];
                             const remoteValue = remoteData[key];
                             
-                            const localParsed = JSON.parse(localValue);
-                            const remoteParsed = JSON.parse(remoteValue);
+                            // 安全解析：如果已经是对象，直接使用；如果是字符串，则解析
+                            const localParsed = typeof localValue === 'string' ? JSON.parse(localValue) : localValue;
+                            const remoteParsed = typeof remoteValue === 'string' ? JSON.parse(remoteValue) : remoteValue;
                             
                             if (Array.isArray(localParsed) && Array.isArray(remoteParsed)) {
                                 // 处理软删除：移除本地已删除的项（如果远程也标记为删除）
@@ -524,7 +547,21 @@ class DataSyncFirebase {
             
             return { success: true, message: '同步成功！数据已更新。', data: remoteData };
         } catch (error) {
-            return { success: false, message: `下载失败: ${error.message}` };
+            // 安全处理错误信息
+            let errorMessage = '下载失败';
+            if (error) {
+                if (typeof error === 'string') {
+                    errorMessage = `下载失败: ${error}`;
+                } else if (error.message) {
+                    errorMessage = `下载失败: ${error.message}`;
+                } else if (error.toString && error.toString() !== '[object Object]') {
+                    errorMessage = `下载失败: ${error.toString()}`;
+                } else {
+                    errorMessage = '下载失败: 未知错误';
+                }
+            }
+            console.error('下载失败:', error);
+            return { success: false, message: errorMessage };
         }
     }
 

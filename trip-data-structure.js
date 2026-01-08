@@ -30,7 +30,6 @@ function initializeTripDataStructure(originalData) {
                 comments: [],
                 spend: null,
                 order: itemIndex,
-                _deleted: false,
                 _createdAt: new Date().toISOString(),
                 _updatedAt: new Date().toISOString()
             })),
@@ -56,8 +55,7 @@ function normalizePlan(plan) {
                     _text: p,
                     _hash: null,
                     _timestamp: Date.now(),
-                    _user: null,
-                    _deleted: false
+                    _user: null
                 };
             }
             return p;
@@ -93,6 +91,19 @@ async function migrateToUnifiedStructure(originalData, force = false) {
     // 迁移每个day的数据（合并最新的分散数据）
     for (const day of unifiedData.days) {
         const dayId = day.id;
+        
+        // 确保所有item都有images字段（如果缺失则初始化）
+        day.items.forEach((item, index) => {
+            if (!item.hasOwnProperty('images')) {
+                item.images = [];
+            }
+            if (!item.hasOwnProperty('comments')) {
+                item.comments = [];
+            }
+            if (!item.hasOwnProperty('spend')) {
+                item.spend = null;
+            }
+        });
         
         // 迁移标签（如果统一数据中没有或分散数据更新）
         day.items.forEach((item, index) => {
@@ -191,7 +202,6 @@ async function migrateToUnifiedStructure(originalData, force = false) {
                         spend: customItem.spend || null,
                         order: customItem.order !== undefined ? customItem.order : day.items.length,
                         isCustom: true,
-                        _deleted: false,
                         _createdAt: customItem._createdAt || new Date().toISOString(),
                         _updatedAt: customItem._updatedAt || new Date().toISOString()
                     };
@@ -317,24 +327,89 @@ function cleanupDeletedData(data) {
     data.days.forEach(day => {
         if (day.items) {
             const originalLength = day.items.length;
-            // 过滤掉已删除的项
-            day.items = day.items.filter(item => !item._deleted);
-            cleanedCount += originalLength - day.items.length;
+            // 过滤掉已删除的项，同时移除_deleted字段
+            day.items = day.items.filter(item => {
+                if (item._deleted) {
+                    cleanedCount++;
+                    return false;
+                }
+                // 移除_deleted字段（如果存在）
+                if ('_deleted' in item) {
+                    delete item._deleted;
+                }
+                // 确保所有必需字段都存在
+                if (!item.hasOwnProperty('images')) {
+                    item.images = [];
+                }
+                if (!item.hasOwnProperty('comments')) {
+                    item.comments = [];
+                }
+                if (!item.hasOwnProperty('spend')) {
+                    item.spend = null;
+                }
+                return true;
+            });
             
-            // 清理plan中的已删除项
+            // 清理plan中的已删除项，同时移除_deleted字段
             day.items.forEach(item => {
                 if (item.plan && Array.isArray(item.plan)) {
                     const originalPlanLength = item.plan.length;
-                    item.plan = item.plan.filter(p => !p._deleted);
-                    cleanedCount += originalPlanLength - item.plan.length;
+                    item.plan = item.plan.filter(p => {
+                        if (typeof p === 'object' && p._deleted) {
+                            cleanedCount++;
+                            return false;
+                        }
+                        // 移除_deleted字段（如果存在）
+                        if (typeof p === 'object' && '_deleted' in p) {
+                            delete p._deleted;
+                        }
+                        return true;
+                    });
                 }
             });
         }
     });
     
     if (cleanedCount > 0) {
-        console.log(`🧹 清理了 ${cleanedCount} 个已删除的项`);
+        console.log(`🧹 清理了 ${cleanedCount} 个已删除的项（兼容旧数据）`);
+        // 保存清理后的数据
+        saveUnifiedData(data);
     }
+}
+
+// 恢复被标记为删除的项（移除_deleted标记）
+function restoreDeletedItems(data) {
+    if (!data || !data.days) return false;
+    
+    let restoredCount = 0;
+    data.days.forEach(day => {
+        if (day.items) {
+            day.items.forEach(item => {
+                if (item._deleted) {
+                    delete item._deleted;
+                    item._updatedAt = new Date().toISOString();
+                    restoredCount++;
+                }
+                // 确保所有必需字段都存在
+                if (!item.hasOwnProperty('images')) {
+                    item.images = [];
+                }
+                if (!item.hasOwnProperty('comments')) {
+                    item.comments = [];
+                }
+                if (!item.hasOwnProperty('spend')) {
+                    item.spend = null;
+                }
+            });
+        }
+    });
+    
+    if (restoredCount > 0) {
+        console.log(`✅ 恢复了 ${restoredCount} 个被标记为删除的项`);
+        saveUnifiedData(data);
+        return true;
+    }
+    return false;
 }
 
 // 加载统一数据
@@ -393,7 +468,6 @@ function addItemData(unifiedData, dayId, itemData) {
         spend: itemData.spend || null,
         order: day.items.length,
         isCustom: true,
-        _deleted: false,
         _createdAt: new Date().toISOString(),
         _updatedAt: new Date().toISOString()
     };
@@ -403,13 +477,16 @@ function addItemData(unifiedData, dayId, itemData) {
     return newItem;
 }
 
-// 删除item（软删除）
+// 删除item（硬删除）
 function deleteItemData(unifiedData, dayId, itemId) {
-    const item = getItemData(unifiedData, dayId, itemId);
-    if (!item) return false;
+    const day = getDayData(unifiedData, dayId);
+    if (!day || !day.items) return false;
     
-    item._deleted = true;
-    item._updatedAt = new Date().toISOString();
+    const itemIndex = day.items.findIndex(item => item.id === itemId);
+    if (itemIndex === -1) return false;
+    
+    // 真正从数组中删除
+    day.items.splice(itemIndex, 1);
     saveUnifiedData(unifiedData);
     return true;
 }
@@ -436,6 +513,7 @@ window.tripDataStructure = {
     normalizePlan,
     getUnifiedDataSize,
     cleanupDeletedData,
+    restoreDeletedItems,
     DATA_STRUCTURE_VERSION
 };
 
