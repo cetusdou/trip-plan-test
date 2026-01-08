@@ -22,24 +22,52 @@ function mergeUnifiedData(localData, remoteData) {
                 itemMap.set(item.id, { ...item });
             });
             
+            // 获取本地所有 item IDs（包括已删除的，用于判断哪些是本地删除的）
+            const localItemIds = new Set((localDay.items || []).map(item => item.id));
+            
             // 合并远程items
             (remoteDay.items || []).forEach(remoteItem => {
                 const localItem = itemMap.get(remoteItem.id);
                 if (localItem) {
-                    // 合并item属性（优先使用更新的）
+                    // 本地有这个 item，合并属性
                     const localUpdated = new Date(localItem._updatedAt || 0);
                     const remoteUpdated = new Date(remoteItem._updatedAt || 0);
                     if (remoteUpdated > localUpdated) {
-                        // 远程更新，使用远程数据
-                        itemMap.set(remoteItem.id, { ...remoteItem });
+                        // 远程更新，使用远程数据，但合并comments、images和plan（保留远程删除的项）
+                        remoteItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
+                        remoteItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
+                        remoteItem.plan = mergePlanItems(localItem.plan || [], remoteItem.plan || []);
+                        itemMap.set(remoteItem.id, remoteItem);
                     } else {
-                        // 本地更新，保留本地数据，但合并comments和images
+                        // 本地更新，保留本地数据，但合并comments、images和plan
+                        // 对于 plan：如果本地更新，以本地为准（包括删除），只添加远程中本地没有的新项
                         localItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
                         localItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
+                        // plan 合并：本地为主，只添加远程中本地没有的新项（不恢复本地已删除的）
+                        localItem.plan = mergePlanItemsWithLocalPriority(localItem.plan || [], remoteItem.plan || []);
                         itemMap.set(remoteItem.id, localItem);
                     }
                 } else {
-                    // 远程有新item，添加
+                    // 本地没有这个 item
+                    // 判断：如果本地 day 有 _lastSync 且比远程 item 的 _updatedAt 新，说明本地有更新，可能删除了这个 item
+                    // 为了安全，我们只添加远程中明显是新增的 item（更新时间比本地最后同步时间新）
+                    const localDayLastSync = new Date(localDay._lastSync || localData._lastSync || 0);
+                    const remoteItemUpdated = new Date(remoteItem._updatedAt || 0);
+                    
+                    // 如果本地最后同步时间存在且比远程 item 更新时间新，说明本地有更新，可能删除了这个 item
+                    // 在这种情况下，不恢复远程的 item（保留本地的删除操作）
+                    // 或者，如果本地 item 数量少于远程，说明本地可能删除了某些项，不恢复
+                    const localItemCount = (localDay.items || []).length;
+                    const remoteItemCount = (remoteDay.items || []).length;
+                    const hasLocalUpdates = localDayLastSync > 0 && localItemCount < remoteItemCount;
+                    
+                    if (hasLocalUpdates && remoteItemUpdated <= localDayLastSync) {
+                        // 不添加：可能是本地删除的，或者本地没有这个 item
+                        console.log(`跳过恢复远程 item ${remoteItem.id}，本地有更新（最后同步: ${localDayLastSync.toISOString()}, 本地item数: ${localItemCount}, 远程item数: ${remoteItemCount}）`);
+                        return; // 跳过这个 item
+                    }
+                    
+                    // 远程 item 是新的（在本地最后同步之后创建的），添加它
                     itemMap.set(remoteItem.id, { ...remoteItem });
                 }
             });
@@ -61,23 +89,143 @@ function mergeUnifiedData(localData, remoteData) {
     };
 }
 
-// 合并留言数组（使用哈希值去重）
+// 合并留言数组（使用哈希值去重，相同哈希值以最新的为准）
 function mergeComments(localComments, remoteComments) {
     const commentMap = new Map();
+    
+    // 先添加本地留言
     localComments.forEach(c => {
-        if (c._hash) commentMap.set(c._hash, c);
-    });
-    remoteComments.forEach(c => {
-        if (c._hash && !commentMap.has(c._hash)) {
+        if (c._hash) {
             commentMap.set(c._hash, c);
+        } else {
+            // 没有哈希值的也保留（向后兼容）
+            const tempHash = `temp_${Date.now()}_${Math.random()}`;
+            commentMap.set(tempHash, c);
         }
     });
+    
+    // 合并远程留言
+    remoteComments.forEach(c => {
+        if (c._hash) {
+            const existing = commentMap.get(c._hash);
+            if (existing) {
+                // 哈希值相同，比较时间戳，保留最新的
+                const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
+                const remoteTime = new Date(c._timestamp || c._updatedAt || 0);
+                if (remoteTime > localTime) {
+                    commentMap.set(c._hash, c);
+                }
+                // 否则保留本地的（已存在）
+            } else {
+                // 哈希值不同，添加新的
+                commentMap.set(c._hash, c);
+            }
+        } else {
+            // 没有哈希值的也保留（向后兼容）
+            const tempHash = `temp_${Date.now()}_${Math.random()}`;
+            commentMap.set(tempHash, c);
+        }
+    });
+    
     return Array.from(commentMap.values());
 }
 
 // 合并数组（去重）
 function mergeArrays(localArray, remoteArray) {
     return Array.from(new Set([...localArray, ...remoteArray]));
+}
+
+// 合并 plan 项数组（使用哈希值去重，相同哈希值以最新的为准）
+function mergePlanItems(localPlans, remotePlans) {
+    const planMap = new Map();
+    
+    // 先添加本地 plan 项
+    localPlans.forEach(p => {
+        // plan 项可能是字符串或对象
+        const planObj = typeof p === 'string' ? { _text: p } : p;
+        if (planObj._hash) {
+            planMap.set(planObj._hash, planObj);
+        } else {
+            // 没有哈希值的也保留（向后兼容），使用文本作为临时键
+            const tempKey = planObj._text || JSON.stringify(planObj);
+            planMap.set(tempKey, planObj);
+        }
+    });
+    
+    // 合并远程 plan 项
+    remotePlans.forEach(p => {
+        const planObj = typeof p === 'string' ? { _text: p } : p;
+        if (planObj._hash) {
+            const existing = planMap.get(planObj._hash);
+            if (existing) {
+                // 哈希值相同，比较时间戳，保留最新的
+                const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
+                const remoteTime = new Date(planObj._timestamp || planObj._updatedAt || 0);
+                if (remoteTime > localTime) {
+                    planMap.set(planObj._hash, planObj);
+                }
+                // 否则保留本地的（已存在）
+            } else {
+                // 哈希值不同，添加新的
+                planMap.set(planObj._hash, planObj);
+            }
+        } else {
+            // 没有哈希值的也保留（向后兼容），使用文本作为临时键
+            const tempKey = planObj._text || JSON.stringify(planObj);
+            const existing = planMap.get(tempKey);
+            if (existing) {
+                // 比较时间戳，保留最新的
+                const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
+                const remoteTime = new Date(planObj._timestamp || planObj._updatedAt || 0);
+                if (remoteTime > localTime) {
+                    planMap.set(tempKey, planObj);
+                }
+            } else {
+                planMap.set(tempKey, planObj);
+            }
+        }
+    });
+    
+    return Array.from(planMap.values());
+}
+
+// 合并 plan 项数组（本地优先：以本地为准，只添加远程中本地没有的新项）
+// 用于本地 item 更新时，确保本地删除的项不会被远程恢复
+function mergePlanItemsWithLocalPriority(localPlans, remotePlans) {
+    const planMap = new Map();
+    
+    // 先添加本地 plan 项（本地为主）
+    localPlans.forEach(p => {
+        // plan 项可能是字符串或对象
+        const planObj = typeof p === 'string' ? { _text: p } : p;
+        if (planObj._hash) {
+            planMap.set(planObj._hash, planObj);
+        } else {
+            // 没有哈希值的也保留（向后兼容），使用文本作为临时键
+            const tempKey = planObj._text || JSON.stringify(planObj);
+            planMap.set(tempKey, planObj);
+        }
+    });
+    
+    // 只添加远程中本地没有的新项（不恢复本地已删除的）
+    remotePlans.forEach(p => {
+        const planObj = typeof p === 'string' ? { _text: p } : p;
+        if (planObj._hash) {
+            // 如果本地没有这个哈希值，说明是远程新增的，添加它
+            if (!planMap.has(planObj._hash)) {
+                planMap.set(planObj._hash, planObj);
+            }
+            // 如果本地已有，说明本地保留了它（或本地有更新的版本），不覆盖
+        } else {
+            // 没有哈希值的也检查（向后兼容），使用文本作为临时键
+            const tempKey = planObj._text || JSON.stringify(planObj);
+            if (!planMap.has(tempKey)) {
+                planMap.set(tempKey, planObj);
+            }
+        }
+    });
+    
+    return Array.from(planMap.values());
 }
 
 class DataSyncFirebase {
@@ -302,7 +450,129 @@ class DataSyncFirebase {
         });
     }
 
-    // 上传数据到云端（带防抖）
+    // 上传单个卡片到云端（部分更新）
+    async uploadItem(dayId, itemId) {
+        try {
+            if (!this.isConfigured()) {
+                throw new Error('Firebase未初始化，请先配置');
+            }
+            
+            // 检查写权限
+            if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
+                throw new Error('未登录，无法上传数据');
+            }
+            
+            if (typeof tripDataStructure === 'undefined') {
+                throw new Error('统一数据结构未加载');
+            }
+            
+            // 获取统一数据
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (!unifiedData) {
+                throw new Error('本地没有数据');
+            }
+            
+            // 获取要上传的 item
+            const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+            if (!item) {
+                // 如果 item 不存在，说明被删除了，需要从云端删除
+                const snapshot = await this.get(this.databaseRef);
+                const remoteData = snapshot.val() || {};
+                
+                if (remoteData.trip_unified_data) {
+                    let remoteUnified = remoteData.trip_unified_data;
+                    if (typeof remoteUnified === 'string') {
+                        remoteUnified = JSON.parse(remoteUnified);
+                    }
+                    
+                    // 从远程数据中删除这个 item
+                    const remoteDay = remoteUnified.days?.find(d => d.id === dayId);
+                    if (remoteDay && remoteDay.items) {
+                        const itemIndex = remoteDay.items.findIndex(i => i.id === itemId);
+                        if (itemIndex !== -1) {
+                            remoteDay.items.splice(itemIndex, 1);
+                            // 更新远程数据
+                            remoteData.trip_unified_data = JSON.stringify(remoteUnified);
+                            remoteData._lastSync = new Date().toISOString();
+                            remoteData._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
+                            await this.set(this.databaseRef, remoteData);
+                            return { success: true, message: `已删除卡片 ${itemId}` };
+                        }
+                    }
+                }
+                return { success: false, message: '未找到要删除的卡片' };
+            }
+            
+            // 直接上传，不进行下载合并
+            console.log(`上传卡片 ${itemId}...`);
+            
+            // 获取远程数据
+            const snapshot = await this.get(this.databaseRef);
+            const remoteData = snapshot.val() || {};
+            
+            // 解析远程统一数据
+            let remoteUnified = null;
+            if (remoteData.trip_unified_data) {
+                const unifiedStr = remoteData.trip_unified_data;
+                if (typeof unifiedStr === 'string') {
+                    remoteUnified = JSON.parse(unifiedStr);
+                } else {
+                    remoteUnified = unifiedStr;
+                }
+            }
+            
+            // 如果远程没有统一数据，使用本地数据结构
+            if (!remoteUnified) {
+                remoteUnified = {
+                    id: unifiedData.id || 'trip_plan',
+                    title: unifiedData.title || '行程计划',
+                    days: []
+                };
+            }
+            
+            // 找到或创建对应的 day
+            let remoteDay = remoteUnified.days?.find(d => d.id === dayId);
+            if (!remoteDay) {
+                remoteDay = {
+                    id: dayId,
+                    items: []
+                };
+                if (!remoteUnified.days) {
+                    remoteUnified.days = [];
+                }
+                remoteUnified.days.push(remoteDay);
+            }
+            
+            // 更新或添加 item
+            if (!remoteDay.items) {
+                remoteDay.items = [];
+            }
+            const existingItemIndex = remoteDay.items.findIndex(i => i.id === itemId);
+            if (existingItemIndex !== -1) {
+                // 更新现有 item
+                remoteDay.items[existingItemIndex] = { ...item };
+            } else {
+                // 添加新 item
+                remoteDay.items.push({ ...item });
+            }
+            
+            // 保存到远程
+            remoteData.trip_unified_data = JSON.stringify(remoteUnified);
+            remoteData._lastSync = new Date().toISOString();
+            remoteData._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
+            
+            await this.set(this.databaseRef, remoteData);
+            
+            return { 
+                success: true, 
+                message: `已上传卡片 ${itemId}` 
+            };
+        } catch (error) {
+            return { success: false, message: `上传卡片失败: ${error.message}` };
+        }
+    }
+
+    // 上传数据到云端（带防抖，上传前先下载并合并）
     async upload(immediate = false) {
         // 如果不是立即上传，使用防抖
         if (!immediate && this.uploadDebounceTimer) {
@@ -319,6 +589,19 @@ class DataSyncFirebase {
                     // 检查写权限
                     if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
                         throw new Error('未登录，无法上传数据');
+                    }
+
+                    // 上传前先下载并合并数据，防止冲突
+                    console.log('上传前先下载并合并数据...');
+                    try {
+                        const downloadResult = await this.download(true); // 使用合并模式下载
+                        if (downloadResult.success) {
+                            console.log('下载并合并成功，准备上传合并后的数据');
+                        } else {
+                            console.warn('下载失败，继续使用本地数据上传:', downloadResult.message);
+                        }
+                    } catch (downloadError) {
+                        console.warn('上传前下载失败，继续使用本地数据上传:', downloadError);
                     }
 
                     const data = this.getAllLocalData();

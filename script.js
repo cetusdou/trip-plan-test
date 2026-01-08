@@ -560,6 +560,8 @@ class CardSlider {
         this.cards = cards;
         // 使用 Map 存储卡片展开状态（基于 itemId，不保存到 localStorage）
         this.cardExpandedStates = new Map();
+        // 使用 Map 存储正在编辑的卡片数据（临时存储，编辑结束时一次性保存）
+        this.editingCards = new Map(); // key: itemId, value: { cardIndex, pendingUpdates }
         this.dayId = dayId;
         this.sortMode = false; // 排序模式：false=普通查看模式，true=排序模式（显示上下箭头）
         this.init();
@@ -905,10 +907,21 @@ class CardSlider {
                             }
                             return true;
                         })
-                        .map((planItem, planIndex) => {
+                        .map((planItem, filteredIndex) => {
                         // 支持新旧两种格式：字符串或对象
                         const planItemText = typeof planItem === 'string' ? planItem : (planItem._text || planItem);
                         const planHash = (typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
+                        // 使用原始数组中的索引（不是过滤后的索引）
+                        const originalPlanItems = Array.isArray(cardData.plan) ? cardData.plan : (cardData.plan ? [cardData.plan] : []);
+                        const originalIndex = originalPlanItems.findIndex(p => {
+                            if (typeof p === 'string' && typeof planItem === 'string') {
+                                return p === planItem;
+                            } else if (typeof p === 'object' && typeof planItem === 'object') {
+                                return p._hash === planItem._hash || (p._text === planItem._text && !p._hash && !planItem._hash);
+                            }
+                            return false;
+                        });
+                        const planIndex = originalIndex !== -1 ? originalIndex : filteredIndex;
                         const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex, itemId);
                         const planItemLikeCount = (planItemLikes.mrb ? 1 : 0) + (planItemLikes.djy ? 1 : 0);
                     return `
@@ -1091,6 +1104,10 @@ class CardSlider {
                 // 时间输入框失去焦点时保存
                 timeInput.addEventListener('blur', () => {
                     const newTime = timeInput.value;
+                    const cardData = this.cards[index];
+                    if (!cardData) return;
+                    
+                    const itemId = cardData.id;
                     if (newTime) {
                         // 格式化时间为 HH:mm
                         const formattedTime = this.formatTimeForDisplay(newTime);
@@ -1098,23 +1115,12 @@ class CardSlider {
                         timeDisplay.style.color = ''; // 移除灰色，恢复正常颜色
                         timeDisplay.title = '点击编辑时间';
                         
-                        // 保存到统一结构
-                        const cardData = this.cards[index];
-                        if (cardData) {
-                            cardData.time = formattedTime;
-                            
-                            const itemId = cardData.id;
-                            if (itemId && typeof tripDataStructure !== 'undefined') {
-                                const unifiedData = tripDataStructure.loadUnifiedData();
-                                if (unifiedData) {
-                                    const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                                    if (item) {
-                                        item.time = formattedTime;
-                                        item._updatedAt = new Date().toISOString();
-                                        tripDataStructure.saveUnifiedData(unifiedData);
-                                        triggerImmediateUpload();
-                                    }
-                                }
+                        // 使用统一的更新方法
+                        if (itemId) {
+                            this.updateCardData(itemId, { time: formattedTime });
+                            // 编辑结束后触发同步
+                            if (typeof triggerImmediateUpload === 'function') {
+                                triggerImmediateUpload();
                             }
                         }
                     } else {
@@ -1123,22 +1129,14 @@ class CardSlider {
                         timeDisplay.style.color = '#999';
                         timeDisplay.title = '点击添加时间';
                         
-                        // 同时清除cardData中的time
-                        const cardData = this.cards[index];
-                        if (cardData) {
-                            cardData.time = '';
-                            const itemId = cardData.id;
-                            if (itemId && typeof tripDataStructure !== 'undefined') {
-                                const unifiedData = tripDataStructure.loadUnifiedData();
-                                if (unifiedData) {
-                                    const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                                    if (item) {
-                                        item.time = '';
-                                        item._updatedAt = new Date().toISOString();
-                                        tripDataStructure.saveUnifiedData(unifiedData);
-                                        triggerImmediateUpload();
-                                    }
-                                }
+                        // 使用统一的更新方法
+                        if (itemId) {
+                            this.updateCardData(itemId, { time: '' });
+                            // 只上传这个 item，不进行全量上传
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                    console.error('上传 item 失败:', error);
+                                });
                             }
                         }
                     }
@@ -1178,22 +1176,17 @@ class CardSlider {
                     if (newCategory) {
                         categoryDisplay.textContent = newCategory;
                         
-                        // 保存到统一结构
+                        // 使用统一的更新方法
                         const cardData = this.cards[index];
                         if (cardData) {
-                            cardData.category = newCategory;
-                            
                             const itemId = cardData.id;
-                            if (itemId && typeof tripDataStructure !== 'undefined') {
-                                const unifiedData = tripDataStructure.loadUnifiedData();
-                                if (unifiedData) {
-                                    const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                                    if (item) {
-                                        item.category = newCategory;
-                                        item._updatedAt = new Date().toISOString();
-                                        tripDataStructure.saveUnifiedData(unifiedData);
-                                        triggerImmediateUpload();
-                                    }
+                            if (itemId) {
+                                this.updateCardData(itemId, { category: newCategory });
+                                // 只上传这个 item，不进行全量上传
+                                if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                        console.error('上传 item 失败:', error);
+                                    });
                                 }
                             }
                         }
@@ -1232,22 +1225,17 @@ class CardSlider {
                     const newNote = noteInput.value.trim();
                     noteDisplay.innerHTML = this.escapeHtmlKeepBr(newNote || '');
                     
-                    // 保存到统一结构
+                    // 使用统一的更新方法
                     const cardData = this.cards[index];
                     if (cardData) {
-                        cardData.note = newNote;
-                        
                         const itemId = cardData.id;
-                        if (itemId && typeof tripDataStructure !== 'undefined') {
-                            const unifiedData = tripDataStructure.loadUnifiedData();
-                            if (unifiedData) {
-                                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                                if (item) {
-                                    item.note = newNote;
-                                    item._updatedAt = new Date().toISOString();
-                                    tripDataStructure.saveUnifiedData(unifiedData);
-                                    triggerImmediateUpload();
-                                }
+                        if (itemId) {
+                            this.updateCardData(itemId, { note: newNote });
+                            // 只上传这个 item，不进行全量上传
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                    console.error('上传 item 失败:', error);
+                                });
                             }
                         }
                     }
@@ -1738,7 +1726,25 @@ class CardSlider {
                                 const success = tripDataStructure.deleteItemData(unifiedData, this.dayId, itemId);
                                 if (success) {
                                     tripDataStructure.saveUnifiedData(unifiedData);
-                                    triggerImmediateUpload();
+                                    // 只上传被删除的卡片（部分更新）
+                                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                        dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
+                                            if (result.success) {
+                                                console.log('卡片删除已同步到云端:', result.message);
+                                            } else {
+                                                console.warn('卡片删除同步失败:', result.message);
+                                                // 如果部分更新失败，回退到全量上传
+                                                triggerImmediateUpload();
+                                            }
+                                        }).catch(error => {
+                                            console.error('卡片删除同步出错:', error);
+                                            // 如果部分更新失败，回退到全量上传
+                                            triggerImmediateUpload();
+                                        });
+                                    } else {
+                                        // 如果部分更新方法不可用，使用全量上传
+                                        triggerImmediateUpload();
+                                    }
                                     // 重新渲染当前视图，而不是重新加载整个day
                                     this.cards = this.cards.filter(c => c.id !== itemId);
                                     this.renderCards();
@@ -1773,9 +1779,9 @@ class CardSlider {
                 const planIndex = parseInt(btn.dataset.planIndex);
                 const planHash = btn.dataset.planHash || null;
                 const cardIndex = parseInt(btn.dataset.cardIndex);
-                if (confirm('确定要删除这个计划项吗？')) {
-                    this.deletePlanItem(cardIndex, planIndex, planHash);
-                }
+                const itemId = btn.dataset.itemId || null;
+                // 直接删除，不需要确认
+                this.deletePlanItem(cardIndex, planIndex, planHash, itemId);
             });
             
             // 也处理触摸事件
@@ -1786,9 +1792,9 @@ class CardSlider {
                 const planIndex = parseInt(btn.dataset.planIndex);
                 const planHash = btn.dataset.planHash || null;
                 const cardIndex = parseInt(btn.dataset.cardIndex);
-                if (confirm('确定要删除这个计划项吗？')) {
-                    this.deletePlanItem(cardIndex, planIndex, planHash);
-                }
+                const itemId = btn.dataset.itemId || null;
+                // 直接删除，不需要确认
+                this.deletePlanItem(cardIndex, planIndex, planHash, itemId);
             });
         });
         
@@ -1935,16 +1941,15 @@ class CardSlider {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                if (confirm('确定要删除这条留言吗？')) {
-                    const commentHash = btn.dataset.commentHash;
-                    if (commentHash) {
-                        const itemId = card.dataset.itemId || null;
-                        await this.deleteComment(this.dayId, index, commentHash, itemId);
-                        // 重新渲染
-                        this.renderCards();
-                        // 重新绑定事件
-                        this.attachCardEventsForAll();
-                    }
+                // 直接删除，不需要确认
+                const commentHash = btn.dataset.commentHash;
+                if (commentHash) {
+                    const itemId = card.dataset.itemId || null;
+                    await this.deleteComment(this.dayId, index, commentHash, itemId);
+                    // 重新渲染
+                    this.renderCards();
+                    // 重新绑定事件
+                    this.attachCardEventsForAll();
                 }
             });
         });
@@ -2182,7 +2187,12 @@ class CardSlider {
                     item.comments = comments;
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
-                    triggerImmediateUpload();
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                        dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    }
                     return;
                 }
             }
@@ -2191,7 +2201,10 @@ class CardSlider {
         // 回退到旧的存储方式
         const key = `trip_comments_${dayId}_${itemIndex}`;
         localStorage.setItem(key, JSON.stringify(comments));
-        triggerImmediateUpload();
+        // 如果无法使用统一结构，回退到全量上传
+        if (typeof triggerImmediateUpload === 'function') {
+            triggerImmediateUpload();
+        }
     }
     
     // 获取留言
@@ -2471,8 +2484,12 @@ class CardSlider {
                     // 重新绑定事件
                     this.attachCardEventsForAll();
                     
-                    // 立即触发上传
-                    triggerImmediateUpload();
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    }
                     return;
                 }
             }
@@ -2624,13 +2641,119 @@ class CardSlider {
     }
     
     // 删除计划项（硬删除，使用哈希或索引）
-    deletePlanItem(cardIndex, planIndex, planHash = null) {
+    deletePlanItem(cardIndex, planIndex, planHash = null, itemId = null) {
         // 检查写权限
-        if (!checkWritePermission()) return;
+        if (!checkWritePermission()) {
+            console.warn('删除 plan 项失败：没有写权限');
+            return;
+        }
         
         const card = this.cards[cardIndex];
-        if (!card) return;
+        if (!card) {
+            console.warn('删除 plan 项失败：找不到卡片，cardIndex:', cardIndex);
+            return;
+        }
         
+        console.log('删除 plan 项:', { cardIndex, planIndex, planHash, itemId, dayId: this.dayId });
+        
+        // 优先使用统一数据结构
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    let planItems = Array.isArray(item.plan) ? [...item.plan] : (item.plan ? [item.plan] : []);
+                    console.log('当前 plan 项数量:', planItems.length, 'plan 项:', planItems);
+                    
+                    // 优先使用哈希值查找（最可靠）
+                    let targetIndex = -1;
+                    if (planHash && planHash.trim() !== '') {
+                        console.log('使用哈希查找:', planHash);
+                        targetIndex = planItems.findIndex(p => {
+                            if (typeof p === 'object' && p._hash === planHash) {
+                                return true;
+                            }
+                            return false;
+                        });
+                        console.log('哈希查找结果:', targetIndex);
+                    }
+                    
+                    // 如果哈希找不到，使用索引
+                    if (targetIndex === -1) {
+                        console.log('哈希找不到，使用索引:', planIndex);
+                        targetIndex = planIndex;
+                    }
+                    
+                    // 检查索引是否有效
+                    console.log('目标索引:', targetIndex, 'plan 项长度:', planItems.length);
+                    if (targetIndex >= 0 && targetIndex < planItems.length) {
+                        console.log('准备删除索引', targetIndex, '的 plan 项:', planItems[targetIndex]);
+                        // 真正从数组中删除
+                        planItems.splice(targetIndex, 1);
+                        console.log('删除后 plan 项数量:', planItems.length);
+                        
+                        // 确保 plan 是数组格式
+                        if (!Array.isArray(planItems)) {
+                            planItems = planItems.length > 0 ? [planItems] : [];
+                        }
+                        
+                        // 使用 updateItemData 更新统一数据结构
+                        const updateSuccess = tripDataStructure.updateItemData(unifiedData, this.dayId, itemId, { plan: planItems });
+                        console.log('更新统一数据结构结果:', updateSuccess);
+                        
+                        if (updateSuccess) {
+                            // 更新本地 card 数据
+                            card.plan = planItems;
+                            
+                            // 保存当前滚动位置
+                            const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const cardElement = this.container.querySelector(`.card[data-index="${cardIndex}"]`);
+                            const cardScrollTop = cardElement ? cardElement.scrollTop : 0;
+                            
+                            // 重新渲染
+                            this.renderCards();
+                            this.attachCardEventsForAll();
+                            
+                            // 恢复滚动位置
+                            requestAnimationFrame(() => {
+                                window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
+                                const newCard = this.container.querySelector(`.card[data-index="${cardIndex}"]`);
+                                if (newCard) {
+                                    newCard.scrollTop = cardScrollTop;
+                                }
+                            });
+                            
+                            // 只上传这个 item，不进行全量上传
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
+                                    if (result.success) {
+                                        console.log('plan 项删除已同步到云端:', result.message);
+                                    } else {
+                                        console.warn('plan 项删除同步失败:', result.message);
+                                    }
+                                }).catch(error => {
+                                    console.error('plan 项删除同步出错:', error);
+                                });
+                            }
+                            console.log('plan 项删除成功');
+                            return;
+                        } else {
+                            console.error('更新统一数据结构失败');
+                        }
+                    } else {
+                        console.error('索引无效:', targetIndex, 'plan 项长度:', planItems.length);
+                    }
+                } else {
+                    console.warn('删除 plan 项失败：找不到 item，itemId:', itemId);
+                }
+            } else {
+                console.warn('删除 plan 项失败：统一数据不存在');
+            }
+        } else {
+            console.warn('删除 plan 项失败：itemId 为空或 tripDataStructure 未定义', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+        }
+        
+        // 回退到旧方法（兼容旧数据）
         // 获取plan数组
         if (!card.plan) {
             card.plan = [];
@@ -2674,11 +2797,15 @@ class CardSlider {
         
         // 重新渲染
         this.renderCards();
-                // 重新绑定事件
+        // 重新绑定事件
         this.attachCardEventsForAll();
         
         // 自动同步
-        autoSyncToGist();
+        if (typeof triggerImmediateUpload === 'function') {
+            triggerImmediateUpload();
+        } else if (typeof autoSyncToGist === 'function') {
+            autoSyncToGist();
+        }
     }
     
     // 拖拽开始（排序模式）

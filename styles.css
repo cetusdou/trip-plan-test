@@ -220,14 +220,16 @@ body {
     background: rgba(255, 255, 255, 0.2);
     color: white;
     border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 18px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
     height: 28px;
+    min-width: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
 }
 
 .btn-logout:hover {
@@ -331,9 +333,10 @@ body {
 .day-header-actions {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap; /* 不换行，保持在一行 */
     justify-content: flex-start;
     align-items: stretch; /* 确保所有按钮高度一致 */
+    width: 100%;
 }
 
 .filter-panel {
