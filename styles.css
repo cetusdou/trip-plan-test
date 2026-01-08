@@ -9,15 +9,17 @@
 /* 页面基础样式 */
 html {
     background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    background-attachment: fixed; 
     min-height: 100%;
 }
 
 body {
     background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
-    background-attachment: fixed; /* 固定背景，防止滚动时出现跳变 */
+    background-attachment: fixed; 
     color: #333;
     line-height: 1.6;
     padding: 10px;
+    padding-top: 60px; /* 为顶部固定栏留出空间 */
     min-height: 100vh;
 }
 
@@ -107,40 +109,102 @@ body {
     color: #4a8f2a;
 }
 
-/* 已登录用户显示 */
-.user-selector {
-    background: white;
-    border-radius: 12px;
-    padding: 15px 20px;
-    margin-bottom: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+/* 已登录用户显示和数据同步（合并） */
+.user-sync-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background:linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); 
+    padding: 6px 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.user-sync-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
     gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
 }
 
-.user-selector-label {
-    font-size: 14px;
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.user-label {
+    font-size: 12px;
     font-weight: 600;
-    color: #34495e;
+    color: #ffffff;
+}
+
+.user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.sync-buttons-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+    margin-left: auto; /* 确保按钮组靠右 */
+}
+
+.sync-btn {
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 32px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.sync-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.sync-btn:active {
+    transform: translateY(0);
 }
 
 .btn-logout {
-    padding: 8px 16px;
-    border: 2px solid #e74c3c;
-    background: white;
-    color: #e74c3c;
-    border-radius: 20px;
-    font-size: 14px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-logout:hover {
-    background: #fee;
+    background: rgba(231, 76, 60, 0.3);
+    border-color: rgba(231, 76, 60, 0.5);
     transform: translateY(-2px);
 }
 
@@ -370,6 +434,7 @@ body {
     background: white;
     border-radius: 16px;
     padding: 20px;
+    padding-bottom: 40px; /* 为footer留出空间 */
     box-shadow: 0 10px 40px rgba(0,0,0,0.2);
     transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
                 opacity 0.5s ease,
@@ -379,6 +444,8 @@ body {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y pinch-zoom; /* 允许垂直滚动和缩放，但允许水平滑动 */
+    display: flex;
+    flex-direction: column;
 }
 
 .card:active {
@@ -538,47 +605,95 @@ body {
     align-items: center;
 }
 
-.card-save-btn {
+.card-footer {
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    padding: 5px;
+    border-top: 1px solid #ffffff;
     background: transparent;
-    border: 1px solid #56ab2f;
-    border-radius: 6px;
-    padding: 4px 8px;
+    border-radius: 0 0 12px 12px;
     cursor: pointer;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    color: #56ab2f;
+    transition: background 0.3s ease;
+    min-height: 20px;
+    position: relative;
+    z-index: 100;
+    pointer-events: auto;
 }
 
-.card-save-btn:hover {
-    background: #56ab2f;
-    color: white;
-    transform: scale(1.05);
+.card-footer:hover {
+    background: transparent;
 }
 
 .card-expand-btn {
     background: transparent;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 4px 8px;
+    border: none;
+    border-radius: 50%;
+    padding: 12px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 18px;
+    color: #56ab2f;
     transition: all 0.3s ease;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    z-index: 101;
+    position: relative;
+    box-shadow: none;
+    font-weight: bold;
+    line-height: 1;
 }
 
 .card-expand-btn:hover {
-    background: #f5f5f5;
-    border-color: #56ab2f;
+    background: transparent;
+    color: #56ab2f;
+    transform: none;
+    box-shadow: none;
+}
+
+.card-expand-btn:active {
+    transform: scale(0.95);
+}
+
+.card-content {
+    flex: 1;
+    overflow-y: auto;
 }
 
 .card-content.collapsed {
-    max-height: 0;
+    max-height: 2px;
     overflow: hidden;
     transition: max-height 0.3s ease;
+    padding: 0;
+    margin: 0;
+    background: #e0e0e0;
+    flex: 0;
 }
 
 .card-content.expanded {
-    max-height: none;
+    max-height: 5000px; /* 足够大的值，确保内容完全展开 */
     transition: max-height 0.3s ease;
+    padding: 0;
+    margin: 0;
+}
+
+/* 确保footer始终可见，不受card-content折叠影响 */
+.card-footer {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-shrink: 0;
+    margin-top: auto; /* 推到底部 */
+}
+
+.card-content.expanded {
+    max-height: 5000px; /* 足够大的值，确保内容完全展开 */
+    transition: max-height 0.3s ease;
+    padding: 0;
+    margin: 0;
 }
 
 .card-tag {
@@ -778,17 +893,27 @@ body {
 }
 
 .plan-item-delete-btn {
-    background: transparent;
+    background: #7f8c8d;
     border: none;
-    font-size: 16px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
     cursor: pointer;
-    padding: 4px;
-    opacity: 0.6;
+    padding: 4px 8px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     transition: all 0.2s ease;
+    opacity: 0.8;
 }
 
 .plan-item-delete-btn:hover {
     opacity: 1;
+    background: #e74c3c;
     transform: scale(1.1);
 }
 
@@ -935,6 +1060,174 @@ body {
     border-left-color: #f39c12;
 }
 
+/* 消费表样式 */
+.spend-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.spend-table thead {
+    background: #f5f5f5;
+}
+
+.spend-table th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #ddd;
+}
+
+.spend-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.spend-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.spend-item-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.spend-item-amount {
+    color: #56ab2f;
+    font-weight: 600;
+    text-align: right;
+}
+
+.spend-empty {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    padding: 20px !important;
+}
+
+.spend-total-row {
+    background: #f0f7f0;
+    font-weight: 600;
+}
+
+.spend-total-label {
+    text-align: right;
+    color: #333;
+}
+
+.spend-total-amount {
+    color: #56ab2f;
+    font-size: 16px;
+    text-align: right;
+}
+
+.spend-delete-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    color: #999;
+}
+
+.spend-delete-btn:hover {
+    background: #fee;
+    color: #d32f2f;
+}
+
+.spend-add-container {
+    margin-top: 12px;
+}
+
+.spend-add-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #f5f5f5;
+    border: 1px dashed #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.spend-add-btn:hover {
+    background: #e8f5e9;
+    border-color: #56ab2f;
+    color: #56ab2f;
+}
+
+.spend-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+.spend-item-input,
+.spend-amount-input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.spend-item-input:focus,
+.spend-amount-input:focus {
+    border-color: #56ab2f;
+    box-shadow: 0 0 0 2px rgba(86, 171, 47, 0.1);
+}
+
+.spend-input-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.spend-input-confirm,
+.spend-input-cancel {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spend-input-confirm {
+    background: #56ab2f;
+    color: white;
+}
+
+.spend-input-confirm:hover {
+    background: #4a9a26;
+    transform: scale(1.05);
+}
+
+.spend-input-cancel {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.spend-input-cancel:hover {
+    background: #d0d0d0;
+    transform: scale(1.05);
+}
+
 .note-content-display {
     cursor: pointer;
     padding: 8px;
@@ -1056,6 +1349,8 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
+    display: inline-block;
+    text-align: center;
     overflow: hidden;
 }
 
@@ -1229,18 +1524,27 @@ body {
 .delete-item-btn {
     background: transparent;
     border: none;
-    font-size: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #e74c3c;
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 6px;
     transition: all 0.3s ease;
-    opacity: 0.6;
+    opacity: 0.7;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .delete-item-btn:hover {
     background: #ffe6e6;
     opacity: 1;
-    transform: scale(1.1);
+    transform: scale(1.15);
+    color: #c0392b;
 }
 
 .add-item-btn {
@@ -1362,18 +1666,28 @@ body {
 }
 
 .comment-delete-btn {
-    background: none;
+    background: #7f8c8d;
     border: none;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
     cursor: pointer;
-    font-size: 14px;
-    padding: 2px 6px;
-    opacity: 0.6;
-    transition: opacity 0.2s;
+    padding: 4px 8px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s ease;
+    opacity: 0.8;
     margin-left: 8px;
 }
 
 .comment-delete-btn:hover {
     opacity: 1;
+    background: #e74c3c;
     transform: scale(1.1);
 }
 
@@ -1536,12 +1850,13 @@ body {
         right: 15px;
     }
 
-    .user-selector {
-        padding: 12px 15px;
+    .user-sync-container {
+        padding: 15px;
     }
 
-    .user-selector-label {
-        font-size: 13px;
+    .user-info {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     .user-btn {
@@ -1634,32 +1949,7 @@ body {
     margin-bottom: 10px;
 }
 
-.sync-btn {
-    padding: 10px 16px;
-    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 40px; /* 统一按钮高度 */
-    white-space: nowrap;
-}
-
-.sync-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
-    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
-}
-
-.sync-btn:active {
-    transform: translateY(0);
-}
+/* sync-btn 样式已在顶部定义 */
 
 .sync-status {
     font-size: 12px;

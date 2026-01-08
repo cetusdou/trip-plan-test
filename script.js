@@ -557,10 +557,11 @@ class CardSlider {
             card.dataset.itemId = cardData.id;
         }
         
-        // 获取留言数据和图片（优先从统一结构读取）
+        // 获取留言数据、图片和消费表（优先从统一结构读取）
         const itemId = cardData.id || null;
         let comments = [];
         let images = [];
+        let spendItems = [];
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
@@ -568,6 +569,7 @@ class CardSlider {
                 if (item) {
                     comments = item.comments || [];
                     images = item.images || [];
+                    spendItems = item.spend || [];
                 }
             }
         }
@@ -577,6 +579,10 @@ class CardSlider {
         }
         if (images.length === 0) {
             images = this.getImages(this.dayId, index);
+        }
+        // 如果没有从统一结构获取到spend，使用cardData中的spend
+        if (spendItems.length === 0 && cardData.spend) {
+            spendItems = Array.isArray(cardData.spend) ? cardData.spend : [];
         }
         const itemLikes = this.getItemLikes(this.dayId, index);
         
@@ -621,11 +627,7 @@ class CardSlider {
                         <div class="card-tag tag-${cardTag}" data-card-index="${index}" data-current-tag="${cardTag}">${this.getTagLabel(cardTag)}</div>
                     </div>
                     <div class="card-header-actions">
-                        <button class="card-save-btn" data-card-index="${index}" title="保存并同步">💾</button>
-                        <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}">
-                            ${isExpanded ? '▼' : '▶'}
-                        </button>
-                        <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项">🗑️</button>
+                        <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项">×</button>
                     </div>
                 </div>
             </div>
@@ -636,10 +638,10 @@ class CardSlider {
         html += `
             <div class="card-section image-section">
                 <div class="image-upload-controls">
-                    <button class="image-upload-btn" title="上传图片">
+                    <label class="image-upload-btn" title="上传图片" style="cursor: pointer; display: inline-block;">
                         📷 上传图片
                         <input type="file" class="image-upload-input" accept="image/*" multiple style="display: none;" />
-                    </button>
+                    </label>
                 </div>
                 <div class="image-container">
                     ${images.length > 0 ? `
@@ -756,7 +758,7 @@ class CardSlider {
                                 <button class="plan-item-delete-btn" 
                                         data-card-index="${index}"
                                         data-plan-index="${planIndex}" 
-                                        title="删除此项">🗑️</button>
+                                        title="删除此项">×</button>
                             </div>
                         </li>
                     `;
@@ -775,19 +777,70 @@ class CardSlider {
             </div>
         `;
         
-        if (cardData.note) {
-            html += `
-                <div class="card-section">
-                    <div class="card-section-header">
-                        <div class="card-section-title note">备注</div>
-                    </div>
-                    <div class="card-section-content note-content-container" data-card-index="${index}">
-                        <div class="note-content-display">${cardData.note || ''}</div>
-                        <textarea class="note-content-input" style="display: none;" placeholder="输入备注...">${this.escapeHtml(cardData.note || '')}</textarea>
+        // 备注区域（总是显示，即使没有内容）
+        html += `
+            <div class="card-section">
+                <div class="card-section-header">
+                    <div class="card-section-title note">备注</div>
+                </div>
+                <div class="card-section-content note-content-container" data-card-index="${index}">
+                    <div class="note-content-display">${cardData.note || ''}</div>
+                    <textarea class="note-content-input" style="display: none;" placeholder="输入备注...">${this.escapeHtml(cardData.note || '')}</textarea>
+                </div>
+            </div>
+        `;
+        
+        // 添加消费表区域（在备注和留言之间）
+        html += `
+            <div class="card-section">
+                <div class="card-section-header">
+                    <div class="card-section-title spend">💰 消费表</div>
+                </div>
+                <div class="card-section-content spend-content">
+                    <table class="spend-table">
+                        <thead>
+                            <tr>
+                                <th>项目</th>
+                                <th>金额</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="spend-tbody">
+                            ${spendItems.length > 0 ? spendItems.map((spendItem, spendIndex) => {
+                                const itemName = spendItem.item || '';
+                                const amount = spendItem.amount || 0;
+                                return `
+                                <tr class="spend-row" data-spend-index="${spendIndex}">
+                                    <td class="spend-item-name">${this.escapeHtml(itemName)}</td>
+                                    <td class="spend-item-amount">¥${parseFloat(amount).toFixed(2)}</td>
+                                    <td>
+                                        <button class="spend-delete-btn" data-spend-index="${spendIndex}" title="删除">🗑️</button>
+                                    </td>
+                                </tr>
+                                `;
+                            }).join('') : '<tr><td colspan="3" class="spend-empty">暂无消费记录</td></tr>'}
+                        </tbody>
+                        <tfoot>
+                            <tr class="spend-total-row">
+                                <td colspan="2" class="spend-total-label">总计：</td>
+                                <td class="spend-total-amount">¥${spendItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0).toFixed(2)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="spend-add-container">
+                        <button class="spend-add-btn" data-card-index="${index}" title="添加消费项">+ 添加消费项</button>
+                        <div class="spend-input-container" style="display: none;">
+                            <input type="text" class="spend-item-input" placeholder="项目名称..." />
+                            <input type="number" class="spend-amount-input" placeholder="金额" step="0.01" min="0" />
+                            <div class="spend-input-actions">
+                                <button class="spend-input-confirm">✓</button>
+                                <button class="spend-input-cancel">✕</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            `;
-        }
+            </div>
+        `;
         
         // 添加留言区域（移到备注下面）
         html += `
@@ -802,7 +855,7 @@ class CardSlider {
                             <div class="comment-header">
                                 <span class="comment-user">${comment.user === 'mrb' ? '👤 mrb' : '👤 djy'}</span>
                                 <span class="comment-time">${this.formatTime(comment.timestamp)}</span>
-                                <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">🗑️</button>
+                                <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>
                             </div>
                             <div class="comment-content">${this.escapeHtml(comment.message)}</div>
                             <button class="comment-like-btn ${commentLikes[currentUser] ? 'liked' : ''}" 
@@ -821,6 +874,19 @@ class CardSlider {
             </div>
         `;
         
+        // 关闭card-content
+        html += '</div>';
+        
+        // 在卡片最下方添加折叠展开按钮（在card-content外面）
+        html += `
+            <div class="card-footer">
+                <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'};">
+                    ▼
+                </button>
+            </div>
+        `;
+        
+        // 关闭整个card
         html += '</div>';
         card.innerHTML = html;
         
@@ -998,75 +1064,17 @@ class CardSlider {
         const imageUploadInput = card.querySelector('.image-upload-input');
         
         if (imageUploadBtn && imageUploadInput) {
+            console.log('找到图片上传按钮和输入框，开始绑定事件', { cardIndex: index });
+            
             // 防止重复触发的标志
             let isProcessing = false;
             let touchStartTime = 0;
             let touchStartY = 0;
             let touchStartX = 0;
             
-            // 统一的触发函数
-            const triggerFileInput = (e) => {
-                // 如果正在处理，忽略
-                if (isProcessing) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                }
-                
-                // 检查是否为有效的点击（不是滑动）
-                if (e.type === 'touchend') {
-                    const touch = e.changedTouches[0];
-                    const touchEndY = touch.clientY;
-                    const touchEndX = touch.clientX;
-                    const deltaY = Math.abs(touchEndY - touchStartY);
-                    const deltaX = Math.abs(touchEndX - touchStartX);
-                    const touchDuration = Date.now() - touchStartTime;
-                    
-                    // 如果是滑动（移动距离超过10px）或长按（超过300ms），忽略
-                    if (deltaY > 10 || deltaX > 10 || touchDuration > 300 || touchDuration < 0) {
-                        return;
-                    }
-                }
-                
-                isProcessing = true;
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                
-                // 立即触发文件选择器
-                imageUploadInput.click();
-                
-                // 重置标志（延迟一点，确保文件选择器已打开）
-                setTimeout(() => {
-                    isProcessing = false;
-                }, 300);
-            };
-            
-            // 触摸开始事件（移动端）
-            imageUploadBtn.addEventListener('touchstart', (e) => {
-                const touch = e.touches[0];
-                touchStartTime = Date.now();
-                touchStartY = touch.clientY;
-                touchStartX = touch.clientX;
-            }, { passive: true });
-            
-            // 触摸结束事件（移动端）- 优先处理
-            imageUploadBtn.addEventListener('touchend', triggerFileInput, { passive: false });
-            
-            // 点击事件（桌面端）- 延迟处理，避免与触摸事件冲突
-            imageUploadBtn.addEventListener('click', (e) => {
-                // 如果是触摸设备，忽略 click 事件（因为 touchend 已经处理了）
-                // 通过检查是否有最近的触摸事件来判断
-                const timeSinceTouch = Date.now() - touchStartTime;
-                if (timeSinceTouch < 500) {
-                    // 最近有触摸事件，忽略 click
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                }
-                // 桌面端，正常处理
-                triggerFileInput(e);
-            });
+            // 由于使用了 label，点击 label 会自动触发 input
+            // 只需要处理 change 事件即可
+            // 但为了兼容性，仍然保留一些事件处理
             
             imageUploadInput.addEventListener('change', (e) => {
                 // 延迟处理，确保在移动设备上文件选择完成
@@ -1161,12 +1169,9 @@ class CardSlider {
                         this.setImages(this.dayId, index, [...currentImages, ...imageUrls], itemId);
                         this.renderCards();
                         // 重新绑定事件
-                        if (!this.sortMode) {
-                            this.attachEventListeners();
-                        }
                         this.attachCardEventsForAll();
                         // 自动同步
-                        autoSyncToGist();
+                        triggerImmediateUpload();
                         
                         // 恢复按钮状态
                         if (uploadBtn) {
@@ -1281,21 +1286,53 @@ class CardSlider {
             }
         }
         
-        // 展开/收起功能
+        // 展开/收起功能 - 同时绑定到footer和按钮
+        const cardFooter = card.querySelector('.card-footer');
         const expandBtn = card.querySelector('.card-expand-btn');
+        
+        // 为footer添加点击事件（作为备用）
+        if (cardFooter) {
+            cardFooter.addEventListener('click', (e) => {
+                // 如果点击的不是按钮本身，也触发展开/收起
+                if (e.target !== expandBtn && !expandBtn.contains(e.target)) {
+                    if (expandBtn) {
+                        expandBtn.click();
+                    }
+                }
+            });
+        }
+        
         if (expandBtn) {
             expandBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const isExpanded = expandBtn.dataset.expanded === 'true';
-                this.setCardExpanded(this.dayId, index, !isExpanded);
-                this.renderCards();
-                // 重新绑定事件（重要：重新渲染后需要重新绑定滑动事件）
-                if (!this.sortMode) {
-                    this.attachEventListeners();
+                const newIsExpanded = !isExpanded;
+                this.setCardExpanded(this.dayId, index, newIsExpanded);
+                
+                // 直接更新当前卡片的展开状态，避免重新渲染整个卡片列表
+                const cardContent = card.querySelector('.card-content');
+                if (cardContent) {
+                    if (newIsExpanded) {
+                        cardContent.classList.remove('collapsed');
+                        cardContent.classList.add('expanded');
+                        expandBtn.style.transform = 'rotate(180deg)';
+                        expandBtn.setAttribute('data-expanded', 'true');
+                        expandBtn.title = '收起';
+                    } else {
+                        cardContent.classList.remove('expanded');
+                        cardContent.classList.add('collapsed');
+                        expandBtn.style.transform = 'rotate(0deg)';
+                        expandBtn.setAttribute('data-expanded', 'false');
+                        expandBtn.title = '展开';
+                    }
+                } else {
+                    // 如果找不到card-content，重新渲染
+                    this.renderCards();
+                    // 重新绑定事件
+                    this.attachCardEventsForAll();
                 }
-                this.attachCardEventsForAll();
             });
             
             // 也处理触摸事件，确保移动设备上也能正常工作
@@ -1304,13 +1341,31 @@ class CardSlider {
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 const isExpanded = expandBtn.dataset.expanded === 'true';
-                this.setCardExpanded(this.dayId, index, !isExpanded);
-                this.renderCards();
-                // 重新绑定事件（重要：重新渲染后需要重新绑定滑动事件）
-                if (!this.sortMode) {
-                    this.attachEventListeners();
+                const newIsExpanded = !isExpanded;
+                this.setCardExpanded(this.dayId, index, newIsExpanded);
+                
+                // 直接更新当前卡片的展开状态，避免重新渲染整个卡片列表
+                const cardContent = card.querySelector('.card-content');
+                if (cardContent) {
+                    if (newIsExpanded) {
+                        cardContent.classList.remove('collapsed');
+                        cardContent.classList.add('expanded');
+                        expandBtn.style.transform = 'rotate(180deg)';
+                        expandBtn.setAttribute('data-expanded', 'true');
+                        expandBtn.title = '收起';
+                    } else {
+                        cardContent.classList.remove('expanded');
+                        cardContent.classList.add('collapsed');
+                        expandBtn.style.transform = 'rotate(0deg)';
+                        expandBtn.setAttribute('data-expanded', 'false');
+                        expandBtn.title = '展开';
+                    }
+                } else {
+                    // 如果找不到card-content，重新渲染
+                    this.renderCards();
+                    // 重新绑定事件
+                    this.attachCardEventsForAll();
                 }
-                this.attachCardEventsForAll();
             });
         }
         
@@ -1442,9 +1497,7 @@ class CardSlider {
                     this.setImages(this.dayId, index, images, itemId);
                     this.renderCards();
                     // 重新绑定事件
-                    if (!this.sortMode) {
-                        this.attachEventListeners();
-                    }
+                    // 重新绑定事件
                     this.attachCardEventsForAll();
                 });
             });
@@ -1507,24 +1560,6 @@ class CardSlider {
         });
         
         // 保存按钮事件
-        const saveBtn = card.querySelector('.card-save-btn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                this.saveCard(index);
-            });
-            
-            // 也处理触摸事件
-            saveBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                this.saveCard(index);
-            });
-        }
-        
         // 计划项like事件
         card.querySelectorAll('.plan-item-like-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1539,7 +1574,7 @@ class CardSlider {
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
-                    this.attachEventListeners();
+                    // 重新绑定事件
                 }
                 this.attachCardEventsForAll();
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
@@ -1564,7 +1599,7 @@ class CardSlider {
                 this.togglePlanItemLike(this.dayId, index, planIndex);
                 this.renderCards();
                 if (!this.sortMode) {
-                    this.attachEventListeners();
+                    // 重新绑定事件
                 }
                 this.attachCardEventsForAll();
                 requestAnimationFrame(() => {
@@ -1591,7 +1626,7 @@ class CardSlider {
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
-                    this.attachEventListeners();
+                    // 重新绑定事件
                 }
                 this.attachCardEventsForAll();
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
@@ -1616,7 +1651,7 @@ class CardSlider {
                 this.toggleCommentLike(this.dayId, index, commentIndex);
                 this.renderCards();
                 if (!this.sortMode) {
-                    this.attachEventListeners();
+                    // 重新绑定事件
                 }
                 this.attachCardEventsForAll();
                 requestAnimationFrame(() => {
@@ -1643,7 +1678,7 @@ class CardSlider {
                 this.renderCards();
                 // 重新绑定事件
                 if (!this.sortMode) {
-                    this.attachEventListeners();
+                    // 重新绑定事件
                 }
                 this.attachCardEventsForAll();
             }
@@ -1669,14 +1704,217 @@ class CardSlider {
                         await this.deleteComment(this.dayId, index, commentHash);
                         // 重新渲染
                         this.renderCards();
-                        if (!this.sortMode) {
-                            this.attachEventListeners();
-                        }
+                        // 重新绑定事件
                         this.attachCardEventsForAll();
                     }
                 }
             });
         });
+        
+        // 消费表相关事件
+        const spendAddBtn = card.querySelector('.spend-add-btn');
+        const spendInputContainer = card.querySelector('.spend-input-container');
+        const spendItemInput = card.querySelector('.spend-item-input');
+        const spendAmountInput = card.querySelector('.spend-amount-input');
+        const spendInputConfirm = card.querySelector('.spend-input-confirm');
+        const spendInputCancel = card.querySelector('.spend-input-cancel');
+        
+        if (spendAddBtn && spendInputContainer) {
+            // 点击添加按钮，显示输入框
+            spendAddBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                spendAddBtn.style.display = 'none';
+                spendInputContainer.style.display = 'flex';
+                spendItemInput.focus();
+            });
+            
+            // 确认添加消费项
+            if (spendInputConfirm && spendItemInput && spendAmountInput) {
+                const confirmAdd = async () => {
+                    const itemName = spendItemInput.value.trim();
+                    const amount = parseFloat(spendAmountInput.value);
+                    
+                    if (itemName && !isNaN(amount) && amount > 0) {
+                        await this.addSpendItem(index, itemName, amount);
+                        // 重置输入框和UI状态
+                        spendItemInput.value = '';
+                        spendAmountInput.value = '';
+                        spendInputContainer.style.display = 'none';
+                        spendAddBtn.style.display = 'block';
+                    } else {
+                        alert('请输入有效的项目名称和金额');
+                    }
+                };
+                
+                spendInputConfirm.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    confirmAdd();
+                });
+                
+                spendAmountInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        confirmAdd();
+                    }
+                });
+            }
+            
+            // 取消按钮
+            if (spendInputCancel) {
+                spendInputCancel.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    spendItemInput.value = '';
+                    spendAmountInput.value = '';
+                    spendInputContainer.style.display = 'none';
+                    spendAddBtn.style.display = 'block';
+                });
+            }
+        }
+        
+        // 删除消费项按钮
+        const spendDeleteBtns = card.querySelectorAll('.spend-delete-btn');
+        spendDeleteBtns.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (confirm('确定要删除这条消费记录吗？')) {
+                    const spendIndex = parseInt(btn.dataset.spendIndex);
+                    await this.deleteSpendItem(index, spendIndex);
+                    // 重新渲染
+                    this.renderCards();
+                    // 重新绑定事件
+                    this.attachCardEventsForAll();
+                }
+            });
+        });
+    }
+    
+    // 添加消费项
+    async addSpendItem(cardIndex, itemName, amount) {
+        console.log('addSpendItem 被调用:', { cardIndex, itemName, amount, dayId: this.dayId });
+        // 检查写权限
+        if (!checkWritePermission()) {
+            console.warn('没有写权限');
+            return;
+        }
+        
+        const card = this.cards[cardIndex];
+        console.log('card对象:', card, 'card.id:', card?.id);
+        if (!card) {
+            console.warn('card不存在');
+            return;
+        }
+        
+        const newSpendItem = {
+            item: itemName,
+            amount: parseFloat(amount)
+        };
+        
+        // 获取当前消费表
+        let spendItems = card.spend || [];
+        if (!Array.isArray(spendItems)) {
+            spendItems = [];
+        }
+        spendItems.push(newSpendItem);
+        card.spend = spendItems;
+        
+        // 保存到统一结构
+        const itemId = card.id;
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                console.log('找到的item:', item ? '存在' : '不存在', itemId);
+                if (item) {
+                    console.log('更新item.spend，旧spend长度:', item.spend?.length || 0, '新spend长度:', spendItems.length);
+                    item.spend = spendItems;
+                    item._updatedAt = new Date().toISOString();
+                    const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
+                    console.log('保存结果:', saveSuccess);
+                    
+                    if (saveSuccess !== false) {
+                        triggerImmediateUpload();
+                        
+                        // 重新渲染卡片以显示新添加的消费项
+                        this.renderCards();
+                        console.log('重新渲染完成');
+                        // 重新绑定事件
+                        this.attachCardEventsForAll();
+                        return;
+                    } else {
+                        console.warn('保存失败');
+                    }
+                } else {
+                    console.warn('未找到item:', itemId);
+                }
+            } else {
+                console.warn('统一数据不存在');
+            }
+        } else {
+            console.warn('itemId不存在或tripDataStructure未定义', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+        }
+        
+        // 如果保存失败，也重新渲染（至少显示在内存中）
+        console.log('回退：重新渲染卡片');
+        this.renderCards();
+                // 重新绑定事件
+        this.attachCardEventsForAll();
+    }
+    
+    // 删除消费项
+    async deleteSpendItem(cardIndex, spendIndex) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
+        const card = this.cards[cardIndex];
+        if (!card) return;
+        
+        let spendItems = card.spend || [];
+        if (!Array.isArray(spendItems) || spendIndex < 0 || spendIndex >= spendItems.length) {
+            return;
+        }
+        
+        // 从数组中删除
+        spendItems.splice(spendIndex, 1);
+        card.spend = spendItems;
+        
+        // 保存到统一结构
+        const itemId = card.id;
+        if (itemId && typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    item.spend = spendItems;
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    triggerImmediateUpload();
+                    
+                    // 重新渲染卡片以显示新添加的消费项
+                    this.renderCards();
+                    // 重新绑定事件
+                    this.attachCardEventsForAll();
+                    return;
+                } else {
+                    console.warn('未找到item:', itemId);
+                }
+            } else {
+                console.warn('统一数据不存在');
+            }
+        } else {
+            console.warn('itemId不存在或tripDataStructure未定义', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+        }
+        
+        // 如果保存失败，也重新渲染（至少显示在内存中）
+        this.renderCards();
+                // 重新绑定事件
+        this.attachCardEventsForAll();
     }
     
     // 删除留言
@@ -1971,9 +2209,7 @@ class CardSlider {
                     
                     // 重新渲染
                     this.renderCards();
-                    if (!this.sortMode) {
-                        this.attachEventListeners();
-                    }
+                    // 重新绑定事件
                     this.attachCardEventsForAll();
                     
                     // 立即触发上传
@@ -1999,9 +2235,7 @@ class CardSlider {
         
         // 重新渲染
         this.renderCards();
-        if (!this.sortMode) {
-            this.attachEventListeners();
-        }
+                // 重新绑定事件
         this.attachCardEventsForAll();
         
         // 自动同步
@@ -2089,9 +2323,7 @@ class CardSlider {
                         // 重新渲染
                         this.renderCards();
                         console.log('重新渲染完成');
-                        if (!this.sortMode) {
-                            this.attachEventListeners();
-                        }
+                        // 重新绑定事件
                         this.attachCardEventsForAll();
                         
                         // 立即触发上传
@@ -2126,9 +2358,7 @@ class CardSlider {
         
         // 重新渲染
         this.renderCards();
-        if (!this.sortMode) {
-            this.attachEventListeners();
-        }
+                // 重新绑定事件
         this.attachCardEventsForAll();
         
         // 自动同步
@@ -2187,9 +2417,7 @@ class CardSlider {
         
         // 重新渲染
         this.renderCards();
-        if (!this.sortMode) {
-            this.attachEventListeners();
-        }
+                // 重新绑定事件
         this.attachCardEventsForAll();
         
         // 自动同步

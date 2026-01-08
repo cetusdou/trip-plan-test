@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="main-container">
-        <!-- 用户登录界面 -->
+        <!-- 用户登录和数据同步界面（合并） -->
         <div id="user-login-container" class="user-login-container">
             <div class="user-login-box">
                 <h3>用户登录</h3>
@@ -30,26 +30,20 @@
             </div>
         </div>
         
-        <!-- 已登录用户显示 -->
-        <div id="user-logged-in" class="user-selector" style="display: none;">
-            <div class="user-selector-label">当前用户：<span id="logged-in-user-name"></span></div>
-            <button class="btn-logout" onclick="handleLogout()">退出登录</button>
-        </div>
-
-        <!-- 同步控制栏（可展开） -->
-        <div class="sync-controls">
-            <button class="sync-toggle-btn" onclick="toggleSyncPanel()">
-                <span>☁️ 同步与数据</span>
-                <span class="sync-toggle-icon">▼</span>
-            </button>
-            <div class="sync-panel" id="sync-panel">
-                <div class="sync-buttons">
-                    <button class="sync-btn" onclick="syncUpload()" title="手动上传到云端">☁️ 上传</button>
-                    <button class="sync-btn" onclick="syncDownload()" title="从云端下载">⬇️ 下载</button>
-                    <button class="sync-btn" onclick="deduplicateComments()" title="清理重复的留言（调试用）">🔍 留言去重</button>
+        <!-- 已登录用户显示和数据同步（合并） -->
+        <div id="user-logged-in" class="user-sync-container" style="display: none;">
+            <div class="user-sync-header">
+                <div class="user-info">
+                    <span class="user-label">当前用户：</span>
+                    <span id="logged-in-user-name" class="user-name"></span>
                 </div>
-                <div id="sync-status" class="sync-status"></div>
+                <div class="sync-buttons-top">
+                    <button class="sync-btn sync-btn-upload" onclick="syncUpload()" title="手动上传到云端">↑</button>
+                    <button class="sync-btn sync-btn-download" onclick="syncDownload()" title="从云端下载">↓</button>
+                    <button class="btn-logout" onclick="handleLogout()">退出登录</button>
+                </div>
             </div>
+            <div id="sync-status" class="sync-status"></div>
         </div>
 
         <!-- 新增行程项模态框 -->
