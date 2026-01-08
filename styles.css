@@ -2225,12 +2225,14 @@ body {
     }
     
     .day-header-actions {
-        flex-direction: column;
+        flex-direction: row; /* 保持在一行 */
         align-items: stretch;
+        flex-wrap: nowrap; /* 不换行 */
     }
     
     .day-header-actions button {
-        width: 100%;
+        flex: 1; /* 平均分配宽度 */
+        min-width: 0; /* 允许缩小 */
     }
 
     .modal-content {
