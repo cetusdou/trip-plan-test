@@ -311,13 +311,15 @@ function mergePlanItems(localPlans, remotePlans) {
                 const remoteTime = new Date(planObj._timestamp || planObj._updatedAt || 0);
                 if (remoteTime > localTime) {
                     // 使用远程数据，但增量更新 _likes（只更新当前用户的点赞状态）
+                    // mergeLikesIncremental(localLikes, remoteLikes, currentUser) - 以 remoteLikes 为基础，应用 localLikes 中当前用户的操作
                     const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                     planObj._likes = mergeLikesIncremental(existing._likes, planObj._likes, currentUser);
                     planMap.set(planObj._hash, planObj);
                 } else {
                     // 保留本地的，但增量更新远程的 _likes（只更新当前用户的点赞状态）
+                    // mergeLikesIncremental(localLikes, remoteLikes, currentUser) - 以 remoteLikes 为基础，应用 localLikes 中当前用户的操作
                     const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
-                    existing._likes = mergeLikesIncremental(planObj._likes, existing._likes, currentUser);
+                    existing._likes = mergeLikesIncremental(existing._likes, planObj._likes, currentUser);
                 }
                 // 否则保留本地的（已存在）
             } else {
@@ -386,8 +388,9 @@ function mergePlanItemsWithLocalPriority(localPlans, remotePlans) {
                 planMap.set(planObj._hash, planObj);
             } else {
                     // 如果本地已有，增量更新 _likes 字段（只更新当前用户的点赞状态）
+                    // mergeLikesIncremental(localLikes, remoteLikes, currentUser) - 以 remoteLikes 为基础，应用 localLikes 中当前用户的操作
                     const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
-                    existing._likes = mergeLikesIncremental(planObj._likes, existing._likes, currentUser);
+                    existing._likes = mergeLikesIncremental(existing._likes, planObj._likes, currentUser);
             }
             // 如果本地已有，说明本地保留了它（或本地有更新的版本），不覆盖
         } else {

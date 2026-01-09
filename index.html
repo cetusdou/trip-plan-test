@@ -113,6 +113,19 @@
             </div>
         </div>
 
+        <!-- 开支总计模态框 -->
+        <div id="expense-summary-modal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h3>💰 开支总计</h3>
+                    <button class="modal-close" onclick="closeExpenseSummary()">×</button>
+                </div>
+                <div class="modal-body" id="expense-summary-content">
+                    <!-- 内容将由 JavaScript 动态生成 -->
+                </div>
+            </div>
+        </div>
+
         <!-- 同步配置模态框 -->
         <div id="sync-config-modal" class="modal">
             <div class="modal-content">

@@ -4375,6 +4375,8 @@ function renderNavigation() {
         `;
     });
     html += '</ul>';
+    // 添加开支总计按钮
+    html += '<div class="nav-actions"><button class="btn-expense-summary" onclick="showExpenseSummary()">💰 开支总计</button></div>';
     navContainer.innerHTML = html;
     
     // 添加导航点击事件
@@ -5132,6 +5134,240 @@ function toggleSyncPanel() {
     const syncControls = document.querySelector('.sync-controls');
     if (syncControls) {
         syncControls.classList.toggle('expanded');
+    }
+}
+
+// 收集所有消费数据
+function getAllExpenses() {
+    const expenses = [];
+    
+    // 优先使用统一数据结构
+    if (typeof tripDataStructure !== 'undefined') {
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (unifiedData && unifiedData.days) {
+            unifiedData.days.forEach(day => {
+                if (day.items && Array.isArray(day.items)) {
+                    day.items.forEach(item => {
+                        if (item.spend && Array.isArray(item.spend)) {
+                            item.spend.forEach(spendItem => {
+                                expenses.push({
+                                    dayId: day.id || '',
+                                    dayTitle: day.title || '',
+                                    itemId: item.id || '',
+                                    itemCategory: item.category || '',
+                                    itemTime: item.time || '',
+                                    itemName: item.plan?.[0] || '',
+                                    spendItem: spendItem.item || '',
+                                    amount: parseFloat(spendItem.amount) || 0,
+                                    payer: spendItem.payer || ''
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    } else {
+        // 回退到旧的数据结构
+        const tripData = loadTripData();
+        if (tripData && tripData.days) {
+            tripData.days.forEach(day => {
+                if (day.items && Array.isArray(day.items)) {
+                    day.items.forEach(item => {
+                        if (item.spend && Array.isArray(item.spend)) {
+                            item.spend.forEach(spendItem => {
+                                expenses.push({
+                                    dayId: day.id || '',
+                                    dayTitle: day.title || '',
+                                    itemCategory: item.category || '',
+                                    itemTime: item.time || '',
+                                    itemName: item.plan?.[0] || '',
+                                    spendItem: spendItem.item || '',
+                                    amount: parseFloat(spendItem.amount) || 0,
+                                    payer: spendItem.payer || ''
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    }
+    
+    return expenses;
+}
+
+// 显示开支总计
+function showExpenseSummary() {
+    const modal = document.getElementById('expense-summary-modal');
+    const content = document.getElementById('expense-summary-content');
+    
+    if (!modal || !content) return;
+    
+    const expenses = getAllExpenses();
+    
+    if (expenses.length === 0) {
+        content.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">暂无消费记录</p>';
+        modal.style.display = 'flex';
+        return;
+    }
+    
+    // 按支出人统计
+    const payerStats = {};
+    // 按日期统计
+    const dayStats = {};
+    // 总计
+    let totalAmount = 0;
+    
+    expenses.forEach(expense => {
+        const amount = expense.amount || 0;
+        totalAmount += amount;
+        
+        // 按支出人统计
+        const payer = expense.payer || '未指定';
+        if (!payerStats[payer]) {
+            payerStats[payer] = { amount: 0, count: 0, items: [] };
+        }
+        payerStats[payer].amount += amount;
+        payerStats[payer].count += 1;
+        payerStats[payer].items.push(expense);
+        
+        // 按日期统计
+        const dayTitle = expense.dayTitle || '未知日期';
+        if (!dayStats[dayTitle]) {
+            dayStats[dayTitle] = { amount: 0, count: 0, items: [] };
+        }
+        dayStats[dayTitle].amount += amount;
+        dayStats[dayTitle].count += 1;
+        dayStats[dayTitle].items.push(expense);
+    });
+    
+    // 生成HTML
+    let html = '<div class="expense-summary-container">';
+    
+    // 总计
+    html += `
+        <div class="expense-summary-section">
+            <h3>💰 总计</h3>
+            <div class="expense-total">
+                <span class="expense-total-label">总支出：</span>
+                <span class="expense-total-amount">¥${totalAmount.toFixed(2)}</span>
+            </div>
+            <div class="expense-total">
+                <span class="expense-total-label">消费项数：</span>
+                <span class="expense-total-count">${expenses.length} 项</span>
+            </div>
+        </div>
+    `;
+    
+    // 按支出人统计
+    html += `
+        <div class="expense-summary-section">
+            <h3>👥 按支出人统计</h3>
+            <table class="expense-summary-table">
+                <thead>
+                    <tr>
+                        <th>支出人</th>
+                        <th>金额</th>
+                        <th>项数</th>
+                        <th>占比</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    Object.keys(payerStats).sort().forEach(payer => {
+        const stats = payerStats[payer];
+        const percentage = totalAmount > 0 ? ((stats.amount / totalAmount) * 100).toFixed(1) : 0;
+        html += `
+            <tr>
+                <td>${payer === '未指定' ? '<span style="color: #999;">未指定</span>' : payer}</td>
+                <td class="expense-amount">¥${stats.amount.toFixed(2)}</td>
+                <td>${stats.count}</td>
+                <td>${percentage}%</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    // 按日期统计
+    html += `
+        <div class="expense-summary-section">
+            <h3>📅 按日期统计</h3>
+            <table class="expense-summary-table">
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>金额</th>
+                        <th>项数</th>
+                        <th>占比</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    Object.keys(dayStats).sort().forEach(dayTitle => {
+        const stats = dayStats[dayTitle];
+        const percentage = totalAmount > 0 ? ((stats.amount / totalAmount) * 100).toFixed(1) : 0;
+        html += `
+            <tr>
+                <td>${dayTitle}</td>
+                <td class="expense-amount">¥${stats.amount.toFixed(2)}</td>
+                <td>${stats.count}</td>
+                <td>${percentage}%</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    // 详细列表（可选，可折叠）
+    html += `
+        <div class="expense-summary-section">
+            <h3>📋 详细列表</h3>
+            <div class="expense-detail-list">
+    `;
+    
+    expenses.forEach((expense, index) => {
+        html += `
+            <div class="expense-detail-item">
+                <div class="expense-detail-header">
+                    <span class="expense-detail-day">${expense.dayTitle}</span>
+                    <span class="expense-detail-amount">¥${expense.amount.toFixed(2)}</span>
+                </div>
+                <div class="expense-detail-content">
+                    <span class="expense-detail-item-name">${expense.spendItem || '未命名'}</span>
+                    <span class="expense-detail-payer">${expense.payer ? '👤 ' + expense.payer : ''}</span>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `
+            </div>
+        </div>
+    `;
+    
+    html += '</div>';
+    
+    content.innerHTML = html;
+    modal.style.display = 'flex';
+}
+
+// 关闭开支总计
+function closeExpenseSummary() {
+    const modal = document.getElementById('expense-summary-modal');
+    if (modal) {
+        modal.style.display = 'none';
     }
 }
 
