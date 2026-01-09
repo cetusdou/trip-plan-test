@@ -76,17 +76,33 @@ function mergeLikesObject(localLikes, remoteLikes, currentUser) {
 
 // 合并统一结构数据
 function mergeUnifiedData(localData, remoteData) {
+    // 验证参数
+    if (!localData || typeof localData !== 'object') {
+        console.error('mergeUnifiedData: localData 无效', localData);
+        return remoteData || null;
+    }
+    if (!remoteData || typeof remoteData !== 'object') {
+        console.error('mergeUnifiedData: remoteData 无效', remoteData);
+        return localData || null;
+    }
+    
+    // 确保 days 是数组
+    const localDays = Array.isArray(localData.days) ? localData.days : [];
+    const remoteDays = Array.isArray(remoteData.days) ? remoteData.days : [];
+    
     // 合并days数组
     const mergedDays = [];
     const dayMap = new Map();
     
     // 先添加本地days
-    (localData.days || []).forEach(day => {
-        dayMap.set(day.id, { ...day });
+    localDays.forEach(day => {
+        if (day && day.id) {
+            dayMap.set(day.id, { ...day });
+        }
     });
     
     // 合并远程days
-    (remoteData.days || []).forEach(remoteDay => {
+    remoteDays.forEach(remoteDay => {
         const localDay = dayMap.get(remoteDay.id);
         if (localDay) {
             // 合并items
@@ -634,32 +650,63 @@ class DataSyncFirebase {
     // Firebase 返回的是对象，在存入 localStorage 前统一转换为字符串
     setAllLocalData(data) {
         // 调试：检查传入的数据结构
-
+        if (!data || typeof data !== 'object') {
+            console.error('setAllLocalData: data 参数无效', data);
+            return;
+        }
         
         // 优先处理统一结构数据
         if (data['trip_unified_data'] && typeof tripDataStructure !== 'undefined') {
             // Firebase 返回的已经是对象，直接传给 saveUnifiedData（它会处理字符串转换）
-            const unifiedData = data['trip_unified_data'];
+            let unifiedData = data['trip_unified_data'];
+            
+            // 如果 unifiedData 是字符串，尝试解析
+            if (typeof unifiedData === 'string') {
+                try {
+                    unifiedData = JSON.parse(unifiedData);
+                } catch (e) {
+                    console.error('setAllLocalData: 无法解析 trip_unified_data 字符串', e);
+                    unifiedData = null;
+                }
+            }
             
             // 验证 unifiedData 的结构
             if (unifiedData && typeof unifiedData === 'object') {
                 // 检查是否是有效的统一数据结构（应该有 days 数组）
                 if (!unifiedData.days || !Array.isArray(unifiedData.days)) {
-                    console.error('setAllLocalData: trip_unified_data 结构不正确');
-                    // 注意：data['trip_unified_data'] 已经是业务数据了，不需要再解包
-                    // 如果这里没有 days，说明数据确实有问题，直接报错
-                    console.error('setAllLocalData: 无法修复数据，跳过保存');
-                } else {
-                    // 数据结构正确，保存
-                    tripDataStructure.saveUnifiedData(unifiedData);
-                    console.log('setAllLocalData: 成功保存 trip_unified_data');
+                    console.error('setAllLocalData: trip_unified_data 结构不正确', {
+                        hasDays: !!unifiedData.days,
+                        daysIsArray: Array.isArray(unifiedData.days),
+                        unifiedDataKeys: Object.keys(unifiedData),
+                        unifiedDataType: typeof unifiedData
+                    });
+                    
+                    // 尝试修复：如果 unifiedData 本身就是一个包含 days 的对象，但被嵌套了
+                    // 检查是否有其他可能的键包含 days
+                    if (unifiedData.trip_unified_data && typeof unifiedData.trip_unified_data === 'object') {
+                        console.warn('setAllLocalData: 检测到嵌套的 trip_unified_data，尝试提取');
+                        unifiedData = unifiedData.trip_unified_data;
+                    }
+                    
+                    // 再次检查
+                    if (!unifiedData.days || !Array.isArray(unifiedData.days)) {
+                        console.error('setAllLocalData: 无法修复数据，跳过保存');
+                        // 删除统一数据键，避免重复处理
+                        delete data['trip_unified_data'];
+                        return;
+                    }
                 }
+                
+                // 数据结构正确，保存
+                tripDataStructure.saveUnifiedData(unifiedData);
             } else {
-                console.error('setAllLocalData: trip_unified_data 不是对象');
+                console.error('setAllLocalData: trip_unified_data 不是对象', {
+                    unifiedDataType: typeof unifiedData,
+                    unifiedData: unifiedData
+                });
             }
             // 删除统一数据键，避免重复处理
             delete data['trip_unified_data'];
-        } else {
         }
         
         // 处理其他数据：统一在存入 localStorage 前转换为字符串
@@ -690,7 +737,15 @@ class DataSyncFirebase {
                 throw new Error('未登录，无法删除数据');
             }
             
-            const subPath = `days/${dayId}/items/${itemId}`;
+            // 获取数组索引（因为 Firebase 中数组存储为对象）
+            const dayIndex = this.getDayIndex(dayId);
+            const itemIndex = this.getItemIndex(dayId, itemId);
+            
+            if (dayIndex === null || itemIndex === null) {
+                throw new Error(`无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引`);
+            }
+            
+            const subPath = `days/${dayIndex}/items/${itemIndex}`;
             const updates = {};
             // 在 Firebase 中，将一个路径设为 null 等同于彻底删除该节点
             updates[`trip_unified_data/${subPath}`] = null;
@@ -702,6 +757,37 @@ class DataSyncFirebase {
         } catch (error) {
             return { success: false, message: `删除卡片失败: ${error.message}` };
         }
+    }
+
+    // 辅助函数：将 dayId 转换为数组索引
+    // 因为 Firebase 中数组存储为对象，键是索引（0, 1, 2...）
+    getDayIndex(dayId) {
+        if (typeof tripDataStructure === 'undefined') {
+            return null;
+        }
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (!unifiedData || !unifiedData.days || !Array.isArray(unifiedData.days)) {
+            return null;
+        }
+        const dayIndex = unifiedData.days.findIndex(day => day && day.id === dayId);
+        return dayIndex >= 0 ? dayIndex : null;
+    }
+    
+    // 辅助函数：将 itemId 转换为数组索引（在指定 day 中）
+    getItemIndex(dayId, itemId) {
+        if (typeof tripDataStructure === 'undefined') {
+            return null;
+        }
+        const unifiedData = tripDataStructure.loadUnifiedData();
+        if (!unifiedData || !unifiedData.days || !Array.isArray(unifiedData.days)) {
+            return null;
+        }
+        const day = tripDataStructure.getDayData(unifiedData, dayId);
+        if (!day || !day.items || !Array.isArray(day.items)) {
+            return null;
+        }
+        const itemIndex = day.items.findIndex(item => item && item.id === itemId);
+        return itemIndex >= 0 ? itemIndex : null;
     }
 
     // 上传单个卡片到云端（增量更新）
@@ -734,8 +820,17 @@ class DataSyncFirebase {
                 return await this.cloudDeleteItem(dayId, itemId);
             }
             
+            // 获取数组索引（因为 Firebase 中数组存储为对象）
+            const dayIndex = this.getDayIndex(dayId);
+            const itemIndex = this.getItemIndex(dayId, itemId);
+            
+            if (dayIndex === null || itemIndex === null) {
+                throw new Error(`无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引`);
+            }
+            
             // 使用统一增量更新函数：直接更新整个 item
-            const subPath = `days/${dayId}/items/${itemId}`;
+            // 路径使用数组索引：days/0/items/1
+            const subPath = `days/${dayIndex}/items/${itemIndex}`;
             const result = await this.cloudIncrementalUpdate(subPath, item);
             
             if (result.success) {
@@ -807,7 +902,15 @@ class DataSyncFirebase {
     // 增量更新特定字段（用于点赞、评论等操作）
     // 使用统一增量更新函数
     async updateItemField(dayId, itemId, field, value) {
-        const subPath = `days/${dayId}/items/${itemId}`;
+        // 获取数组索引（因为 Firebase 中数组存储为对象）
+        const dayIndex = this.getDayIndex(dayId);
+        const itemIndex = this.getItemIndex(dayId, itemId);
+        
+        if (dayIndex === null || itemIndex === null) {
+            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
+        }
+        
+        const subPath = `days/${dayIndex}/items/${itemIndex}`;
         const result = await this.cloudIncrementalUpdate(subPath, { [field]: value });
         if (result.success) {
             result.message = `已更新字段 ${field}`;
@@ -822,14 +925,30 @@ class DataSyncFirebase {
     // @param {string} nestedPath - 嵌套路径，例如 'comments/0' 或 'plan/1'
     // @param {Object} dataObj - 要更新的键值对
     async updateNestedField(dayId, itemId, nestedPath, dataObj) {
-        const subPath = `days/${dayId}/items/${itemId}/${nestedPath}`;
+        // 获取数组索引（因为 Firebase 中数组存储为对象）
+        const dayIndex = this.getDayIndex(dayId);
+        const itemIndex = this.getItemIndex(dayId, itemId);
+        
+        if (dayIndex === null || itemIndex === null) {
+            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
+        }
+        
+        const subPath = `days/${dayIndex}/items/${itemIndex}/${nestedPath}`;
         return await this.cloudIncrementalUpdate(subPath, dataObj);
     }
 
     // 更新整个数组字段（例如：更新所有评论、所有计划项）
     // 用于批量更新数组内容
     async updateArrayField(dayId, itemId, fieldName, arrayValue) {
-        const subPath = `days/${dayId}/items/${itemId}`;
+        // 获取数组索引（因为 Firebase 中数组存储为对象）
+        const dayIndex = this.getDayIndex(dayId);
+        const itemIndex = this.getItemIndex(dayId, itemId);
+        
+        if (dayIndex === null || itemIndex === null) {
+            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
+        }
+        
+        const subPath = `days/${dayIndex}/items/${itemIndex}`;
         return await this.cloudIncrementalUpdate(subPath, { [fieldName]: arrayValue });
     }
 

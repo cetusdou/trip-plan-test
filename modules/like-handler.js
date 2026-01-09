@@ -23,6 +23,10 @@ class LikeHandler {
         
         const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
         if (!item) {
+            // 调试：如果找不到 item，记录日志
+            if (type === 'plan' && index !== null) {
+                console.warn('LikeHandler.getLikes: 找不到 item', { dayId, itemId, type, index });
+            }
             return type === 'item' ? {} : [];
         }
         
@@ -42,11 +46,24 @@ class LikeHandler {
                 
             case 'plan':
                 // Plan item 点赞：返回 ['user1', 'user2']
-                if (!item.plan || !Array.isArray(item.plan) || index < 0 || index >= item.plan.length) {
+                if (!item.plan || !Array.isArray(item.plan)) {
+                    return [];
+                }
+                // 如果 index 为 null 或无效，返回空数组
+                if (index === null || index === undefined || index < 0 || index >= item.plan.length) {
                     return [];
                 }
                 const planItem = item.plan[index];
-                if (!planItem || typeof planItem !== 'object' || !planItem._likes) {
+                // 支持 planItem 是字符串或对象
+                if (!planItem) {
+                    return [];
+                }
+                // 如果 planItem 是字符串，没有 _likes 属性
+                if (typeof planItem === 'string') {
+                    return [];
+                }
+                // 如果 planItem 是对象但没有 _likes 属性
+                if (typeof planItem !== 'object' || !planItem._likes) {
                     return [];
                 }
                 return Array.isArray(planItem._likes) ? planItem._likes : [];
@@ -77,13 +94,19 @@ class LikeHandler {
      * @returns {boolean} 是否成功
      */
     static toggleLike(dayId, itemId, type, index = null, section = null) {
+        console.log('toggleLike 被调用', { dayId, itemId, type, index, section });
+        
         // 检查写权限
         if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
+            console.warn('toggleLike: 没有写权限');
             return false;
         }
         
         if (typeof tripDataStructure === 'undefined' || !itemId) {
-            console.error('tripDataStructure 未定义或 itemId 为空，无法保存点赞');
+            console.error('tripDataStructure 未定义或 itemId 为空，无法保存点赞', { 
+                tripDataStructure: typeof tripDataStructure, 
+                itemId 
+            });
             return false;
         }
         
@@ -95,17 +118,24 @@ class LikeHandler {
         
         const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
         if (!item) {
-            console.error('找不到 item');
+            console.error('找不到 item', { dayId, itemId, unifiedDataValid: !!unifiedData });
             return false;
         }
+        
+        console.log('toggleLike: 找到 item', { dayId, itemId, type, index, section });
         
         const currentUser = typeof window.currentUser !== 'undefined' ? window.currentUser : 
                            (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
         
         if (!currentUser) {
-            console.error('无法获取当前用户');
+            console.error('无法获取当前用户', { 
+                windowCurrentUser: typeof window.currentUser !== 'undefined' ? window.currentUser : 'undefined',
+                localStorageUser: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : 'localStorage unavailable'
+            });
             return false;
         }
+        
+        console.log('toggleLike: 当前用户', { currentUser, type, index, section });
         
         let targetLikes = null;
         let targetObject = null;
@@ -165,10 +195,13 @@ class LikeHandler {
         
         // 切换点赞状态：如果已点赞则移除，否则添加
         const userIndex = targetLikes.indexOf(currentUser);
+        const wasLiked = userIndex > -1;
         if (userIndex > -1) {
             targetLikes.splice(userIndex, 1); // 取消点赞
+            console.log('toggleLike: 取消点赞', { currentUser, type, index, section, targetLikes: [...targetLikes] });
         } else {
             targetLikes.push(currentUser); // 点赞
+            console.log('toggleLike: 添加点赞', { currentUser, type, index, section, targetLikes: [...targetLikes] });
         }
         
 
@@ -179,39 +212,91 @@ class LikeHandler {
         item._updatedAt = timestamp; // 确保父级 item 也标记为已更新
 
         // 1. 保存到本地统一结构 (localStorage)
+        console.log('toggleLike: 准备保存到本地', { dayId, itemId, type, index, section });
         const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
         if (saveSuccess === false) {
             console.error('点赞保存到本地失败');
             return false;
         }
+        console.log('toggleLike: 本地保存成功', { dayId, itemId, type, index, section });
 
         // 2. 触发增量同步到云端 (Firebase)
         if (window.dataSyncFirebase && window.dataSyncFirebase.cloudIncrementalUpdate) {
-            let cloudPath = `days/${dayId}/items/${itemId}`;
-            let updatePayload = {};
-
             // 根据类型构建精确的云端路径和数据包
+            // cloudIncrementalUpdate 的第一个参数是相对于 trip_unified_data 的子路径
+            // 第二个参数是要更新的键值对对象
+            // 获取数组索引（因为 Firebase 中数组存储为对象，键是索引）
+            const dayIndex = window.dataSyncFirebase.getDayIndex(dayId);
+            const itemIndex = window.dataSyncFirebase.getItemIndex(dayId, itemId);
+            
+            if (dayIndex === null || itemIndex === null) {
+                console.error('点赞同步失败: 无法找到 dayId 或 itemId 的索引', { 
+                    dayId, 
+                    itemId, 
+                    dayIndex, 
+                    itemIndex,
+                    type,
+                    index,
+                    section
+                });
+                return;
+            }
+            
+            console.log('点赞同步: 找到索引', { dayId, itemId, dayIndex, itemIndex, type, index, section });
+            
             switch (type) {
                 case 'item':
-                    updatePayload[`_likes/${section}`] = targetLikes;
+                    // Item 点赞：更新 item._likes[section]
+                    // cloudIncrementalUpdate 会将键中的 '/' 视为路径分隔符
+                    // 所以 `_likes/${section}` 会被解析为 `trip_unified_data/days/${dayIndex}/items/${itemIndex}/_likes/${section}`
+                    const itemSubPath = `days/${dayIndex}/items/${itemIndex}`;
+                    const itemUpdatePayload = {};
+                    // 使用 '/' 作为路径分隔符，Firebase 会正确解析
+                    itemUpdatePayload[`_likes/${section}`] = targetLikes;
+                    itemUpdatePayload['_updatedAt'] = timestamp;
+                    window.dataSyncFirebase.cloudIncrementalUpdate(itemSubPath, itemUpdatePayload)
+                        .then(res => {
+                            if (!res.success) console.warn('点赞同步延迟:', res.message);
+                        })
+                        .catch(err => console.error('点赞同步失败:', err));
                     break;
                 case 'plan':
-                    // 注意：数组操作在 Firebase 中通常推荐全量覆盖该子路径以确保顺序
-                    updatePayload[`plan/${index}/_likes`] = targetLikes;
-                    updatePayload[`plan/${index}/_updatedAt`] = timestamp;
+                    // Plan item 点赞：更新 plan[index]._likes
+                    // 直接使用 cloudIncrementalUpdate，路径使用数组索引
+                    const planSubPath = `days/${dayIndex}/items/${itemIndex}`;
+                    const planUpdatePayload = {};
+                    planUpdatePayload[`plan/${index}/_likes`] = targetLikes;
+                    planUpdatePayload[`plan/${index}/_updatedAt`] = timestamp;
+                    planUpdatePayload['_updatedAt'] = timestamp; // 同时更新 item 的 _updatedAt
+                    window.dataSyncFirebase.cloudIncrementalUpdate(planSubPath, planUpdatePayload)
+                        .then(res => {
+                            if (res.success) {
+                                console.log('Plan item 点赞同步成功', { dayIndex, itemIndex, planIndex: index });
+                            } else {
+                                console.warn('点赞同步延迟:', res.message);
+                            }
+                        })
+                        .catch(err => console.error('点赞同步失败:', err));
                     break;
                 case 'comment':
-                    updatePayload[`comments/${index}/_likes`] = targetLikes;
-                    updatePayload[`comments/${index}/_updatedAt`] = timestamp;
+                    // Comment 点赞：更新 comments[index]._likes
+                    // 直接使用 cloudIncrementalUpdate，路径使用数组索引
+                    const commentSubPath = `days/${dayIndex}/items/${itemIndex}`;
+                    const commentUpdatePayload = {};
+                    commentUpdatePayload[`comments/${index}/_likes`] = targetLikes;
+                    commentUpdatePayload[`comments/${index}/_updatedAt`] = timestamp;
+                    commentUpdatePayload['_updatedAt'] = timestamp; // 同时更新 item 的 _updatedAt
+                    window.dataSyncFirebase.cloudIncrementalUpdate(commentSubPath, commentUpdatePayload)
+                        .then(res => {
+                            if (res.success) {
+                                console.log('Comment 点赞同步成功', { dayIndex, itemIndex, commentIndex: index });
+                            } else {
+                                console.warn('点赞同步延迟:', res.message);
+                            }
+                        })
+                        .catch(err => console.error('点赞同步失败:', err));
                     break;
             }
-
-            // 发送增量更新补丁
-            window.dataSyncFirebase.cloudIncrementalUpdate(cloudPath, updatePayload)
-                .then(res => {
-                    if (!res.success) console.warn('点赞同步延迟:', res.message);
-                })
-                .catch(err => console.error('点赞同步失败:', err));
         }
 
         return true;

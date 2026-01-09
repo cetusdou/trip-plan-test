@@ -537,6 +537,18 @@ class CardSlider {
         // 保存所有活动的输入框状态，防止在渲染时丢失用户输入
         const activeInputs = this.saveActiveInputs();
         
+        // 保存所有卡片的展开状态，防止在渲染时丢失
+        const expandedStates = new Map();
+        const existingCards = this.container.querySelectorAll('.card');
+        existingCards.forEach(card => {
+            const itemId = card.dataset.itemId || card.querySelector('[data-item-id]')?.dataset.itemId;
+            if (itemId) {
+                const cardContent = card.querySelector('.card-content');
+                const isExpanded = cardContent && cardContent.classList.contains('expanded');
+                expandedStates.set(itemId, isExpanded);
+            }
+        });
+        
         // 查找或创建堆叠容器
         let stack = this.container.querySelector('.cards-stack');
         if (!stack) {
@@ -557,6 +569,31 @@ class CardSlider {
             }
             stack.appendChild(card);
         }
+        
+        // 恢复卡片的展开状态
+        expandedStates.forEach((isExpanded, itemId) => {
+            this.setCardExpanded(itemId, isExpanded);
+            const newCard = stack.querySelector(`.card[data-item-id="${itemId}"]`);
+            if (newCard) {
+                const cardContent = newCard.querySelector('.card-content');
+                const expandBtn = newCard.querySelector('.card-expand-btn');
+                if (cardContent && expandBtn) {
+                    if (isExpanded) {
+                        cardContent.classList.remove('collapsed');
+                        cardContent.classList.add('expanded');
+                        expandBtn.style.transform = 'rotate(180deg)';
+                        expandBtn.setAttribute('data-expanded', 'true');
+                        expandBtn.title = '收起';
+                    } else {
+                        cardContent.classList.remove('expanded');
+                        cardContent.classList.add('collapsed');
+                        expandBtn.style.transform = 'rotate(0deg)';
+                        expandBtn.setAttribute('data-expanded', 'false');
+                        expandBtn.title = '展开';
+                    }
+                }
+            }
+        });
         
         // 恢复活动的输入框状态
         this.restoreActiveInputs(activeInputs);
@@ -1045,7 +1082,9 @@ class CardSlider {
                             window.LikeHandler.getLikes(this.dayId, itemId, 'plan', planIndex) : [];
                         // 新格式：planItemLikes 是数组 ['mrb', 'djy']
                         const planItemLikeCount = Array.isArray(planItemLikes) ? planItemLikes.length : 0;
-                        const isLiked = Array.isArray(planItemLikes) && planItemLikes.includes(currentUser);
+                        const currentUser = typeof window.currentUser !== 'undefined' ? window.currentUser : 
+                                           (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
+                        const isLiked = Array.isArray(planItemLikes) && currentUser && planItemLikes.includes(currentUser);
                     return `
                         <li class="plan-item">
                             <span class="plan-item-text">${window.escapeHtmlKeepBr ? window.escapeHtmlKeepBr(planItemText) : planItemText}</span>
@@ -2208,20 +2247,35 @@ class CardSlider {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                console.log('Plan 点赞按钮被点击', { 
+                    dayId: this.dayId, 
+                    itemId: card.dataset.itemId, 
+                    planIndex: btn.dataset.planIndex 
+                });
                 const planIndex = parseInt(btn.dataset.planIndex);
                 const itemId = card.dataset.itemId || null;
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
                 if (typeof window.LikeHandler !== 'undefined' && window.LikeHandler) {
-                    window.LikeHandler.toggleLike(this.dayId, itemId, 'plan', planIndex);
-                }
-                // 使用统一的UI刷新
-                if (typeof window.refreshUI === 'function') {
-                    window.refreshUI(this.dayId, { itemId, skipSync: false });
+                    const success = window.LikeHandler.toggleLike(this.dayId, itemId, 'plan', planIndex);
+                    console.log('Plan 点赞操作结果', { success, dayId: this.dayId, itemId, planIndex });
+                    if (success) {
+                        // 使用统一的UI刷新
+                        if (typeof window.refreshUI === 'function') {
+                            window.refreshUI(this.dayId, { itemId, skipSync: false });
+                        } else {
+                            // 重新加载数据并刷新
+                            const items = typeof window.getDayItems === 'function' ? window.getDayItems(this.dayId) : [];
+                            this.cards = items;
+                            this.renderCards();
+                            this.attachCardEventsForAll();
+                        }
+                    } else {
+                        console.warn('Plan 点赞失败，不刷新UI');
+                    }
                 } else {
-                    this.renderCards();
-                    this.attachCardEventsForAll();
+                    console.error('LikeHandler 未定义');
                 }
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
                 requestAnimationFrame(() => {
@@ -2265,20 +2319,35 @@ class CardSlider {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                console.log('Comment 点赞按钮被点击', { 
+                    dayId: this.dayId, 
+                    itemId: card.dataset.itemId, 
+                    commentIndex: btn.dataset.commentIndex 
+                });
                 const commentIndex = parseInt(btn.dataset.commentIndex);
                 const itemId = card.dataset.itemId || null;
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
                 if (typeof window.LikeHandler !== 'undefined' && window.LikeHandler) {
-                    window.LikeHandler.toggleLike(this.dayId, itemId, 'comment', commentIndex);
-                }
-                // 使用统一的UI刷新
-                if (typeof window.refreshUI === 'function') {
-                    window.refreshUI(this.dayId, { itemId, skipSync: false });
+                    const success = window.LikeHandler.toggleLike(this.dayId, itemId, 'comment', commentIndex);
+                    console.log('Comment 点赞操作结果', { success, dayId: this.dayId, itemId, commentIndex });
+                    if (success) {
+                        // 使用统一的UI刷新
+                        if (typeof window.refreshUI === 'function') {
+                            window.refreshUI(this.dayId, { itemId, skipSync: false });
+                        } else {
+                            // 重新加载数据并刷新
+                            const items = typeof window.getDayItems === 'function' ? window.getDayItems(this.dayId) : [];
+                            this.cards = items;
+                            this.renderCards();
+                            this.attachCardEventsForAll();
+                        }
+                    } else {
+                        console.warn('Comment 点赞失败，不刷新UI');
+                    }
                 } else {
-                    this.renderCards();
-                    this.attachCardEventsForAll();
+                    console.error('LikeHandler 未定义');
                 }
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
                 requestAnimationFrame(() => {
@@ -4587,8 +4656,56 @@ function initEventBusListeners() {
         
         // 如果当前有CardSlider实例且是同一个day，直接更新它
         if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
-            window.currentSlider.renderCards();
-            window.currentSlider.attachCardEventsForAll();
+            // 如果有 itemId，只更新该卡片，否则更新所有卡片
+            if (itemId) {
+                // 增量更新：只更新指定的卡片
+                const cardIndex = window.currentSlider.cards.findIndex(c => c.id === itemId);
+                if (cardIndex !== -1) {
+                    // 保存当前卡片的展开状态
+                    const currentCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
+                    if (currentCard) {
+                        const cardContent = currentCard.querySelector('.card-content');
+                        const isExpanded = cardContent && cardContent.classList.contains('expanded');
+                        window.currentSlider.setCardExpanded(itemId, isExpanded);
+                    }
+                    // 重新加载数据
+                    const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
+                    window.currentSlider.cards = items;
+                    // 只重新渲染这个卡片
+                    const newCard = window.currentSlider.createCard(items[cardIndex], cardIndex);
+                    const oldCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
+                    if (oldCard && newCard) {
+                        oldCard.replaceWith(newCard);
+                        window.currentSlider.attachCardEvents(newCard, cardIndex);
+                        
+                        // 恢复展开状态
+                        const savedExpanded = window.currentSlider.getCardExpanded(itemId);
+                        if (savedExpanded) {
+                            const cardContent = newCard.querySelector('.card-content');
+                            const expandBtn = newCard.querySelector('.card-expand-btn');
+                            if (cardContent && expandBtn) {
+                                cardContent.classList.remove('collapsed');
+                                cardContent.classList.add('expanded');
+                                expandBtn.style.transform = 'rotate(180deg)';
+                                expandBtn.setAttribute('data-expanded', 'true');
+                                expandBtn.title = '收起';
+                            }
+                        }
+                    } else {
+                        // 如果找不到旧卡片，重新渲染所有卡片
+                        window.currentSlider.renderCards();
+                        window.currentSlider.attachCardEventsForAll();
+                    }
+                } else {
+                    // 找不到卡片，重新渲染所有
+                    window.currentSlider.renderCards();
+                    window.currentSlider.attachCardEventsForAll();
+                }
+            } else {
+                // 没有 itemId，更新所有卡片
+                window.currentSlider.renderCards();
+                window.currentSlider.attachCardEventsForAll();
+            }
         } else {
             // 如果没有CardSlider或不是同一个day，调用showDay刷新整个页面
             if (typeof window.showDay === 'function') {
