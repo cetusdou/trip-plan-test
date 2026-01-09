@@ -11,30 +11,35 @@ function generateItemId(dayId, index) {
 // 初始化统一的数据结构
 function initializeTripDataStructure(originalData) {
     const tripId = `trip_${Date.now()}`;
+    const days = (originalData.days || []).map((day, dayIndex) => ({
+        id: day.id || `day${dayIndex + 1}`,
+        title: day.title || "",
+        items: (day.items || []).map((item, itemIndex) => ({
+            id: generateItemId(day.id || `day${dayIndex + 1}`, itemIndex),
+            category: item.category || "",
+            time: item.time || "",
+            tag: item.tag || "其他",
+            plan: normalizePlan(item.plan || []),
+            note: item.note || "",
+            rating: item.rating || "",
+            images: [],
+            comments: [],
+            spend: null,
+            order: itemIndex,
+            _createdAt: new Date().toISOString(),
+            _updatedAt: new Date().toISOString()
+        })),
+        order: dayIndex
+    }));
+    
+    // overview从days的title自动生成，不需要单独保存
+    const overview = days.map(day => day.title || '');
+    
     const structure = {
         id: tripId,
         title: originalData.title || "",
-        overview: originalData.overview || [],
-        days: (originalData.days || []).map((day, dayIndex) => ({
-            id: day.id || `day${dayIndex + 1}`,
-            title: day.title || "",
-            items: (day.items || []).map((item, itemIndex) => ({
-                id: generateItemId(day.id || `day${dayIndex + 1}`, itemIndex),
-                category: item.category || "",
-                time: item.time || "",
-                tag: item.tag || "其他",
-                plan: normalizePlan(item.plan || []),
-                note: item.note || "",
-                rating: item.rating || "",
-                images: [],
-                comments: [],
-                spend: null,
-                order: itemIndex,
-                _createdAt: new Date().toISOString(),
-                _updatedAt: new Date().toISOString()
-            })),
-            order: dayIndex
-        })),
+        overview: overview, // 从days的title自动生成，仅用于向后兼容
+        days: days,
         _version: DATA_STRUCTURE_VERSION,
         _lastSync: null,
         _syncUser: null

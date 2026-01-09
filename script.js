@@ -1212,16 +1212,8 @@ class CardSlider {
             const noteInput = noteContainer.querySelector('.note-content-input');
             
             if (noteDisplay && noteInput) {
-                noteDisplay.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (!checkWritePermission()) return;
-                    
-                    noteDisplay.style.display = 'none';
-                    noteInput.style.display = 'block';
-                    noteInput.focus();
-                });
-                
-                noteInput.addEventListener('blur', () => {
+                // 保存备注的函数
+                const saveNote = () => {
                     const newNote = noteInput.value.trim();
                     noteDisplay.innerHTML = this.escapeHtmlKeepBr(newNote || '');
                     
@@ -1230,18 +1222,117 @@ class CardSlider {
                     if (cardData) {
                         const itemId = cardData.id;
                         if (itemId) {
-                            this.updateCardData(itemId, { note: newNote });
-                            // 只上传这个 item，不进行全量上传
-                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
-                                dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
-                                    console.error('上传 item 失败:', error);
-                                });
+                            try {
+                                this.updateCardData(itemId, { note: newNote });
+                                // 只上传这个 item，不进行全量上传
+                                if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
+                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                        console.error('上传 item 失败:', error);
+                                    });
+                                }
+                            } catch (error) {
+                                console.error('更新备注失败:', error);
                             }
                         }
                     }
                     
+                    // 无论更新是否成功，都要隐藏输入框
                     noteDisplay.style.display = 'block';
                     noteInput.style.display = 'none';
+                };
+                
+                // 标记输入框是否处于编辑状态
+                let isEditing = false;
+                
+                noteDisplay.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!checkWritePermission()) return;
+                    
+                    noteDisplay.style.display = 'none';
+                    noteInput.style.display = 'block';
+                    noteInput.focus();
+                    isEditing = true;
+                });
+                
+                // 处理 blur 事件
+                let isSaving = false;
+                const handleBlur = () => {
+                    // 防止重复保存
+                    if (isSaving || !isEditing) return;
+                    isSaving = true;
+                    isEditing = false;
+                    
+                    // 使用 setTimeout 延迟处理，确保其他点击事件先执行
+                    setTimeout(() => {
+                        try {
+                            // 检查输入框是否仍然可见（可能已经被其他操作隐藏）
+                            if (noteInput.style.display !== 'none' && noteInput.offsetParent !== null) {
+                                saveNote();
+                            } else {
+                                // 如果已经被隐藏，确保状态正确
+                                noteDisplay.style.display = 'block';
+                                noteInput.style.display = 'none';
+                            }
+                        } catch (error) {
+                            console.error('保存备注时出错:', error);
+                            // 即使出错也要隐藏输入框
+                            noteDisplay.style.display = 'block';
+                            noteInput.style.display = 'none';
+                        } finally {
+                            isSaving = false;
+                        }
+                    }, 200);
+                };
+                
+                // 添加文档级别的点击监听器作为备用方案
+                let documentClickHandler = null;
+                
+                const setupDocumentClickHandler = () => {
+                    // 如果已经有监听器，先移除
+                    if (documentClickHandler) {
+                        document.removeEventListener('click', documentClickHandler, true);
+                    }
+                    
+                    documentClickHandler = (e) => {
+                        // 如果输入框可见且点击的不是输入框相关元素
+                        if (isEditing && noteInput.style.display === 'block' && 
+                            !noteContainer.contains(e.target) && 
+                            !e.target.closest('.note-content-container')) {
+                            // 手动触发保存
+                            handleBlur();
+                        }
+                    };
+                    
+                    // 使用捕获阶段，确保在其他点击事件之前处理
+                    setTimeout(() => {
+                        document.addEventListener('click', documentClickHandler, true);
+                    }, 100);
+                };
+                
+                // 当输入框获得焦点时，添加文档点击监听器
+                noteInput.addEventListener('focus', () => {
+                    setupDocumentClickHandler();
+                });
+                
+                // 当输入框失去焦点时，移除文档点击监听器并保存
+                noteInput.addEventListener('blur', () => {
+                    handleBlur();
+                    // 延迟移除监听器，确保点击事件能先处理
+                    setTimeout(() => {
+                        if (documentClickHandler) {
+                            document.removeEventListener('click', documentClickHandler, true);
+                            documentClickHandler = null;
+                        }
+                    }, 300);
+                });
+                
+                // 添加 Enter 键保存（Ctrl+Enter 或 Cmd+Enter）
+                noteInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        saveNote();
+                        noteInput.blur();
+                    }
                 });
             }
         }
@@ -2450,6 +2541,31 @@ class CardSlider {
         return labels[tag] || tag;
     }
     
+    // 更新卡片数据（统一方法）
+    updateCardData(itemId, updates) {
+        // 检查写权限
+        if (!checkWritePermission()) return;
+        
+        // 更新 this.cards 数组中的数据
+        const card = this.cards.find(c => c.id === itemId);
+        if (card) {
+            Object.assign(card, updates);
+        }
+        
+        // 更新统一数据结构
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    Object.assign(item, updates);
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                }
+            }
+        }
+    }
+    
     // 编辑标签
     editTag(cardIndex) {
         // 检查写权限
@@ -3332,10 +3448,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 // 下载成功后，缓存数据并重新渲染
                                 const unifiedData = tripDataStructure.loadUnifiedData();
                                 if (unifiedData) {
-                                    // 缓存tripData结构
+                                    // 缓存tripData结构（overview从days的title自动生成，不需要单独保存）
                                     localStorage.setItem('trip_data_cache', JSON.stringify({
                                         title: unifiedData.title || '行程计划',
-                                        overview: unifiedData.overview || [],
                                         days: unifiedData.days || []
                                     }));
                                 }
@@ -3393,34 +3508,47 @@ function initUserSelector() {
 
 // 从统一结构或缓存加载tripData
 function loadTripData() {
+    let tripData = null;
+    
     // 优先从统一结构加载
     if (typeof tripDataStructure !== 'undefined') {
         const unifiedData = tripDataStructure.loadUnifiedData();
         if (unifiedData) {
-            return {
+            tripData = {
                 title: unifiedData.title || '行程计划',
-                overview: unifiedData.overview || [],
                 days: unifiedData.days || []
             };
         }
     }
     
     // 如果没有统一结构，尝试从localStorage缓存加载
-    const cachedData = localStorage.getItem('trip_data_cache');
-    if (cachedData) {
-        try {
-            return JSON.parse(cachedData);
-        } catch (e) {
-            console.warn('解析缓存数据失败:', e);
+    if (!tripData) {
+        const cachedData = localStorage.getItem('trip_data_cache');
+        if (cachedData) {
+            try {
+                const parsed = JSON.parse(cachedData);
+                tripData = {
+                    title: parsed.title || '行程计划',
+                    days: parsed.days || []
+                };
+            } catch (e) {
+                console.warn('解析缓存数据失败:', e);
+            }
         }
     }
     
     // 如果都没有，返回空结构（等待从数据库加载）
-    return {
-        title: '行程计划',
-        overview: [],
-        days: []
-    };
+    if (!tripData) {
+        tripData = {
+            title: '行程计划',
+            days: []
+        };
+    }
+    
+    // 从days的title自动生成overview（用于向后兼容）
+    tripData.overview = (tripData.days || []).map(day => day.title || '');
+    
+    return tripData;
 }
 
 // 渲染总览
@@ -3485,18 +3613,22 @@ function renderOverview() {
     }
 }
 
-// 渲染导航
+// 渲染导航（总览从每天的title自动生成）
 function renderNavigation() {
     const navContainer = document.querySelector('.nav-container');
     const tripData = loadTripData();
     if (!navContainer || !tripData) return;
     
+    // 从每天的title自动生成总览
+    const days = tripData.days || [];
+    
     let html = '<h2>行程总览</h2><ul class="nav-list">';
-    tripData.overview.forEach((item, index) => {
-        const dayId = `day${index + 1}`;
+    days.forEach((day, index) => {
+        const dayId = day.id || `day${index + 1}`;
+        const dayTitle = day.title || `Day ${index + 1}`;
         html += `
             <li class="nav-item">
-                <a href="#" class="nav-link" data-day="${dayId}">${item}</a>
+                <a href="#" class="nav-link" data-day="${dayId}">${dayTitle}</a>
             </li>
         `;
     });
