@@ -33,19 +33,31 @@ function mergeUnifiedData(localData, remoteData) {
                     const localUpdated = new Date(localItem._updatedAt || 0);
                     const remoteUpdated = new Date(remoteItem._updatedAt || 0);
                     if (remoteUpdated > localUpdated) {
-                        // 远程更新，使用远程数据，但合并comments、images和plan（保留远程删除的项）
+                        // 远程更新，使用远程数据，但合并comments、images、plan和_likes（保留远程删除的项）
                         remoteItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
                         remoteItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
                         remoteItem.plan = mergePlanItems(localItem.plan || [], remoteItem.plan || []);
+                        // 合并 item 级别的 _likes 字段（合并点赞状态）
+                        if (localItem._likes && remoteItem._likes) {
+                            remoteItem._likes = { ...localItem._likes, ...remoteItem._likes }; // 合并点赞状态
+                        } else if (localItem._likes) {
+                            remoteItem._likes = localItem._likes; // 使用本地的点赞
+                        }
                         itemMap.set(remoteItem.id, remoteItem);
                     } else {
-                        // 本地更新，保留本地数据，但合并comments、images和plan
-                        // 对于 plan：如果本地更新，以本地为准（包括删除），只添加远程中本地没有的新项
-                        localItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
-                        localItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
-                        // plan 合并：本地为主，只添加远程中本地没有的新项（不恢复本地已删除的）
-                        localItem.plan = mergePlanItemsWithLocalPriority(localItem.plan || [], remoteItem.plan || []);
-                        itemMap.set(remoteItem.id, localItem);
+                    // 本地更新，保留本地数据，但合并comments、images、plan和_likes
+                    // 对于 plan：如果本地更新，以本地为准（包括删除），只添加远程中本地没有的新项
+                    localItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
+                    localItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
+                    // plan 合并：本地为主，只添加远程中本地没有的新项（不恢复本地已删除的）
+                    localItem.plan = mergePlanItemsWithLocalPriority(localItem.plan || [], remoteItem.plan || []);
+                    // 合并 item 级别的 _likes 字段（合并点赞状态）
+                    if (remoteItem._likes && localItem._likes) {
+                        localItem._likes = { ...localItem._likes, ...remoteItem._likes }; // 合并点赞状态
+                    } else if (remoteItem._likes) {
+                        localItem._likes = remoteItem._likes; // 使用远程的点赞
+                    }
+                    itemMap.set(remoteItem.id, localItem);
                     }
                 } else {
                     // 本地没有这个 item
@@ -109,11 +121,24 @@ function mergeComments(localComments, remoteComments) {
         if (c._hash) {
             const existing = commentMap.get(c._hash);
             if (existing) {
-                // 哈希值相同，比较时间戳，保留最新的
+                // 哈希值相同，比较时间戳，保留最新的，但合并 _likes 字段
                 const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
                 const remoteTime = new Date(c._timestamp || c._updatedAt || 0);
                 if (remoteTime > localTime) {
+                    // 使用远程数据，但合并 _likes
+                    if (existing._likes && c._likes) {
+                        c._likes = { ...existing._likes, ...c._likes }; // 合并点赞状态
+                    } else if (existing._likes) {
+                        c._likes = existing._likes; // 使用本地的点赞
+                    }
                     commentMap.set(c._hash, c);
+                } else {
+                    // 保留本地的，但合并远程的 _likes
+                    if (c._likes && existing._likes) {
+                        existing._likes = { ...existing._likes, ...c._likes }; // 合并点赞状态
+                    } else if (c._likes) {
+                        existing._likes = c._likes; // 使用远程的点赞
+                    }
                 }
                 // 否则保留本地的（已存在）
             } else {
@@ -158,11 +183,24 @@ function mergePlanItems(localPlans, remotePlans) {
         if (planObj._hash) {
             const existing = planMap.get(planObj._hash);
             if (existing) {
-                // 哈希值相同，比较时间戳，保留最新的
+                // 哈希值相同，比较时间戳，保留最新的，但合并 _likes 字段
                 const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
                 const remoteTime = new Date(planObj._timestamp || planObj._updatedAt || 0);
                 if (remoteTime > localTime) {
+                    // 使用远程数据，但合并 _likes
+                    if (existing._likes && planObj._likes) {
+                        planObj._likes = { ...existing._likes, ...planObj._likes }; // 合并点赞状态
+                    } else if (existing._likes) {
+                        planObj._likes = existing._likes; // 使用本地的点赞
+                    }
                     planMap.set(planObj._hash, planObj);
+                } else {
+                    // 保留本地的，但合并远程的 _likes
+                    if (planObj._likes && existing._likes) {
+                        existing._likes = { ...existing._likes, ...planObj._likes }; // 合并点赞状态
+                    } else if (planObj._likes) {
+                        existing._likes = planObj._likes; // 使用远程的点赞
+                    }
                 }
                 // 否则保留本地的（已存在）
             } else {
@@ -207,20 +245,36 @@ function mergePlanItemsWithLocalPriority(localPlans, remotePlans) {
         }
     });
     
-    // 只添加远程中本地没有的新项（不恢复本地已删除的）
+    // 只添加远程中本地没有的新项（不恢复本地已删除的），但对于已存在的项合并 _likes
     remotePlans.forEach(p => {
         const planObj = typeof p === 'string' ? { _text: p } : p;
         if (planObj._hash) {
-            // 如果本地没有这个哈希值，说明是远程新增的，添加它
-            if (!planMap.has(planObj._hash)) {
+            const existing = planMap.get(planObj._hash);
+            if (!existing) {
+                // 如果本地没有这个哈希值，说明是远程新增的，添加它
                 planMap.set(planObj._hash, planObj);
+            } else {
+                // 如果本地已有，合并 _likes 字段（不覆盖其他内容）
+                if (planObj._likes && existing._likes) {
+                    existing._likes = { ...existing._likes, ...planObj._likes }; // 合并点赞状态
+                } else if (planObj._likes) {
+                    existing._likes = planObj._likes; // 使用远程的点赞
+                }
             }
             // 如果本地已有，说明本地保留了它（或本地有更新的版本），不覆盖
         } else {
             // 没有哈希值的也检查（向后兼容），使用文本作为临时键
             const tempKey = planObj._text || JSON.stringify(planObj);
-            if (!planMap.has(tempKey)) {
+            const existing = planMap.get(tempKey);
+            if (!existing) {
                 planMap.set(tempKey, planObj);
+            } else {
+                // 合并 _likes 字段
+                if (planObj._likes && existing._likes) {
+                    existing._likes = { ...existing._likes, ...planObj._likes }; // 合并点赞状态
+                } else if (planObj._likes) {
+                    existing._likes = planObj._likes; // 使用远程的点赞
+                }
             }
         }
     });

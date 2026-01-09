@@ -2714,7 +2714,18 @@ class CardSlider {
     
     // 获取行程项点赞
     getItemLikes(dayId, itemIndex, itemId = null) {
-        // 优先使用itemId生成key（如果提供）
+        // 优先从统一结构读取（使用itemId）
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item && item._likes) {
+                    return item._likes;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式（使用itemIndex）
         const key = itemId 
             ? `trip_item_likes_${dayId}_${itemId}`
             : `trip_item_likes_${dayId}_${itemIndex}`;
@@ -2727,7 +2738,46 @@ class CardSlider {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        // 优先使用itemId生成key（如果提供）
+        // 如果itemId为null，尝试从card获取
+        if (!itemId) {
+            const card = this.cards[itemIndex];
+            itemId = card?.id || null;
+        }
+        
+        // 优先保存到统一结构
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item) {
+                    // 初始化 _likes 字段
+                    if (!item._likes) {
+                        item._likes = {};
+                    }
+                    if (!item._likes[section]) {
+                        item._likes[section] = { mrb: false, djy: false };
+                    }
+                    // 切换点赞状态
+                    item._likes[section][currentUser] = !item._likes[section][currentUser];
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                        dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    } else {
+                        // 如果没有部分上传方法，使用全量上传
+                        if (typeof triggerImmediateUpload === 'function') {
+                            triggerImmediateUpload();
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = itemId 
             ? `trip_item_likes_${dayId}_${itemId}`
             : `trip_item_likes_${dayId}_${itemIndex}`;
@@ -2737,13 +2787,37 @@ class CardSlider {
         }
         likes[section][currentUser] = !likes[section][currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步
-        autoSyncToGist();
+        // 如果无法使用统一结构，回退到全量上传
+        if (typeof triggerImmediateUpload === 'function') {
+            triggerImmediateUpload();
+        }
     }
     
     // 获取计划项点赞
     getPlanItemLikes(dayId, itemIndex, planIndex, itemId = null) {
-        // 优先使用itemId生成key（如果提供）
+        // 优先从统一结构读取（使用itemId和planHash）
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item && item.plan && Array.isArray(item.plan) && item.plan[planIndex]) {
+                    const planItem = item.plan[planIndex];
+                    // 如果 plan item 有 _likes 字段，使用它
+                    if (planItem._likes) {
+                        return planItem._likes;
+                    }
+                    // 否则，如果有 _hash，尝试通过 hash 查找
+                    if (planItem._hash) {
+                        const planItemByHash = item.plan.find(p => p._hash === planItem._hash);
+                        if (planItemByHash && planItemByHash._likes) {
+                            return planItemByHash._likes;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式（使用itemIndex）
         const key = itemId 
             ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
             : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
@@ -2756,20 +2830,82 @@ class CardSlider {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        // 优先使用itemId生成key（如果提供）
+        // 如果itemId为null，尝试从card获取
+        if (!itemId) {
+            const card = this.cards[itemIndex];
+            itemId = card?.id || null;
+        }
+        
+        // 优先保存到统一结构
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item && item.plan && Array.isArray(item.plan) && item.plan[planIndex]) {
+                    const planItem = item.plan[planIndex];
+                    // 初始化 _likes 字段
+                    if (!planItem._likes) {
+                        planItem._likes = { mrb: false, djy: false };
+                    }
+                    // 切换点赞状态
+                    planItem._likes[currentUser] = !planItem._likes[currentUser];
+                    planItem._updatedAt = planItem._updatedAt || new Date().toISOString();
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                        dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    } else {
+                        // 如果没有部分上传方法，使用全量上传
+                        if (typeof triggerImmediateUpload === 'function') {
+                            triggerImmediateUpload();
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = itemId 
             ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
             : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex, itemId);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步
-        autoSyncToGist();
+        // 如果无法使用统一结构，回退到全量上传
+        if (typeof triggerImmediateUpload === 'function') {
+            triggerImmediateUpload();
+        }
     }
     
     // 获取留言点赞
     getCommentLikes(dayId, itemIndex, commentIndex, itemId = null) {
-        // 优先使用itemId生成key（如果提供）
+        // 优先从统一结构读取（使用itemId和commentHash）
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item && item.comments && Array.isArray(item.comments) && item.comments[commentIndex]) {
+                    const comment = item.comments[commentIndex];
+                    // 如果 comment 有 _likes 字段，使用它
+                    if (comment._likes) {
+                        return comment._likes;
+                    }
+                    // 否则，如果有 _hash，尝试通过 hash 查找
+                    if (comment._hash) {
+                        const commentByHash = item.comments.find(c => c._hash === comment._hash);
+                        if (commentByHash && commentByHash._likes) {
+                            return commentByHash._likes;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式（使用itemIndex）
         const key = itemId 
             ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
             : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
@@ -2782,15 +2918,55 @@ class CardSlider {
         // 检查写权限
         if (!checkWritePermission()) return;
         
-        // 优先使用itemId生成key（如果提供）
+        // 如果itemId为null，尝试从card获取
+        if (!itemId) {
+            const card = this.cards[itemIndex];
+            itemId = card?.id || null;
+        }
+        
+        // 优先保存到统一结构
+        if (typeof tripDataStructure !== 'undefined' && itemId) {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
+                if (item && item.comments && Array.isArray(item.comments) && item.comments[commentIndex]) {
+                    const comment = item.comments[commentIndex];
+                    // 初始化 _likes 字段
+                    if (!comment._likes) {
+                        comment._likes = { mrb: false, djy: false };
+                    }
+                    // 切换点赞状态
+                    comment._likes[currentUser] = !comment._likes[currentUser];
+                    comment._updatedAt = comment._updatedAt || new Date().toISOString();
+                    item._updatedAt = new Date().toISOString();
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                        dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    } else {
+                        // 如果没有部分上传方法，使用全量上传
+                        if (typeof triggerImmediateUpload === 'function') {
+                            triggerImmediateUpload();
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        
+        // 回退到旧的存储方式
         const key = itemId 
             ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
             : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const likes = this.getCommentLikes(dayId, itemIndex, commentIndex, itemId);
         likes[currentUser] = !likes[currentUser];
         localStorage.setItem(key, JSON.stringify(likes));
-        // 自动同步
-        autoSyncToGist();
+        // 如果无法使用统一结构，回退到全量上传
+        if (typeof triggerImmediateUpload === 'function') {
+            triggerImmediateUpload();
+        }
     }
     
     // 获取卡片展开状态
