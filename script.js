@@ -1197,7 +1197,12 @@ class CardSlider {
                         <div class="spend-input-container" style="display: none;">
                             <input type="text" class="spend-item-input" placeholder="项目名称..." />
                             <input type="number" class="spend-amount-input" placeholder="金额" step="0.01" min="0" />
-                            <input type="text" class="spend-payer-input" placeholder="支出人..." />
+                            <select class="spend-payer-input">
+                                <option value="">请选择支出人</option>
+                                <option value="mrb">mrb</option>
+                                <option value="djy">djy</option>
+                                <option value="共同">共同</option>
+                            </select>
                             <div class="spend-input-actions">
                                 <button class="spend-input-confirm">✓</button>
                                 <button class="spend-input-cancel">✕</button>
@@ -2407,17 +2412,27 @@ class CardSlider {
             // 确认添加消费项
             const spendPayerInput = card.querySelector('.spend-payer-input');
             if (spendInputConfirm && spendItemInput && spendAmountInput && spendPayerInput) {
+                // 设置默认支出人为当前用户
+                if (typeof currentUser !== 'undefined' && currentUser) {
+                    spendPayerInput.value = currentUser;
+                }
+                
                 const confirmAdd = async () => {
                     const itemName = spendItemInput.value.trim();
                     const amount = parseFloat(spendAmountInput.value);
-                    const payer = spendPayerInput.value.trim();
+                    const payer = spendPayerInput.value || '';
                     
                     if (itemName && !isNaN(amount) && amount > 0) {
                         await this.addSpendItem(index, itemName, amount, payer);
                         // 重置输入框和UI状态
                         spendItemInput.value = '';
                         spendAmountInput.value = '';
-                        spendPayerInput.value = '';
+                        // 重置为当前用户（如果有）
+                        if (typeof currentUser !== 'undefined' && currentUser) {
+                            spendPayerInput.value = currentUser;
+                        } else {
+                            spendPayerInput.value = '';
+                        }
                         spendInputContainer.style.display = 'none';
                         spendAddBtn.style.display = 'block';
                     } else {
@@ -2438,13 +2453,6 @@ class CardSlider {
                         spendPayerInput.focus();
                     }
                 });
-                
-                spendPayerInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        confirmAdd();
-                    }
-                });
             }
             
             // 取消按钮
@@ -2456,7 +2464,14 @@ class CardSlider {
                     spendItemInput.value = '';
                     spendAmountInput.value = '';
                     const spendPayerInput = card.querySelector('.spend-payer-input');
-                    if (spendPayerInput) spendPayerInput.value = '';
+                    if (spendPayerInput) {
+                        // 重置为当前用户（如果有）
+                        if (typeof currentUser !== 'undefined' && currentUser) {
+                            spendPayerInput.value = currentUser;
+                        } else {
+                            spendPayerInput.value = '';
+                        }
+                    }
                     spendInputContainer.style.display = 'none';
                     spendAddBtn.style.display = 'block';
                 });
