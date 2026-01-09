@@ -1513,7 +1513,29 @@ class CardSlider {
             // 只需要处理 change 事件即可
             // 但为了兼容性，仍然保留一些事件处理
             
-            imageUploadInput.addEventListener('change', (e) => {
+            // 移除旧的事件监听器（如果存在）- 通过克隆节点来移除所有事件监听器
+            if (imageUploadInput.dataset.uploadHandler && imageUploadInput.parentNode) {
+                const newInput = imageUploadInput.cloneNode(true);
+                imageUploadInput.parentNode.replaceChild(newInput, imageUploadInput);
+            }
+            
+            // 获取实际的 input 元素（可能是新克隆的）
+            const actualInput = card.querySelector('.image-upload-input');
+            if (!actualInput) return;
+            
+            // 标记已绑定事件监听器
+            actualInput.dataset.uploadHandler = 'bound';
+            
+            // 创建新的事件处理函数
+            const uploadHandler = (e) => {
+                // 防止重复处理
+                if (isProcessing) {
+                    console.log('图片上传正在处理中，跳过重复触发');
+                    e.target.value = ''; // 清空输入，防止重复触发
+                    return;
+                }
+                isProcessing = true;
+                
                 // 延迟处理，确保在移动设备上文件选择完成
                 setTimeout(() => {
                     const files = Array.from(e.target.files || []);
@@ -1521,6 +1543,7 @@ class CardSlider {
                     if (files.length === 0) {
                         // 如果没有文件，可能是用户取消了选择
                         e.target.value = '';
+                        isProcessing = false; // 重置标志
                         return;
                     }
                     
@@ -1550,6 +1573,7 @@ class CardSlider {
                     
                     if (validFiles.length === 0) {
                         e.target.value = '';
+                        isProcessing = false; // 重置标志
                         return;
                     }
                     
@@ -1648,9 +1672,25 @@ class CardSlider {
                         const imageUrls = imageResults.map(img => img.url);
                         const uploadedFileNames = imageResults.map(img => img.fileName).join('、');
                         
+                        // 去重：只添加不存在的图片 URL
+                        const existingUrls = new Set(currentImages);
+                        const newImageUrls = imageUrls.filter(url => !existingUrls.has(url));
+                        
                         // 只保存 Cloudinary URL，不保存 base64
-                        const newImages = [...currentImages, ...imageUrls];
+                        const newImages = [...currentImages, ...newImageUrls];
                         this.setImages(this.dayId, index, newImages, itemId);
+                        
+                        // 如果所有图片都已存在，说明可能是重复触发
+                        if (newImageUrls.length === 0 && imageUrls.length > 0) {
+                            console.warn('⚠️ 警告：所有图片都已存在，可能是重复触发上传');
+                            isProcessing = false; // 重置标志
+                            e.target.value = ''; // 清空输入
+                            if (uploadBtn) {
+                                uploadBtn.disabled = false;
+                                uploadBtn.textContent = originalText;
+                            }
+                            return;
+                        }
                         
                         // 验证图片是否能正常显示（检查 URL 格式）
                         const invalidUrls = imageUrls.filter(url => !url || !url.startsWith('http'));
@@ -1702,8 +1742,9 @@ class CardSlider {
                             }
                         }
                         
-                        // 清空文件输入
+                        // 清空文件输入并重置标志
                         e.target.value = '';
+                        isProcessing = false; // 重置标志
                     }).catch(error => {
                         console.error('❌ 图片上传失败:', error);
                         const errorMessage = `图片上传失败: ${error.message}`;
@@ -1719,6 +1760,7 @@ class CardSlider {
                         
                         alert(errorMessage);
                         e.target.value = '';
+                        isProcessing = false; // 重置标志
                         
                         // 恢复按钮状态
                         if (uploadBtn) {
@@ -1728,7 +1770,10 @@ class CardSlider {
                         }
                     });
                 }, 100); // 延迟100ms，确保文件选择完成
-            });
+            };
+            
+            // 绑定事件监听器
+            actualInput.addEventListener('change', uploadHandler);
         }
         
         // 标签点击修改
