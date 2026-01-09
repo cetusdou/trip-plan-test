@@ -1034,10 +1034,16 @@ class CardSlider {
             if (Array.isArray(planData)) {
                 planItems = planData
                     .map(item => {
+                        // 过滤掉 null 和 undefined
+                        if (!item) {
+                            return null;
+                        }
                         // 如果是对象且标记为删除，返回null（不显示）
-                        // 已删除的项已被过滤，这里不再需要检查
+                        if (typeof item === 'object' && item._deleted) {
+                            return null;
+                        }
                         // 如果是对象，保留对象本身（用于后续渲染时提取_text）
-                        if (typeof item === 'object' && item._text) {
+                        if (typeof item === 'object' && item !== null) {
                             return item;
                         }
                         // 如果是字符串，直接返回
@@ -1046,7 +1052,7 @@ class CardSlider {
                         }
                         return null;
                     })
-                    .filter(item => item !== null && (typeof item === 'string' ? item.trim().length > 0 : true));
+                    .filter(item => item !== null && item !== undefined && (typeof item === 'string' ? item.trim().length > 0 : true));
             } else if (typeof planData === 'string') {
                 planItems = [planData].filter(item => item && item.trim().length > 0);
             }
@@ -1060,6 +1066,10 @@ class CardSlider {
                 <ul class="plan-list">
                     ${planItems.length > 0 ? planItems
                         .filter(planItem => {
+                            // 过滤掉 null、undefined 和已删除的项
+                            if (!planItem) {
+                                return false;
+                            }
                             // 过滤掉已删除的项（兼容旧数据）
                             if (typeof planItem === 'object' && planItem._deleted) {
                                 return false;
@@ -1067,32 +1077,42 @@ class CardSlider {
                             return true;
                         })
                         .map((planItem, filteredIndex) => {
+                        // 安全检查：如果 planItem 为 null 或 undefined，跳过
+                        if (!planItem) {
+                            return '';
+                        }
                         // 支持新旧两种格式：字符串或对象
-                        const planItemText = typeof planItem === 'string' ? planItem : (planItem._text || planItem);
-                        const planHash = (typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
+                        const planItemText = typeof planItem === 'string' ? planItem : (planItem && planItem._text ? planItem._text : planItem || '');
+                        const planHash = (planItem && typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
                         // 使用原始数组中的索引（不是过滤后的索引）
                         const originalPlanItems = Array.isArray(cardData.plan) ? cardData.plan : (cardData.plan ? [cardData.plan] : []);
                         const originalIndex = originalPlanItems.findIndex(p => {
+                            // 安全检查：过滤掉 null 和 undefined
+                            if (!p || !planItem) {
+                                return false;
+                            }
                             if (typeof p === 'string' && typeof planItem === 'string') {
                                 return p === planItem;
-                            } else if (typeof p === 'object' && typeof planItem === 'object') {
+                            } else if (typeof p === 'object' && typeof planItem === 'object' && p !== null && planItem !== null) {
                                 return p._hash === planItem._hash || (p._text === planItem._text && !p._hash && !planItem._hash);
                             }
                             return false;
                         });
                         const planIndex = originalIndex !== -1 ? originalIndex : filteredIndex;
                         const planItemLikes = this.getPlanItemLikes(this.dayId, index, planIndex, itemId);
-                        const planItemLikeCount = (planItemLikes.mrb ? 1 : 0) + (planItemLikes.djy ? 1 : 0);
+                        // 新格式：planItemLikes 是数组 ['mrb', 'djy']
+                        const planItemLikeCount = Array.isArray(planItemLikes) ? planItemLikes.length : 0;
+                        const isLiked = Array.isArray(planItemLikes) && planItemLikes.includes(currentUser);
                     return `
                         <li class="plan-item">
                             <span class="plan-item-text">${this.escapeHtmlKeepBr(planItemText)}</span>
                             <div class="plan-item-actions">
-                                <button class="plan-item-like-btn ${planItemLikes[currentUser] ? 'liked' : ''}" 
+                                <button class="plan-item-like-btn ${isLiked ? 'liked' : ''}" 
                                         data-plan-index="${planIndex}" 
                                         data-plan-hash="${planHash || ''}"
                                         data-item-id="${itemId || ''}"
                                         title="点赞">
-                                    <span class="like-icon">${planItemLikes[currentUser] ? '❤️' : '🤍'}</span>
+                                    <span class="like-icon">${isLiked ? '❤️' : '🤍'}</span>
                                     ${planItemLikeCount > 0 ? `<span class="like-count">${planItemLikeCount}</span>` : ''}
                                 </button>
                                 <button class="plan-item-delete-btn" 
@@ -1191,7 +1211,9 @@ class CardSlider {
                 <div class="comments-container">
                     ${comments.map((comment, commentIndex) => {
                         const commentLikes = this.getCommentLikes(this.dayId, index, commentIndex, itemId);
-                        const commentLikeCount = (commentLikes.mrb ? 1 : 0) + (commentLikes.djy ? 1 : 0);
+                        // 新格式：commentLikes 是数组 ['mrb', 'djy']
+                        const commentLikeCount = Array.isArray(commentLikes) ? commentLikes.length : 0;
+                        const isLiked = Array.isArray(commentLikes) && commentLikes.includes(currentUser);
                         return `
                         <div class="comment-item ${comment.user === 'mrb' ? 'user-a' : 'user-b'}" data-comment-hash="${comment._hash || ''}">
                             <div class="comment-header">
@@ -1200,9 +1222,9 @@ class CardSlider {
                                 <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>
                             </div>
                             <div class="comment-content">${this.escapeHtml(comment.message)}</div>
-                            <button class="comment-like-btn ${commentLikes[currentUser] ? 'liked' : ''}" 
+                            <button class="comment-like-btn ${isLiked ? 'liked' : ''}" 
                                     data-comment-index="${commentIndex}" title="点赞">
-                                <span class="like-icon">${commentLikes[currentUser] ? '❤️' : '🤍'}</span>
+                                <span class="like-icon">${isLiked ? '❤️' : '🤍'}</span>
                                 ${commentLikeCount > 0 ? `<span class="like-count">${commentLikeCount}</span>` : ''}
                             </button>
                         </div>
@@ -2757,7 +2779,7 @@ class CardSlider {
         autoSyncToGist();
     }
     
-    // 获取行程项点赞
+    // 获取行程项点赞（返回格式：{ section: ['user1', 'user2'] }）
     getItemLikes(dayId, itemIndex, itemId = null) {
         // 优先从统一结构读取（使用itemId）
         if (typeof tripDataStructure !== 'undefined' && itemId) {
@@ -2765,7 +2787,21 @@ class CardSlider {
             if (unifiedData) {
                 const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
                 if (item && item._likes) {
-                    return item._likes;
+                    // 转换旧格式到新格式（兼容性处理）
+                    const convertedLikes = {};
+                    for (const section in item._likes) {
+                        if (typeof item._likes[section] === 'object' && !Array.isArray(item._likes[section])) {
+                            // 旧格式：{ mrb: boolean, djy: boolean }
+                            const users = [];
+                            if (item._likes[section].mrb) users.push('mrb');
+                            if (item._likes[section].djy) users.push('djy');
+                            convertedLikes[section] = users;
+                        } else if (Array.isArray(item._likes[section])) {
+                            // 新格式：['mrb', 'djy']
+                            convertedLikes[section] = item._likes[section];
+                        }
+                    }
+                    return convertedLikes;
                 }
             }
         }
@@ -2775,10 +2811,26 @@ class CardSlider {
             ? `trip_item_likes_${dayId}_${itemId}`
             : `trip_item_likes_${dayId}_${itemIndex}`;
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : {};
+        if (data) {
+            const parsed = JSON.parse(data);
+            // 转换旧格式到新格式
+            const convertedLikes = {};
+            for (const section in parsed) {
+                if (typeof parsed[section] === 'object' && !Array.isArray(parsed[section])) {
+                    const users = [];
+                    if (parsed[section].mrb) users.push('mrb');
+                    if (parsed[section].djy) users.push('djy');
+                    convertedLikes[section] = users;
+                } else if (Array.isArray(parsed[section])) {
+                    convertedLikes[section] = parsed[section];
+                }
+            }
+            return convertedLikes;
+        }
+        return {};
     }
     
-    // 切换行程项点赞
+    // 切换行程项点赞（新格式：{ section: ['user1', 'user2'] }）
     toggleItemLike(dayId, itemIndex, section, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
@@ -2800,10 +2852,23 @@ class CardSlider {
                         item._likes = {};
                     }
                     if (!item._likes[section]) {
-                        item._likes[section] = { mrb: false, djy: false };
+                        item._likes[section] = [];
                     }
-                    // 切换点赞状态
-                    item._likes[section][currentUser] = !item._likes[section][currentUser];
+                    // 确保是数组格式
+                    if (!Array.isArray(item._likes[section])) {
+                        // 转换旧格式
+                        const users = [];
+                        if (item._likes[section].mrb) users.push('mrb');
+                        if (item._likes[section].djy) users.push('djy');
+                        item._likes[section] = users;
+                    }
+                    // 切换点赞状态：如果已点赞则移除，否则添加
+                    const userIndex = item._likes[section].indexOf(currentUser);
+                    if (userIndex > -1) {
+                        item._likes[section].splice(userIndex, 1); // 取消点赞
+                    } else {
+                        item._likes[section].push(currentUser); // 点赞
+                    }
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
                     // 只上传这个 item，不进行全量上传
@@ -2828,9 +2893,14 @@ class CardSlider {
             : `trip_item_likes_${dayId}_${itemIndex}`;
         const likes = this.getItemLikes(dayId, itemIndex, itemId);
         if (!likes[section]) {
-            likes[section] = { mrb: false, djy: false };
+            likes[section] = [];
         }
-        likes[section][currentUser] = !likes[section][currentUser];
+        const userIndex = likes[section].indexOf(currentUser);
+        if (userIndex > -1) {
+            likes[section].splice(userIndex, 1);
+        } else {
+            likes[section].push(currentUser);
+        }
         localStorage.setItem(key, JSON.stringify(likes));
         // 如果无法使用统一结构，回退到全量上传
         if (typeof triggerImmediateUpload === 'function') {
@@ -2838,7 +2908,7 @@ class CardSlider {
         }
     }
     
-    // 获取计划项点赞
+    // 获取计划项点赞（返回格式：['user1', 'user2']）
     getPlanItemLikes(dayId, itemIndex, planIndex, itemId = null) {
         // 优先从统一结构读取（使用itemId和planHash）
         if (typeof tripDataStructure !== 'undefined' && itemId) {
@@ -2849,13 +2919,29 @@ class CardSlider {
                     const planItem = item.plan[planIndex];
                     // 如果 plan item 有 _likes 字段，使用它
                     if (planItem._likes) {
-                        return planItem._likes;
+                        // 转换旧格式到新格式（兼容性处理）
+                        if (Array.isArray(planItem._likes)) {
+                            return planItem._likes;
+                        } else if (typeof planItem._likes === 'object') {
+                            // 旧格式：{ mrb: boolean, djy: boolean }
+                            const users = [];
+                            if (planItem._likes.mrb) users.push('mrb');
+                            if (planItem._likes.djy) users.push('djy');
+                            return users;
+                        }
                     }
                     // 否则，如果有 _hash，尝试通过 hash 查找
                     if (planItem._hash) {
                         const planItemByHash = item.plan.find(p => p._hash === planItem._hash);
                         if (planItemByHash && planItemByHash._likes) {
-                            return planItemByHash._likes;
+                            if (Array.isArray(planItemByHash._likes)) {
+                                return planItemByHash._likes;
+                            } else if (typeof planItemByHash._likes === 'object') {
+                                const users = [];
+                                if (planItemByHash._likes.mrb) users.push('mrb');
+                                if (planItemByHash._likes.djy) users.push('djy');
+                                return users;
+                            }
                         }
                     }
                 }
@@ -2867,10 +2953,22 @@ class CardSlider {
             ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
             : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : { mrb: false, djy: false };
+        if (data) {
+            const parsed = JSON.parse(data);
+            // 转换旧格式到新格式
+            if (Array.isArray(parsed)) {
+                return parsed;
+            } else if (typeof parsed === 'object') {
+                const users = [];
+                if (parsed.mrb) users.push('mrb');
+                if (parsed.djy) users.push('djy');
+                return users;
+            }
+        }
+        return [];
     }
     
-    // 切换计划项点赞
+    // 切换计划项点赞（新格式：['user1', 'user2']）
     togglePlanItemLike(dayId, itemIndex, planIndex, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
@@ -2890,10 +2988,23 @@ class CardSlider {
                     const planItem = item.plan[planIndex];
                     // 初始化 _likes 字段
                     if (!planItem._likes) {
-                        planItem._likes = { mrb: false, djy: false };
+                        planItem._likes = [];
                     }
-                    // 切换点赞状态
-                    planItem._likes[currentUser] = !planItem._likes[currentUser];
+                    // 确保是数组格式
+                    if (!Array.isArray(planItem._likes)) {
+                        // 转换旧格式
+                        const users = [];
+                        if (planItem._likes.mrb) users.push('mrb');
+                        if (planItem._likes.djy) users.push('djy');
+                        planItem._likes = users;
+                    }
+                    // 切换点赞状态：如果已点赞则移除，否则添加
+                    const userIndex = planItem._likes.indexOf(currentUser);
+                    if (userIndex > -1) {
+                        planItem._likes.splice(userIndex, 1); // 取消点赞
+                    } else {
+                        planItem._likes.push(currentUser); // 点赞
+                    }
                     planItem._updatedAt = planItem._updatedAt || new Date().toISOString();
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
@@ -2918,7 +3029,12 @@ class CardSlider {
             ? `trip_plan_item_likes_${dayId}_${itemId}_${planIndex}`
             : `trip_plan_item_likes_${dayId}_${itemIndex}_${planIndex}`;
         const likes = this.getPlanItemLikes(dayId, itemIndex, planIndex, itemId);
-        likes[currentUser] = !likes[currentUser];
+        const userIndex = likes.indexOf(currentUser);
+        if (userIndex > -1) {
+            likes.splice(userIndex, 1);
+        } else {
+            likes.push(currentUser);
+        }
         localStorage.setItem(key, JSON.stringify(likes));
         // 如果无法使用统一结构，回退到全量上传
         if (typeof triggerImmediateUpload === 'function') {
@@ -2926,7 +3042,7 @@ class CardSlider {
         }
     }
     
-    // 获取留言点赞
+    // 获取留言点赞（返回格式：['user1', 'user2']）
     getCommentLikes(dayId, itemIndex, commentIndex, itemId = null) {
         // 优先从统一结构读取（使用itemId和commentHash）
         if (typeof tripDataStructure !== 'undefined' && itemId) {
@@ -2937,13 +3053,29 @@ class CardSlider {
                     const comment = item.comments[commentIndex];
                     // 如果 comment 有 _likes 字段，使用它
                     if (comment._likes) {
-                        return comment._likes;
+                        // 转换旧格式到新格式（兼容性处理）
+                        if (Array.isArray(comment._likes)) {
+                            return comment._likes;
+                        } else if (typeof comment._likes === 'object') {
+                            // 旧格式：{ mrb: boolean, djy: boolean }
+                            const users = [];
+                            if (comment._likes.mrb) users.push('mrb');
+                            if (comment._likes.djy) users.push('djy');
+                            return users;
+                        }
                     }
                     // 否则，如果有 _hash，尝试通过 hash 查找
                     if (comment._hash) {
                         const commentByHash = item.comments.find(c => c._hash === comment._hash);
                         if (commentByHash && commentByHash._likes) {
-                            return commentByHash._likes;
+                            if (Array.isArray(commentByHash._likes)) {
+                                return commentByHash._likes;
+                            } else if (typeof commentByHash._likes === 'object') {
+                                const users = [];
+                                if (commentByHash._likes.mrb) users.push('mrb');
+                                if (commentByHash._likes.djy) users.push('djy');
+                                return users;
+                            }
                         }
                     }
                 }
@@ -2955,10 +3087,22 @@ class CardSlider {
             ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
             : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : { mrb: false, djy: false };
+        if (data) {
+            const parsed = JSON.parse(data);
+            // 转换旧格式到新格式
+            if (Array.isArray(parsed)) {
+                return parsed;
+            } else if (typeof parsed === 'object') {
+                const users = [];
+                if (parsed.mrb) users.push('mrb');
+                if (parsed.djy) users.push('djy');
+                return users;
+            }
+        }
+        return [];
     }
     
-    // 切换留言点赞
+    // 切换留言点赞（新格式：['user1', 'user2']）
     toggleCommentLike(dayId, itemIndex, commentIndex, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
@@ -2978,10 +3122,23 @@ class CardSlider {
                     const comment = item.comments[commentIndex];
                     // 初始化 _likes 字段
                     if (!comment._likes) {
-                        comment._likes = { mrb: false, djy: false };
+                        comment._likes = [];
                     }
-                    // 切换点赞状态
-                    comment._likes[currentUser] = !comment._likes[currentUser];
+                    // 确保是数组格式
+                    if (!Array.isArray(comment._likes)) {
+                        // 转换旧格式
+                        const users = [];
+                        if (comment._likes.mrb) users.push('mrb');
+                        if (comment._likes.djy) users.push('djy');
+                        comment._likes = users;
+                    }
+                    // 切换点赞状态：如果已点赞则移除，否则添加
+                    const userIndex = comment._likes.indexOf(currentUser);
+                    if (userIndex > -1) {
+                        comment._likes.splice(userIndex, 1); // 取消点赞
+                    } else {
+                        comment._likes.push(currentUser); // 点赞
+                    }
                     comment._updatedAt = comment._updatedAt || new Date().toISOString();
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
@@ -3006,7 +3163,12 @@ class CardSlider {
             ? `trip_comment_likes_${dayId}_${itemId}_${commentIndex}`
             : `trip_comment_likes_${dayId}_${itemIndex}_${commentIndex}`;
         const likes = this.getCommentLikes(dayId, itemIndex, commentIndex, itemId);
-        likes[currentUser] = !likes[currentUser];
+        const userIndex = likes.indexOf(currentUser);
+        if (userIndex > -1) {
+            likes.splice(userIndex, 1);
+        } else {
+            likes.push(currentUser);
+        }
         localStorage.setItem(key, JSON.stringify(likes));
         // 如果无法使用统一结构，回退到全量上传
         if (typeof triggerImmediateUpload === 'function') {
