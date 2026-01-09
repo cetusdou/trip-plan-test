@@ -895,7 +895,7 @@ body {
     padding: 10px;
     background: #f8f9fa;
     border-radius: 8px;
-    border-left: 3px solid #56ab2f;
+    /* border-left: 3px solid #56ab2f; */
 }
 
 /* 计划列表样式 */
@@ -913,7 +913,7 @@ body {
     margin-bottom: 8px;
     background: white;
     border-radius: 6px;
-    border-left: 3px solid #56ab2f;
+    /* border-left: 3px solid #56ab2f; */
     transition: background 0.2s ease;
 }
 
@@ -1107,15 +1107,30 @@ body {
 
 .spend-table th {
     padding: 8px 12px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     color: #333;
     border-bottom: 2px solid #ddd;
 }
 
+.spend-table th:last-child {
+    width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+    padding: 8px 2px;
+}
+
 .spend-table td {
     padding: 8px 12px;
     border-bottom: 1px solid #eee;
+}
+
+.spend-item-action {
+    width: 20px;
+    min-width: 20px;
+    text-align: right;
+    max-width: 50px;
+    padding: 8px 4px !important;
 }
 
 .spend-table tbody tr:hover {
@@ -1125,16 +1140,22 @@ body {
 .spend-item-name {
     font-weight: 500;
     color: #333;
+    text-align: center;
 }
 
 .spend-item-amount {
     color: #56ab2f;
     font-weight: 600;
-    text-align: right;
+    text-align: center;
+}
+
+.spend-item-payer {
+    color: #666;
+    text-align: center;
 }
 
 .spend-empty {
-    text-align: center;
+    text-align: right;
     color: #999;
     font-style: italic;
     padding: 20px !important;
@@ -1157,14 +1178,29 @@ body {
 }
 
 .spend-delete-btn {
-    background: transparent;
+    background: rgba(0,0,0,0.1);
     border: none;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    cursor: pointer;
+    padding: 4px 8px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s ease;
+    opacity: 0.8;
+    /* border: none;
     cursor: pointer;
     font-size: 14px;
     padding: 4px 8px;
     border-radius: 4px;
     transition: all 0.2s;
-    color: #999;
+    color: #999; */
 }
 
 .spend-delete-btn:hover {
@@ -1205,7 +1241,8 @@ body {
 }
 
 .spend-item-input,
-.spend-amount-input {
+.spend-amount-input,
+.spend-payer-input {
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -1216,7 +1253,8 @@ body {
 }
 
 .spend-item-input:focus,
-.spend-amount-input:focus {
+.spend-amount-input:focus,
+.spend-payer-input:focus {
     border-color: #56ab2f;
     box-shadow: 0 0 0 2px rgba(86, 171, 47, 0.1);
 }
@@ -1271,6 +1309,137 @@ body {
 
 .note-content-display:hover {
     background-color: rgba(243, 156, 18, 0.1);
+}
+
+/* Markdown 内容样式 */
+.markdown-content {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.markdown-content h1 {
+    font-size: 1.5em;
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 8px;
+}
+
+.markdown-content h2 {
+    font-size: 1.3em;
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 6px;
+}
+
+.markdown-content h3 {
+    font-size: 1.1em;
+}
+
+.markdown-content p {
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.markdown-content li {
+    margin: 4px 0;
+    line-height: 1.6;
+}
+
+.markdown-content code {
+    background: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    color: #e83e8c;
+}
+
+.markdown-content pre {
+    background: #f4f4f4;
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.markdown-content pre code {
+    background: transparent;
+    padding: 0;
+    color: #333;
+    font-size: 0.9em;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid #f39c12;
+    padding-left: 12px;
+    margin: 12px 0;
+    color: #666;
+    font-style: italic;
+}
+
+.markdown-content a {
+    color: #56ab2f;
+    text-decoration: none;
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+}
+
+.markdown-content strong {
+    font-weight: 600;
+    color: #333;
+}
+
+.markdown-content em {
+    font-style: italic;
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid #eaecef;
+    margin: 16px 0;
+}
+
+.markdown-content table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    width: 100%;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    border: 1px solid #eaecef;
+    padding: 6px 12px;
+    text-align: left;
+}
+
+.markdown-content table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 8px 0;
 }
 
 .note-content-input {
