@@ -117,7 +117,7 @@
         <div id="expense-summary-modal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 800px;">
                 <div class="modal-header">
-                    <h3>💰 开支总计</h3>
+                    <h3>开支总计</h3>
                     <button class="modal-close" onclick="closeExpenseSummary()">×</button>
                 </div>
                 <div class="modal-body" id="expense-summary-content">
@@ -218,8 +218,12 @@
     <!-- 数据从数据库或缓存加载，不再使用data.js -->
     <!-- 引入统一数据结构工具 -->
     <script src="trip-data-structure.js"></script>
-    <!-- 不再从config.js导入token，token缓存在localStorage中 -->
-    <!-- Firebase SDK (如果使用Firebase同步) -->
+    <!-- 引入模块化代码（必须在主脚本之前加载） -->
+    <script src="modules/utils.js"></script>
+    <script src="modules/event-bus.js"></script>
+    <script src="modules/cloudinary.js"></script>
+    <script src="modules/data-manager.js"></script>
+    <!-- Firebase SDK -->
     <script type="module">
         // 导入 Firebase SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
@@ -256,10 +260,9 @@
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
     <!-- Markdown 解析库 -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
-    <!-- 引入同步功能 -->
-    <!-- 只使用Firebase同步，不再使用Gist -->
+    <!-- 引入同步功能（仅Firebase） -->
     <script src="sync-firebase.js"></script>
-    <!-- 引入逻辑文件 -->
+    <!-- 引入主逻辑文件 -->
     <script src="script.js"></script>
 </body>
 </html>
