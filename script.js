@@ -1,3 +1,162 @@
+// Cloudinary 配置
+// 请在使用前配置你的 Cloudinary 信息
+// Cloudinary 配置
+// 请在使用前配置你的 Cloudinary 信息：
+// 1. 登录 https://cloudinary.com/ 创建账户
+// 2. 在 Dashboard 中找到你的 Cloud Name
+// 3. 在 Settings > Upload 中创建一个 Upload Preset（推荐使用 "Unsigned" 模式，更安全）
+// 4. 将 cloudName 和 uploadPreset 填入下面的配置中
+const CLOUDINARY_CONFIG = {
+    cloudName: 'deesradkv', // 请配置：你的 Cloudinary Cloud Name（例如：'mycloud'）
+    uploadPreset: 'test-trip-plan', // 请配置：你的 Upload Preset 名称（例如：'my_upload_preset'）
+    apiKey: '' // 可选：如果需要签名上传，填入 API Key（通常不需要）
+};
+
+// Cloudinary 图片上传服务
+class CloudinaryUploadService {
+    constructor(config) {
+        this.cloudName = config.cloudName;
+        this.uploadPreset = config.uploadPreset;
+        this.apiKey = config.apiKey;
+    }
+    
+    // 检查配置是否完整
+    isConfigured() {
+        return !!(this.cloudName && this.uploadPreset);
+    }
+    
+    // 上传图片到 Cloudinary
+    async uploadImage(file) {
+        if (!this.isConfigured()) {
+            throw new Error('Cloudinary 未配置，请先设置 cloudName 和 uploadPreset');
+        }
+        
+        // 先压缩图片
+        const compressedFile = await this.compressImageFile(file);
+        
+        // 创建 FormData
+        const formData = new FormData();
+        formData.append('file', compressedFile);
+        formData.append('upload_preset', this.uploadPreset);
+        formData.append('cloud_name', this.cloudName);
+        
+        // 生成唯一的 public_id（使用时间戳和随机数）
+        const publicId = `trip_plan/${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        formData.append('public_id', publicId);
+        
+        try {
+            const response = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error?.message || '上传失败');
+            }
+            
+            const result = await response.json();
+            
+            // 返回 Cloudinary URL
+            // 使用优化后的 URL（自动格式和压缩）
+            const optimizedUrl = result.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+            
+            return {
+                url: optimizedUrl,
+                publicId: result.public_id,
+                originalUrl: result.secure_url
+            };
+        } catch (error) {
+            console.error('Cloudinary 上传失败:', error);
+            throw new Error(`图片上传失败: ${error.message}`);
+        }
+    }
+    
+    // 压缩图片文件（转换为 Blob，限制尺寸和质量）
+    async compressImageFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = (event) => {
+                const img = new Image();
+                
+                img.onload = () => {
+                    // 限制最大尺寸
+                    const MAX_WIDTH = 1920;
+                    const MAX_HEIGHT = 1080;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    // 计算缩放比例
+                    if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+                        const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
+                        width = Math.floor(width * ratio);
+                        height = Math.floor(height * ratio);
+                    }
+                    
+                    // 创建 canvas 进行压缩
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // 绘制图片
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // 转换为 Blob（质量 0.8）
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('图片压缩失败'));
+                        }
+                    }, 'image/jpeg', 0.8);
+                };
+                
+                img.onerror = () => {
+                    reject(new Error('无法加载图片'));
+                };
+                
+                img.src = event.target.result;
+            };
+            
+            reader.onerror = () => {
+                reject(new Error('无法读取文件'));
+            };
+            
+            reader.readAsDataURL(file);
+        });
+    }
+    
+    // 删除 Cloudinary 中的图片
+    async deleteImage(publicId) {
+        if (!this.isConfigured()) {
+            throw new Error('Cloudinary 未配置');
+        }
+        
+        try {
+            // 注意：删除需要签名，或者使用 Cloudinary Admin API
+            // 这里使用简单的删除请求（如果 preset 配置允许）
+            const timestamp = Math.round(new Date().getTime() / 1000);
+            const stringToSign = `public_id=${publicId}&timestamp=${timestamp}${this.apiKey || ''}`;
+            
+            // 如果配置了 API Key，可以使用签名删除
+            // 否则，需要使用服务器端 API 或配置允许删除的 preset
+            console.warn('图片删除功能需要配置签名或使用服务器端 API');
+            
+            // 简单实现：返回成功（实际删除需要在服务器端实现）
+            return { success: true, message: '图片已标记删除（需要在服务器端实际删除）' };
+        } catch (error) {
+            console.error('删除图片失败:', error);
+            // 即使删除失败，也不阻止流程继续
+            return { success: false, message: error.message };
+        }
+    }
+}
+
+// 创建 Cloudinary 上传服务实例
+const cloudinaryService = new CloudinaryUploadService(CLOUDINARY_CONFIG);
+
 // 当前用户管理
 let currentUser = null; // 初始为null，需要登录
 let isLoggedIn = false; // 登录状态
@@ -1397,11 +1556,50 @@ class CardSlider {
                     // 显示上传进度提示
                     const uploadBtn = card.querySelector('.image-upload-btn');
                     const originalText = uploadBtn ? uploadBtn.textContent : '';
+                    
+                    // 更新状态栏
+                    if (typeof updateSyncStatus === 'function') {
+                        updateSyncStatus(`正在上传 ${validFiles.length} 张图片到 Cloudinary...`, 'info');
+                    }
+                    
                     if (uploadBtn) {
-                        uploadBtn.textContent = '📤 上传中...';
+                        uploadBtn.textContent = `📤 上传中 (0/${validFiles.length})...`;
                         uploadBtn.disabled = true;
                     }
                     
+                    // 跟踪上传进度
+                    let uploadedCount = 0;
+                    
+                    // 上传图片到 Cloudinary
+                    const uploadPromises = validFiles.map((file, fileIndex) => {
+                        return cloudinaryService.uploadImage(file)
+                            .then(result => {
+                                uploadedCount++;
+                                console.log(`✅ 图片 ${file.name} 上传成功:`, result.url);
+                                
+                                // 更新按钮进度
+                                if (uploadBtn) {
+                                    uploadBtn.textContent = `📤 上传中 (${uploadedCount}/${validFiles.length})...`;
+                                }
+                                
+                                // 验证 URL 是否为有效的 Cloudinary URL
+                                if (!result.url || !result.url.includes('cloudinary.com')) {
+                                    console.warn('⚠️ 警告：返回的 URL 可能不是有效的 Cloudinary URL:', result.url);
+                                }
+                                
+                                return {
+                                    url: result.url,
+                                    fileName: file.name,
+                                    publicId: result.publicId
+                                };
+                            })
+                            .catch(error => {
+                                console.error(`❌ 图片 ${file.name} 上传失败:`, error);
+                                throw error;
+                            });
+                    });
+                    
+                    // 保留旧代码作为备用（如果需要）
                     const readers = validFiles.map((file, fileIndex) => {
                         return new Promise((resolve, reject) => {
                             const reader = new FileReader();
@@ -1441,29 +1639,92 @@ class CardSlider {
                         });
                     });
                     
-                    Promise.all(readers).then(imageUrls => {
+                    // 使用 Cloudinary 上传
+                    Promise.all(uploadPromises).then(imageResults => {
                         const itemId = card.dataset.itemId || null;
                         const currentImages = this.getImages(this.dayId, index, itemId);
-                        this.setImages(this.dayId, index, [...currentImages, ...imageUrls], itemId);
+                        
+                        // 提取 URL 数组
+                        const imageUrls = imageResults.map(img => img.url);
+                        const uploadedFileNames = imageResults.map(img => img.fileName).join('、');
+                        
+                        // 只保存 Cloudinary URL，不保存 base64
+                        const newImages = [...currentImages, ...imageUrls];
+                        this.setImages(this.dayId, index, newImages, itemId);
+                        
+                        // 验证图片是否能正常显示（检查 URL 格式）
+                        const invalidUrls = imageUrls.filter(url => !url || !url.startsWith('http'));
+                        if (invalidUrls.length > 0) {
+                            console.warn('⚠️ 警告：部分图片 URL 格式可能不正确:', invalidUrls);
+                        }
+                        
+                        // 显示成功消息
+                        const successMessage = `✅ 成功上传 ${imageUrls.length} 张图片到 Cloudinary${uploadedFileNames ? `: ${uploadedFileNames}` : ''}`;
+                        console.log(successMessage);
+                        
+                        if (typeof updateSyncStatus === 'function') {
+                            updateSyncStatus(successMessage, 'success');
+                            // 3秒后清除成功消息
+                            setTimeout(() => {
+                                if (typeof updateSyncStatus === 'function') {
+                                    updateSyncStatus('', '');
+                                }
+                            }, 3000);
+                        }
+                        
                         this.renderCards();
                         // 重新绑定事件
                         this.attachCardEventsForAll();
-                        // 自动同步
-                        triggerImmediateUpload();
                         
-                        // 恢复按钮状态
-                        if (uploadBtn) {
-                            uploadBtn.textContent = originalText;
-                            uploadBtn.disabled = false;
+                        // 只上传这个 item，不进行全量上传
+                        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                            dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                console.error('上传 item 到 Firebase 失败:', error);
+                            });
+                        } else {
+                            // 如果没有部分上传方法，使用全量上传
+                            triggerImmediateUpload();
                         }
+                        
+                        // 恢复按钮状态并显示成功提示
+                        if (uploadBtn) {
+                            uploadBtn.textContent = '✅ 上传完成';
+                            uploadBtn.style.color = '#28a745';
+                            setTimeout(() => {
+                                uploadBtn.textContent = originalText;
+                                uploadBtn.style.color = '';
+                                uploadBtn.disabled = false;
+                            }, 2000);
+                        } else {
+                            if (uploadBtn) {
+                                uploadBtn.textContent = originalText;
+                                uploadBtn.disabled = false;
+                            }
+                        }
+                        
+                        // 清空文件输入
+                        e.target.value = '';
                     }).catch(error => {
-                        alert(`上传图片失败: ${error.message}`);
+                        console.error('❌ 图片上传失败:', error);
+                        const errorMessage = `图片上传失败: ${error.message}`;
+                        
+                        if (typeof updateSyncStatus === 'function') {
+                            updateSyncStatus(errorMessage, 'error');
+                            setTimeout(() => {
+                                if (typeof updateSyncStatus === 'function') {
+                                    updateSyncStatus('', '');
+                                }
+                            }, 5000);
+                        }
+                        
+                        alert(errorMessage);
                         e.target.value = '';
                         
                         // 恢复按钮状态
                         if (uploadBtn) {
                             uploadBtn.textContent = originalText;
                             uploadBtn.disabled = false;
+                            uploadBtn.style.color = '';
                         }
                     });
                 }, 100); // 延迟100ms，确保文件选择完成
@@ -1768,18 +2029,26 @@ class CardSlider {
                 }
             });
             
-            // 删除图片
+            // 删除图片（只删除 URL，不删除 Cloudinary 上的实际文件）
             removeBtns.forEach((btn, btnIndex) => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const itemId = card.dataset.itemId || null;
                     const images = this.getImages(this.dayId, index, itemId);
+                    
+                    // 从本地数组中删除 URL
                     images.splice(btnIndex, 1);
                     this.setImages(this.dayId, index, images, itemId);
                     this.renderCards();
                     // 重新绑定事件
-                    // 重新绑定事件
                     this.attachCardEventsForAll();
+                    
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    }
                 });
             });
         }
@@ -2418,7 +2687,15 @@ class CardSlider {
                     item.images = imageUrls || [];
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
-                    triggerImmediateUpload();
+                    // 只上传这个 item，不进行全量上传
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                        dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
+                            console.error('上传 item 失败:', error);
+                        });
+                    } else {
+                        // 如果没有部分上传方法，使用全量上传
+                        triggerImmediateUpload();
+                    }
                     return;
                 }
             }
