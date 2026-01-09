@@ -256,6 +256,19 @@ body {
     border-bottom: 2px solid #56ab2f;
 }
 
+.header-actions {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+}
+
+.header-actions .btn-expense-summary {
+    width: auto;
+    min-width: 150px;
+    padding: 10px 20px;
+    margin: 0;
+}
+
 /* 目录导航 */
 .nav-container {
     background: white;
@@ -2640,5 +2653,156 @@ body {
 .expense-detail-payer {
     font-size: 12px;
     color: #666;
+}
+
+    /* 分账相关样式 */
+.btn-split-expense {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-split-expense:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
+}
+
+.btn-split-expense:active {
+    transform: translateY(0);
+}
+
+.expense-split-container {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #e0e0e0;
+}
+
+.expense-split-summary {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: white;
+    border-radius: 6px;
+}
+
+.split-summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.split-summary-item:last-child {
+    border-bottom: none;
+}
+
+.split-label {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+}
+
+.split-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #56ab2f;
+}
+
+.expense-split-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.expense-split-table thead {
+    background: #f5f5f5;
+}
+
+.expense-split-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    border-bottom: 2px solid #ddd;
+}
+
+.expense-split-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+    color: #555;
+}
+
+.expense-split-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.split-owe {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.split-receive {
+    color: #56ab2f;
+    font-weight: 600;
+}
+
+.expense-split-note {
+    margin-top: 16px;
+    padding: 12px;
+    background: #fff9e6;
+    border-left: 4px solid #f39c12;
+    border-radius: 4px;
+}
+
+.expense-split-note p {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.expense-split-note ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+
+.expense-split-note li {
+    margin: 4px 0;
+    font-size: 13px;
+    color: #666;
+    line-height: 1.6;
+}
+
+.expense-split-action {
+    margin-top: 16px;
+    padding: 12px;
+    background: #e8f5e9;
+    border-left: 4px solid #56ab2f;
+    border-radius: 4px;
+}
+
+.expense-split-action p {
+    margin: 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.split-action-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-top: 8px !important;
 }
 

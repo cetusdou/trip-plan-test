@@ -4303,6 +4303,9 @@ function renderOverview() {
                 <h1 class="header-title-display">${tripData.title || '行程计划'}</h1>
                 <input type="text" class="header-title-input" value="${tripData.title || '行程计划'}" style="display: none;" />
             </div>
+            <div class="header-actions">
+                <button class="btn-expense-summary" onclick="showExpenseSummary()">开支总计</button>
+            </div>
         `;
         
         // 添加标题编辑事件
@@ -4375,8 +4378,6 @@ function renderNavigation() {
         `;
     });
     html += '</ul>';
-    // 添加开支总计按钮
-    html += '<div class="nav-actions"><button class="btn-expense-summary" onclick="showExpenseSummary()">💰 开支总计</button></div>';
     navContainer.innerHTML = html;
     
     // 添加导航点击事件
@@ -5357,6 +5358,15 @@ function showExpenseSummary() {
         </div>
     `;
     
+    // 一键分账按钮和结果
+    html += `
+        <div class="expense-summary-section">
+            <h3>💸 一键分账</h3>
+            <button class="btn-split-expense" onclick="calculateExpenseSplit()">计算分账</button>
+            <div id="expense-split-result" style="display: none; margin-top: 16px;"></div>
+        </div>
+    `;
+    
     html += '</div>';
     
     content.innerHTML = html;
@@ -5369,5 +5379,144 @@ function closeExpenseSummary() {
     if (modal) {
         modal.style.display = 'none';
     }
+}
+
+// 计算分账
+function calculateExpenseSplit() {
+    const resultDiv = document.getElementById('expense-split-result');
+    if (!resultDiv) return;
+    
+    const expenses = getAllExpenses();
+    
+    // 过滤掉"共同"支出（因为每个人独立出了自己的部分，不计算在内）
+    const validExpenses = expenses.filter(expense => {
+        const payer = expense.payer || '';
+        return payer !== '共同' && payer !== '' && payer !== '未指定';
+    });
+    
+    if (validExpenses.length === 0) {
+        resultDiv.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">没有有效的个人支出记录（已排除"共同"支出）</p>';
+        resultDiv.style.display = 'block';
+        return;
+    }
+    
+    // 计算每个人的实际支出
+    const userExpenses = {
+        'mrb': 0,
+        'djy': 0
+    };
+    
+    validExpenses.forEach(expense => {
+        const payer = expense.payer || '';
+        const amount = expense.amount || 0;
+        if (payer === 'mrb' || payer === 'djy') {
+            userExpenses[payer] = (userExpenses[payer] || 0) + amount;
+        }
+    });
+    
+    // 计算总支出（不包括"共同"）
+    const totalExpense = validExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    
+    // 平均每人应该支付
+    const averagePerPerson = totalExpense / 2;
+    
+    // 计算每个人的差额
+    const mrbActual = userExpenses['mrb'] || 0;
+    const djyActual = userExpenses['djy'] || 0;
+    const mrbDifference = averagePerPerson - mrbActual;
+    const djyDifference = averagePerPerson - djyActual;
+    
+    // 生成分账结果HTML
+    let html = '<div class="expense-split-container">';
+    
+    // 总支出信息
+    html += `
+        <div class="expense-split-summary">
+            <div class="split-summary-item">
+                <span class="split-label">总支出（不含共同）：</span>
+                <span class="split-value">¥${totalExpense.toFixed(2)}</span>
+            </div>
+            <div class="split-summary-item">
+                <span class="split-label">平均每人应支付：</span>
+                <span class="split-value">¥${averagePerPerson.toFixed(2)}</span>
+            </div>
+        </div>
+    `;
+    
+    // 每个人的实际支出和差额
+    html += `
+        <table class="expense-split-table">
+            <thead>
+                <tr>
+                    <th>人员</th>
+                    <th>实际支出</th>
+                    <th>应支付</th>
+                    <th>差额</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>mrb</strong></td>
+                    <td class="expense-amount">¥${mrbActual.toFixed(2)}</td>
+                    <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
+                    <td class="${mrbDifference >= 0 ? 'split-owe' : 'split-receive'}">
+                        ${mrbDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(mrbDifference).toFixed(2)}
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>djy</strong></td>
+                    <td class="expense-amount">¥${djyActual.toFixed(2)}</td>
+                    <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
+                    <td class="${djyDifference >= 0 ? 'split-owe' : 'split-receive'}">
+                        ${djyDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(djyDifference).toFixed(2)}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    `;
+    
+    // 分账说明
+    html += `
+        <div class="expense-split-note">
+            <p><strong>分账说明：</strong></p>
+            <ul>
+                <li>总支出不包括"共同"支出的部分（因为每个人独立出了自己的部分）</li>
+                <li>平均每人应支付 = 总支出 ÷ 人数</li>
+                <li>差额 = 平均每人应支付 - 实际支出</li>
+                <li>差额为正表示需要支付给其他人，差额为负表示应该收到其他人的支付</li>
+            </ul>
+        </div>
+    `;
+    
+    // 如果差额不为0，显示转账建议
+    if (Math.abs(mrbDifference) > 0.01 || Math.abs(djyDifference) > 0.01) {
+        html += `
+            <div class="expense-split-action">
+                <p><strong>转账建议：</strong></p>
+        `;
+        
+        if (mrbDifference > 0 && djyDifference < 0) {
+            // mrb需要支付给djy
+            html += `<p class="split-action-text">mrb 需要支付给 djy：<strong>¥${Math.abs(mrbDifference).toFixed(2)}</strong></p>`;
+        } else if (mrbDifference < 0 && djyDifference > 0) {
+            // djy需要支付给mrb
+            html += `<p class="split-action-text">djy 需要支付给 mrb：<strong>¥${Math.abs(djyDifference).toFixed(2)}</strong></p>`;
+        } else if (Math.abs(mrbDifference) < 0.01 && Math.abs(djyDifference) < 0.01) {
+            html += `<p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>`;
+        }
+        
+        html += `</div>`;
+    } else {
+        html += `
+            <div class="expense-split-action">
+                <p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    
+    resultDiv.innerHTML = html;
+    resultDiv.style.display = 'block';
 }
 
