@@ -38,17 +38,44 @@ window.onLoginSuccess = function() {
                 if (typeof window.updateSyncStatus === 'function') {
                     window.updateSyncStatus('数据下载成功', 'success');
                 }
-                // 下载完成后渲染内容（使用 UIRenderer 模块）
-                if (window.UIRenderer) {
-                    window.UIRenderer.renderOverview();
-                    window.UIRenderer.renderNavigation();
-                    const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-                    window.UIRenderer.renderDay(dayId || 'day1');
+                
+                // 关键修复：下载完成后，更新 stateManager 的状态
+                if (window.stateManager && window.tripDataStructure) {
+                    const unifiedData = window.tripDataStructure.loadUnifiedData();
+                    if (unifiedData) {
+                        window.stateManager.setState({ 
+                            tripData: unifiedData,
+                            unifiedData: unifiedData 
+                        });
+                    }
                 }
+                
+                // 使用 setTimeout 确保状态更新完成后再渲染
+                setTimeout(() => {
+                    // 下载完成后渲染内容（使用 UIRenderer 模块）
+                    if (window.UIRenderer) {
+                        window.UIRenderer.renderOverview();
+                        window.UIRenderer.renderNavigation();
+                        const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+                        window.UIRenderer.renderDay(dayId || 'day1');
+                    }
+                }, 100); // 给状态更新一点时间
             } else {
                 if (typeof window.updateSyncStatus === 'function') {
                     window.updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
                 }
+                
+                // 即使下载失败，也更新 stateManager 使用本地数据
+                if (window.stateManager && window.tripDataStructure) {
+                    const unifiedData = window.tripDataStructure.loadUnifiedData();
+                    if (unifiedData) {
+                        window.stateManager.setState({ 
+                            tripData: unifiedData,
+                            unifiedData: unifiedData 
+                        });
+                    }
+                }
+                
                 // 即使下载失败，也渲染本地内容
                 if (window.UIRenderer) {
                     window.UIRenderer.renderOverview();
@@ -62,6 +89,18 @@ window.onLoginSuccess = function() {
             if (typeof window.updateSyncStatus === 'function') {
                 window.updateSyncStatus('下载失败，使用本地数据', 'error');
             }
+            
+            // 即使下载失败，也更新 stateManager 使用本地数据
+            if (window.stateManager && window.tripDataStructure) {
+                const unifiedData = window.tripDataStructure.loadUnifiedData();
+                if (unifiedData) {
+                    window.stateManager.setState({ 
+                        tripData: unifiedData,
+                        unifiedData: unifiedData 
+                    });
+                }
+            }
+            
             // 即使下载失败，也渲染本地内容
             if (window.UIRenderer) {
                 window.UIRenderer.renderOverview();
@@ -3727,12 +3766,36 @@ function syncDownload() {
         dataSyncFirebase.download().then(result => {
             if (result.success) {
                 updateSyncStatus('下载成功', 'success');
-                // 刷新当前页面显示
-                renderOverview();
-                renderNavigation();
-                if (currentDayId) {
-                    showDay(currentDayId);
+                
+                // 关键修复：下载完成后，更新 stateManager 的状态
+                if (window.stateManager && window.tripDataStructure) {
+                    const unifiedData = window.tripDataStructure.loadUnifiedData();
+                    if (unifiedData) {
+                        window.stateManager.setState({ 
+                            tripData: unifiedData,
+                            unifiedData: unifiedData 
+                        });
+                    }
                 }
+                
+                // 使用 setTimeout 确保状态更新完成后再渲染
+                setTimeout(() => {
+                    // 刷新当前页面显示
+                    if (window.UIRenderer) {
+                        window.UIRenderer.renderOverview();
+                        window.UIRenderer.renderNavigation();
+                        const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+                        window.UIRenderer.renderDay(dayId || 'day1');
+                    } else {
+                        // 降级方案：直接调用全局函数
+                        renderOverview();
+                        renderNavigation();
+                        const currentDayId = window.stateManager ? window.stateManager.getState('currentDayId') : null;
+                        if (currentDayId && typeof showDay === 'function') {
+                            showDay(currentDayId);
+                        }
+                    }
+                }, 100); // 给状态更新一点时间
             } else {
                 updateSyncStatus('下载失败: ' + (result.message || '未知错误'), 'error');
             }
