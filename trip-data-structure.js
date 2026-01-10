@@ -392,8 +392,14 @@ function loadUnifiedData() {
                         }
                         
                         // 确保 _backup 字段存在（向后兼容）
-                        if (!parsed._backup) {
+                        if (!parsed._backup || !Array.isArray(parsed._backup)) {
                             parsed._backup = [];
+                            // 如果是从旧数据迁移过来的，需要保存回 localStorage
+                            try {
+                                saveUnifiedData(parsed);
+                            } catch (e) {
+                                console.warn('初始化 _backup 字段后保存失败:', e);
+                            }
                         }
                         
                         // 验证数据完整性，成功加载统一数据
@@ -710,7 +716,7 @@ function deleteItemData(unifiedData, dayId, itemId) {
     const deletedItem = JSON.parse(JSON.stringify(day.items[itemIndex]));
     
     // 初始化备份数组（如果不存在）
-    if (!unifiedData._backup) {
+    if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
         unifiedData._backup = [];
     }
     
@@ -733,7 +739,17 @@ function deleteItemData(unifiedData, dayId, itemId) {
         item.order = index;
     });
     
+    // 确保保存包含 _backup 的完整数据
     saveUnifiedData(unifiedData);
+    
+    // 验证 _backup 是否已保存
+    const savedData = loadUnifiedData();
+    if (savedData && savedData._backup && Array.isArray(savedData._backup)) {
+        console.log(`删除项已移到备份，当前备份数量: ${savedData._backup.length}`);
+    } else {
+        console.warn('警告：备份数据可能未正确保存');
+    }
+    
     return true;
 }
 

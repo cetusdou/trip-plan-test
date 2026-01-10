@@ -245,7 +245,7 @@ function deleteItem(dayId, itemId) {
     
     // 成功删除项（已移到备份中）
     // 确保 _backup 字段存在且已初始化
-    if (!unifiedData._backup) {
+    if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
         unifiedData._backup = [];
         tripDataStructure.saveUnifiedData(unifiedData);
     }
@@ -258,18 +258,65 @@ function deleteItem(dayId, itemId) {
         });
     }
     
-    // 删除后需要上传整个 unifiedData（包括 _backup 字段）
-    // 不能只上传单个 item，因为 _backup 是顶层字段
-    if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase && window.dataSyncFirebase.upload) {
-        // 使用全量上传，确保 _backup 字段被同步
-        window.dataSyncFirebase.upload(true).then(result => {
+    // 使用增量更新来更新 _backup 字段（而不是全量上传）
+    // _backup 是 unifiedData 的顶层字段，可以使用空路径进行增量更新
+    if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase && window.dataSyncFirebase.cloudIncrementalUpdate) {
+        // 重新加载最新的 unifiedData（确保包含最新的 _backup）
+        const latestUnifiedData = tripDataStructure.loadUnifiedData();
+        if (!latestUnifiedData) {
+            console.warn('无法加载最新数据，跳过增量更新');
+            return;
+        }
+        
+        if (!latestUnifiedData._backup || !Array.isArray(latestUnifiedData._backup)) {
+            console.warn('无法获取备份数据，跳过增量更新');
+            return;
+        }
+        
+        // 使用空路径 '' 来更新顶层字段 _backup
+        // subPath 为空字符串表示更新 trip_unified_data 本身的字段
+        // 不自动添加元数据（autoMetadata = false），因为 _backup 是数组字段
+        window.dataSyncFirebase.cloudIncrementalUpdate('', { _backup: latestUnifiedData._backup }, false).then(result => {
             if (result.success) {
-                console.log('删除项后已同步到云端（包含备份数据）:', result.message);
+                console.log(`删除项后已增量更新备份字段，备份数量: ${latestUnifiedData._backup.length}`);
+                // 备份字段更新成功，现在还需要更新 day.items 数组
+                // 获取更新后的 day 数据
+                const day = tripDataStructure.getDayData(latestUnifiedData, dayId);
+                if (day && day.items && Array.isArray(day.items)) {
+                    // 获取 day 的数组索引（Firebase 中数组存储为对象，需要索引）
+                    const dayIndex = window.dataSyncFirebase.getDayIndex ? window.dataSyncFirebase.getDayIndex(dayId) : null;
+                    if (dayIndex !== null) {
+                        // 更新 day 的 items 数组
+                        window.dataSyncFirebase.cloudIncrementalUpdate(`days/${dayIndex}`, { items: day.items }, false).then(itemsResult => {
+                            if (itemsResult.success) {
+                                console.log(`删除项后已增量更新 items 数组，items 数量: ${day.items.length}`);
+                            } else {
+                                console.warn('更新 items 数组失败:', itemsResult.message);
+                            }
+                        }).catch(itemsError => {
+                            console.error('更新 items 数组出错:', itemsError);
+                        });
+                    } else {
+                        console.warn(`无法找到 dayId=${dayId} 的索引，跳过 items 数组更新`);
+                    }
+                }
             } else {
-                console.warn('删除项后同步失败:', result.message);
+                console.warn('删除项后增量更新备份字段失败:', result.message);
+                // 如果增量更新失败，回退到全量上传
+                if (window.dataSyncFirebase.upload) {
+                    window.dataSyncFirebase.upload(true).catch(error => {
+                        console.error('回退全量上传也失败:', error);
+                    });
+                }
             }
         }).catch(error => {
-            console.error('删除项后同步出错:', error);
+            console.error('删除项后增量更新备份字段出错:', error);
+            // 如果增量更新失败，回退到全量上传
+            if (window.dataSyncFirebase.upload) {
+                window.dataSyncFirebase.upload(true).catch(uploadError => {
+                    console.error('回退全量上传也失败:', uploadError);
+                });
+            }
         });
     }
     

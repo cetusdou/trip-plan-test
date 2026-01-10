@@ -864,6 +864,9 @@ class DataSyncFirebase {
             // 构建更新对象：Firebase 支持使用 '/' 拼接长路径键，实现深度增量更新
             // 将整个数据库看作一个巨大的、多层嵌套的 JavaScript 对象
             // 路径决定了要修改对象的哪一部分，值决定了该位置变成什么内容
+            // 处理空路径情况（用于更新顶层字段，如 _backup）
+            const basePath = subPath ? `trip_unified_data/${subPath}` : 'trip_unified_data';
+            
             Object.keys(dataObj).forEach(key => {
                 // 跳过特殊删除标记（由 cloudDeleteItem 处理）
                 if (key === '__delete__') {
@@ -871,15 +874,20 @@ class DataSyncFirebase {
                 }
                 // null 值用于删除操作（将路径设为 null 等同于删除该节点）
                 if (dataObj[key] === null) {
-                    updates[`trip_unified_data/${subPath}/${key}`] = null;
+                    updates[`${basePath}/${key}`] = null;
                 } else {
-                    updates[`trip_unified_data/${subPath}/${key}`] = dataObj[key];
+                    updates[`${basePath}/${key}`] = dataObj[key];
                 }
             });
             
             // 自动附加元数据，用于合并逻辑判断
             if (autoMetadata) {
-                updates[`trip_unified_data/${subPath}/_updatedAt`] = timestamp;
+                // 如果 subPath 为空，元数据应该附加到子路径（如果有）或者顶层字段（如果 subPath 为空且是更新顶层字段）
+                // 但对于顶层字段（如 _backup），我们不添加 _updatedAt，因为 _backup 本身是一个数组，不是对象
+                if (subPath) {
+                    updates[`${basePath}/_updatedAt`] = timestamp;
+                }
+                // 顶层元数据始终更新
                 updates['_lastSync'] = timestamp;
                 updates['_syncUser'] = user;
             }
@@ -978,6 +986,15 @@ class DataSyncFirebase {
                     if (dataKeys.length === 0) {
                         resolve({ success: false, message: '没有数据需要上传（localStorage为空）' });
                         return;
+                    }
+                    
+                    // 确保 _backup 字段被包含在上传的数据中
+                    if (data['trip_unified_data'] && typeof data['trip_unified_data'] === 'object') {
+                        // 确保 _backup 字段存在且是数组
+                        if (!data['trip_unified_data']._backup || !Array.isArray(data['trip_unified_data']._backup)) {
+                            data['trip_unified_data']._backup = [];
+                        }
+                        console.log(`上传数据包含备份字段，备份数量: ${data['trip_unified_data']._backup.length}`);
                     }
                     
                     // 添加时间戳
