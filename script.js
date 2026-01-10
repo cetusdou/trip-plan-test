@@ -3751,18 +3751,26 @@ function toggleSortMode() {
     const cardsContainer = document.getElementById('cards-container');
     if (!cardsContainer) return;
     
+    // 从 stateManager 获取当前的 currentDayId，而不是使用默认值
+    const actualDayId = (window.stateManager && window.stateManager.getState) 
+        ? window.stateManager.getState('currentDayId') 
+        : currentDayId || 'day1';
+    
     // 如果currentSlider不存在或日期不匹配，重新创建
-    if (!currentSlider || currentSlider.dayId !== currentDayId) {
+    if (!currentSlider || currentSlider.dayId !== actualDayId) {
         const tripData = loadTripData();
-        const day = tripData.days.find(d => d.id === currentDayId);
-        if (!day) return;
+        const day = tripData.days.find(d => d.id === actualDayId);
+        if (!day) {
+            console.warn(`无法找到 dayId=${actualDayId} 的数据，无法进入排序模式`);
+            return;
+        }
         
         // 从统一结构加载数据
         let dayItems = day.items || [];
         if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                const unifiedDay = tripDataStructure.getDayData(unifiedData, currentDayId);
+                const unifiedDay = tripDataStructure.getDayData(unifiedData, actualDayId);
                 if (unifiedDay && unifiedDay.items) {
                     dayItems = unifiedDay.items;
                 }
@@ -3779,12 +3787,22 @@ function toggleSortMode() {
             }
         });
         
-        const orderedItems = applyCardOrder(currentDayId, allItems);
-        const filteredItems = applyFilter(orderedItems, currentDayId);
-        currentSlider = new CardSlider('cards-container', filteredItems, currentDayId);
+        const orderedItems = applyCardOrder(actualDayId, allItems);
+        const filteredItems = applyFilter(orderedItems, actualDayId);
+        currentSlider = new CardSlider('cards-container', filteredItems, actualDayId);
+        
+        // 更新全局 currentSlider 和 stateManager（如果需要）
+        if (window.stateManager && window.stateManager.setState) {
+            window.stateManager.setState({ currentSlider: currentSlider });
+        }
+        // 同时更新全局变量（向后兼容）
+        window.currentSlider = currentSlider;
     }
     
-    currentSlider.toggleSortMode();
+    // 切换排序模式
+    if (currentSlider) {
+        currentSlider.toggleSortMode();
+    }
 }
 
 // 数据管理函数已移至 modules/data-manager.js
