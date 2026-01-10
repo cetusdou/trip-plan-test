@@ -126,6 +126,19 @@
             </div>
         </div>
 
+        <!-- 大图查看器模态框 -->
+        <div id="image-viewer-modal" class="modal image-viewer-modal" style="display: none;">
+            <div class="modal-content image-viewer-content">
+                <button class="modal-close image-viewer-close" id="image-viewer-close" title="关闭">×</button>
+                <button class="image-viewer-nav image-viewer-prev" id="image-viewer-prev" title="上一张">‹</button>
+                <div class="image-viewer-main">
+                    <img id="image-viewer-img" src="" alt="查看大图" />
+                    <div class="image-viewer-info" id="image-viewer-info"></div>
+                </div>
+                <button class="image-viewer-nav image-viewer-next" id="image-viewer-next" title="下一张">›</button>
+            </div>
+        </div>
+
         <!-- 同步配置模态框 -->
         <div id="sync-config-modal" class="modal">
             <div class="modal-content">

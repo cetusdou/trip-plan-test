@@ -627,7 +627,7 @@ class CardSlider {
                                 <div class="carousel-track" style="transform: translateX(0);">
                                     ${images.map((img, imgIndex) => `
                                         <div class="carousel-slide">
-                                            <img src="${window.escapeHtml ? window.escapeHtml(img) : img}" alt="图片 ${imgIndex + 1}" class="card-image" />
+                                            <img src="${window.escapeHtml ? window.escapeHtml(img) : img}" alt="图片 ${imgIndex + 1}" class="card-image" data-image-url="${window.escapeHtml ? window.escapeHtml(img) : img}" data-image-index="${imgIndex}" style="cursor: pointer;" title="点击查看大图" />
                                             <button class="image-remove-btn" data-image-index="${imgIndex}" title="删除图片">×</button>
                                         </div>
                                     `).join('')}
@@ -1833,6 +1833,7 @@ class CardSlider {
             removeBtns.forEach((btn, btnIndex) => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    e.stopImmediatePropagation();
                     const itemId = card.dataset.itemId || null;
                     const images = this.getImages(this.dayId, index, itemId);
                     
@@ -1850,6 +1851,76 @@ class CardSlider {
                         });
                     }
                 });
+            });
+            
+            // 图片点击查看大图
+            const cardImages = carousel.querySelectorAll('.card-image');
+            cardImages.forEach((img, imgIndex) => {
+                // 记录触摸开始位置和时间（用于判断是点击还是滑动）
+                let touchStartX = 0;
+                let touchStartY = 0;
+                let touchStartTime = 0;
+                let isImageDrag = false; // 标记是否在拖拽（用于轮播切换）
+                
+                // 点击事件处理（桌面端）
+                const handleImageClick = (e) => {
+                    // 如果是删除按钮的点击，不触发大图查看
+                    if (e.target.closest('.image-remove-btn')) {
+                        return;
+                    }
+                    
+                    // 如果正在拖拽（轮播切换），不触发大图查看
+                    if (isImageDrag) {
+                        return;
+                    }
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    // 打开大图查看器
+                    if (typeof openImageViewer === 'function') {
+                        openImageViewer(images, imgIndex);
+                    }
+                };
+                
+                img.addEventListener('click', handleImageClick);
+                
+                // 移动端支持触摸（但要区分点击和滑动）
+                img.addEventListener('touchstart', (e) => {
+                    const touch = e.touches[0];
+                    touchStartX = touch.clientX;
+                    touchStartY = touch.clientY;
+                    touchStartTime = Date.now();
+                    isImageDrag = false;
+                }, { passive: true });
+                
+                img.addEventListener('touchmove', (e) => {
+                    // 如果移动距离超过阈值，认为是拖拽
+                    if (e.touches.length > 0) {
+                        const touch = e.touches[0];
+                        const moveX = Math.abs(touch.clientX - touchStartX);
+                        const moveY = Math.abs(touch.clientY - touchStartY);
+                        if (moveX > 10 || moveY > 10) {
+                            isImageDrag = true;
+                        }
+                    }
+                }, { passive: true });
+                
+                img.addEventListener('touchend', (e) => {
+                    const touch = e.changedTouches[0];
+                    const moveX = Math.abs(touch.clientX - touchStartX);
+                    const moveY = Math.abs(touch.clientY - touchStartY);
+                    const touchDuration = Date.now() - touchStartTime;
+                    
+                    // 如果移动距离小于10px且触摸时间小于300ms，认为是点击
+                    if (!isImageDrag && moveX < 10 && moveY < 10 && touchDuration < 300) {
+                        handleImageClick(e);
+                    }
+                    
+                    // 重置状态
+                    isImageDrag = false;
+                }, { passive: true });
             });
         }
         
@@ -3997,11 +4068,164 @@ function initEventBusListeners() {
     console.log('✅ 事件总线监听器已初始化');
 }
 
-// 在DOM加载完成后初始化事件监听器
+// 大图查看器功能
+let imageViewerCurrentIndex = 0;
+let imageViewerImages = [];
+
+// 打开大图查看器
+function openImageViewer(images, startIndex = 0) {
+    if (!images || images.length === 0) return;
+    
+    imageViewerImages = images;
+    imageViewerCurrentIndex = startIndex >= 0 && startIndex < images.length ? startIndex : 0;
+    
+    const modal = document.getElementById('image-viewer-modal');
+    const imgElement = document.getElementById('image-viewer-img');
+    const infoElement = document.getElementById('image-viewer-info');
+    
+    if (!modal || !imgElement) return;
+    
+    // 显示当前图片
+    updateImageViewer();
+    
+    // 显示模态框
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden'; // 禁止背景滚动
+}
+
+// 更新大图查看器显示的图片
+function updateImageViewer() {
+    const imgElement = document.getElementById('image-viewer-img');
+    const infoElement = document.getElementById('image-viewer-info');
+    
+    if (!imgElement || imageViewerImages.length === 0) return;
+    
+    const currentImage = imageViewerImages[imageViewerCurrentIndex];
+    if (currentImage) {
+        imgElement.src = currentImage;
+        if (infoElement) {
+            infoElement.textContent = `${imageViewerCurrentIndex + 1} / ${imageViewerImages.length}`;
+        }
+    }
+}
+
+// 关闭大图查看器
+function closeImageViewer() {
+    const modal = document.getElementById('image-viewer-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = ''; // 恢复背景滚动
+    }
+}
+
+// 上一张图片
+function prevImageViewerImage() {
+    if (imageViewerImages.length === 0) return;
+    imageViewerCurrentIndex = (imageViewerCurrentIndex - 1 + imageViewerImages.length) % imageViewerImages.length;
+    updateImageViewer();
+}
+
+// 下一张图片
+function nextImageViewerImage() {
+    if (imageViewerImages.length === 0) return;
+    imageViewerCurrentIndex = (imageViewerCurrentIndex + 1) % imageViewerImages.length;
+    updateImageViewer();
+}
+
+// 初始化大图查看器事件
+function initImageViewer() {
+    const modal = document.getElementById('image-viewer-modal');
+    if (!modal) return;
+    
+    const closeBtn = document.getElementById('image-viewer-close');
+    const prevBtn = document.getElementById('image-viewer-prev');
+    const nextBtn = document.getElementById('image-viewer-next');
+    const imgElement = document.getElementById('image-viewer-img');
+    
+    // 关闭按钮
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeImageViewer();
+        });
+    }
+    
+    // 点击背景关闭
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeImageViewer();
+        }
+    });
+    
+    // 上一张按钮
+    if (prevBtn) {
+        prevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            prevImageViewerImage();
+        });
+    }
+    
+    // 下一张按钮
+    if (nextBtn) {
+        nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            nextImageViewerImage();
+        });
+    }
+    
+    // 键盘快捷键（ESC 关闭，左右箭头切换）
+    document.addEventListener('keydown', (e) => {
+        if (modal.style.display === 'none' || modal.style.display === '') return;
+        
+        if (e.key === 'Escape') {
+            closeImageViewer();
+        } else if (e.key === 'ArrowLeft') {
+            prevImageViewerImage();
+        } else if (e.key === 'ArrowRight') {
+            nextImageViewerImage();
+        }
+    });
+    
+    // 图片触摸滑动支持（移动端）
+    if (imgElement) {
+        let touchStartX = 0;
+        let touchStartY = 0;
+        
+        imgElement.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        imgElement.addEventListener('touchend', (e) => {
+            const touch = e.changedTouches[0];
+            const moveX = touch.clientX - touchStartX;
+            const moveY = touch.clientY - touchStartY;
+            
+            // 如果水平移动距离大于垂直移动距离，且超过50px，切换图片
+            if (Math.abs(moveX) > Math.abs(moveY) && Math.abs(moveX) > 50) {
+                if (moveX > 0) {
+                    prevImageViewerImage();
+                } else {
+                    nextImageViewerImage();
+                }
+            }
+        }, { passive: true });
+    }
+    
+    // 暴露全局函数
+    window.openImageViewer = openImageViewer;
+    window.closeImageViewer = closeImageViewer;
+}
+
+// 在DOM加载完成后初始化大图查看器
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initEventBusListeners);
+    document.addEventListener('DOMContentLoaded', () => {
+        initEventBusListeners();
+        initImageViewer();
+    });
 } else {
     // DOM已经加载完成
     initEventBusListeners();
+    initImageViewer();
 }
 
