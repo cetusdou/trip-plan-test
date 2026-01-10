@@ -168,75 +168,85 @@
         async initFirebaseSync() {
             console.log('🔥 初始化 Firebase 同步...');
             
-            // 等待 Firebase 加载
-            if (typeof window.firebaseLoaded === 'undefined' || !window.firebaseLoaded) {
-                await new Promise((resolve) => {
-                    if (window.firebaseLoaded) {
-                        resolve();
-                    } else {
-                        window.addEventListener('firebaseReady', resolve, { once: true });
-                        // 超时保护
-                        setTimeout(resolve, 5000);
-                    }
-                });
+            // 检查 dataSyncFirebase 是否已加载
+            if (!window.dataSyncFirebase) {
+                console.warn('⚠️ dataSyncFirebase 未加载，跳过 Firebase 同步初始化');
+                this.recordStep('FirebaseSync');
+                return;
+            }
+            
+            // 等待 Firebase SDK 加载（最多等待 10 秒）
+            let firebaseReady = false;
+            if (window.firebaseLoaded && window.firebaseDatabase) {
+                firebaseReady = true;
+            } else {
+                try {
+                    firebaseReady = await Promise.race([
+                        new Promise((resolve) => {
+                            if (window.firebaseLoaded && window.firebaseDatabase) {
+                                resolve(true);
+                            } else {
+                                window.addEventListener('firebaseReady', () => {
+                                    resolve(window.firebaseLoaded && window.firebaseDatabase);
+                                }, { once: true });
+                            }
+                        }),
+                        new Promise((resolve) => {
+                            setTimeout(() => {
+                                resolve(window.firebaseLoaded && window.firebaseDatabase);
+                            }, 10000);
+                        })
+                    ]);
+                } catch (error) {
+                    console.error('等待 Firebase 加载时出错:', error);
+                    firebaseReady = false;
+                }
             }
             
             // 初始化 Firebase 同步
-            if (window.dataSyncFirebase) {
-                try {
-                    // 优先使用默认配置（从 index.html 加载的）
-                    if (window.firebaseConfig && window.firebaseDatabase) {
-                        const defaultConfig = {
-                            ...window.firebaseConfig,
-                            databasePath: 'trip_plan_data'
-                        };
-                        const result = await window.dataSyncFirebase.initialize(defaultConfig);
-                        if (result.success) {
-                            console.log('✅ Firebase 同步初始化成功');
-                            
-                            // 如果已登录，静默下载数据（不显示错误）
-                            const isLoggedIn = window.stateManager ? window.stateManager.getState('isLoggedIn') : false;
-                            if (isLoggedIn) {
-                                window.dataSyncFirebase.download().then(result => {
-                                    if (result.success) {
-                                        const unifiedData = window.tripDataStructure ? window.tripDataStructure.loadUnifiedData() : null;
-                                        if (unifiedData && window.stateManager) {
-                                            window.stateManager.setState({ tripData: unifiedData });
-                                        }
-                                    }
-                                }).catch(() => {
-                                    // 静默处理错误
-                                });
-                            }
-                            
-                            // 启用自动同步（如果已登录）
-                            if (isLoggedIn && window.dataSyncFirebase.setAutoSync) {
-                                window.dataSyncFirebase.setAutoSync(true);
-                            }
-                        } else {
-                            console.warn('⚠️ Firebase 同步初始化失败:', result.message);
-                            // 尝试从 localStorage 加载配置
-                            const loadResult = await window.dataSyncFirebase.loadConfig();
-                            if (loadResult.success) {
-                                console.log('✅ 从 localStorage 加载 Firebase 配置成功');
-                            } else {
-                                console.warn('⚠️ 无法加载 Firebase 配置:', loadResult.message);
-                            }
-                        }
-                    } else {
-                        // 尝试从 localStorage 加载配置
-                        const loadResult = await window.dataSyncFirebase.loadConfig();
-                        if (loadResult.success) {
-                            console.log('✅ 从 localStorage 加载 Firebase 配置成功');
-                        } else {
-                            console.warn('⚠️ Firebase 未配置，将使用本地数据');
-                        }
-                    }
-                } catch (error) {
-                    console.error('❌ Firebase 同步初始化出错:', error);
+            try {
+                let initResult = null;
+                
+                // 优先使用默认配置（从 index.html 加载的）
+                if (firebaseReady && window.firebaseConfig && window.firebaseDatabase) {
+                    const defaultConfig = {
+                        ...window.firebaseConfig,
+                        databasePath: 'trip_plan_data'
+                    };
+                    initResult = await window.dataSyncFirebase.initialize(defaultConfig);
+                } else {
+                    // 尝试从 localStorage 加载配置
+                    initResult = await window.dataSyncFirebase.loadConfig();
                 }
-            } else {
-                console.warn('⚠️ dataSyncFirebase 未加载');
+                
+                if (initResult && initResult.success) {
+                    console.log('✅ Firebase 同步初始化成功');
+                    
+                    // 如果已登录，静默下载数据（不显示错误）
+                    const isLoggedIn = window.stateManager ? window.stateManager.getState('isLoggedIn') : false;
+                    if (isLoggedIn) {
+                        window.dataSyncFirebase.download().then(result => {
+                            if (result.success) {
+                                const unifiedData = window.tripDataStructure ? window.tripDataStructure.loadUnifiedData() : null;
+                                if (unifiedData && window.stateManager) {
+                                    window.stateManager.setState({ tripData: unifiedData });
+                                }
+                            }
+                        }).catch(() => {
+                            // 静默处理错误
+                        });
+                    }
+                    
+                    // 启用自动同步（如果已登录）
+                    if (isLoggedIn && window.dataSyncFirebase.setAutoSync) {
+                        window.dataSyncFirebase.setAutoSync(true);
+                    }
+                } else {
+                    const message = initResult ? initResult.message : '未知错误';
+                    console.warn('⚠️ Firebase 未配置，将使用本地数据:', message);
+                }
+            } catch (error) {
+                console.error('❌ Firebase 同步初始化出错:', error);
             }
             
             this.recordStep('FirebaseSync');
