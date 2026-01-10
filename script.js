@@ -2048,38 +2048,43 @@ class CardSlider {
                 deleteBtn.style.display = 'none';
             }
             
-            deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
+            // 防止重复绑定事件监听器：检查是否已经绑定过
+            if (!deleteBtn.dataset.deleteHandlerAttached) {
+                deleteBtn.dataset.deleteHandlerAttached = 'true';
                 
-                // 排序模式下禁止删除
-                if (this.sortMode) {
-                    return;
-                }
-                
-                // 防止重复弹窗：检查是否正在处理删除
-                if (deleteBtn.dataset.deleting === 'true') {
-                    return;
-                }
-                
-                if (confirm('确定要删除这个行程项吗？')) {
-                    deleteBtn.dataset.deleting = 'true';
-                    const itemId = deleteBtn.dataset.itemId;
-                    if (itemId) {
-                        // 使用统一结构删除（deleteItem 函数已经处理了备份和同步）
-                        deleteItem(this.dayId, itemId);
-                        // 重新渲染当前视图
-                        this.cards = this.cards.filter(c => c.id !== itemId);
-                        this.renderCards();
-                        this.attachCardEventsForAll();
-                        deleteBtn.dataset.deleting = 'false';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    // 排序模式下禁止删除
+                    if (this.sortMode) {
+                        return;
+                    }
+                    
+                    // 防止重复弹窗：检查是否正在处理删除
+                    if (deleteBtn.dataset.deleting === 'true') {
+                        return;
+                    }
+                    
+                    if (confirm('确定要删除这个行程项吗？')) {
+                        deleteBtn.dataset.deleting = 'true';
+                        const itemId = deleteBtn.dataset.itemId;
+                        if (itemId) {
+                            // 使用统一结构删除（deleteItem 函数已经处理了备份和同步）
+                            deleteItem(this.dayId, itemId);
+                            // 重新渲染当前视图
+                            this.cards = this.cards.filter(c => c.id !== itemId);
+                            this.renderCards();
+                            this.attachCardEventsForAll();
+                            deleteBtn.dataset.deleting = 'false';
+                        } else {
+                            deleteBtn.dataset.deleting = 'false';
+                        }
                     } else {
                         deleteBtn.dataset.deleting = 'false';
                     }
-                } else {
-                    deleteBtn.dataset.deleting = 'false';
-                }
-            });
+                });
+            }
         }
         
         // 计划项删除事件
