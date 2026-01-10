@@ -1866,11 +1866,9 @@ body {
     transition: all 0.3s ease;
     font-size: 14px;
     /* 移动端优化：确保触摸区域足够大 */
-    min-width: 44px;
     min-height: 44px;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    min-width: auto;
     justify-content: center;
 }
 
@@ -1896,6 +1894,9 @@ body {
     transition: all 0.2s ease;
     color: #ccc;
     display: inline-block;
+    width: 16px; /* 固定宽度，确保图标不会变形 */
+    text-align: center; /* 居中对齐 */
+    flex-shrink: 0; /* 防止图标被压缩 */
 }
 
 .like-btn:active .like-icon,
@@ -2013,7 +2014,8 @@ body {
     bottom: 8px;
     right: 8px;
     padding: 2px 8px;
-    min-width: auto;
+    min-width: 44px; /* 确保移动端触摸区域足够大 */
+    flex-shrink: 0; /* 防止按钮被压缩 */
 }
 
 .comment-input-container {
@@ -2541,18 +2543,25 @@ body {
         min-width: 45px;
     }
 
-    .like-icon {
-        font-size: 14px;
+    /* 保持评论点赞按钮的图标大小与桌面端一致 */
+    .comment-like-btn .like-icon {
+        font-size: 16px; /* 与桌面端保持一致 */
+        width: 16px; /* 固定宽度，确保图标不会变形 */
     }
 
+    /* 保持评论点赞按钮固定在右侧，不被换行 */
     .comment-like-btn {
-        position: static;
-        margin-top: 6px;
-        align-self: flex-start;
+        position: absolute; /* 保持绝对定位，固定在右侧 */
+        bottom: 8px;
+        right: 8px;
+        margin-top: 0; /* 移除 margin-top */
+        align-self: auto; /* 移除 align-self */
+        min-width: 44px; /* 确保触摸区域足够大 */
     }
 
+    /* 确保 comment-item 有足够的右侧内边距来容纳按钮 */
     .comment-item {
-        padding-right: 10px;
+        padding-right: 50px; /* 保持与桌面端一致的 padding，确保按钮不被内容遮挡 */
     }
 }
 
