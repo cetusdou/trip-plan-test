@@ -1895,168 +1895,178 @@ class CardSlider {
         });
         
         // 保存按钮事件
-        // 计划项like事件
+        // 计划项like事件（统一处理 click 和 touchend）
         card.querySelectorAll('.plan-item-like-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            // 触摸相关变量
+            let touchStartX = 0;
+            let touchStartY = 0;
+            
+            // 创建统一的点赞处理函数
+            const handlePlanLike = (e) => {
+                // 如果是触摸事件，检查移动距离（避免滚动时误触发）
+                if (e.type === 'touchend') {
+                    const touch = e.changedTouches[0];
+                    const moveX = Math.abs(touch.clientX - touchStartX);
+                    const moveY = Math.abs(touch.clientY - touchStartY);
+                    // 如果移动距离超过10px，认为是滚动操作，不触发点赞
+                    if (moveX > 10 || moveY > 10) {
+                        return;
+                    }
+                }
+                
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                console.log('Plan 点赞按钮被点击', { 
-                    dayId: this.dayId, 
-                    itemId: card.dataset.itemId, 
-                    planIndex: btn.dataset.planIndex 
-                });
+                
+                // 防止短时间内重复触发
+                if (btn.dataset.processing === 'true') {
+                    return;
+                }
+                btn.dataset.processing = 'true';
+                
                 const planIndex = parseInt(btn.dataset.planIndex);
                 const itemId = card.dataset.itemId || null;
+                
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
+                
                 if (typeof window.LikeHandler !== 'undefined' && window.LikeHandler) {
                     const success = window.LikeHandler.toggleLike(this.dayId, itemId, 'plan', planIndex);
-                    console.log('Plan 点赞操作结果', { success, dayId: this.dayId, itemId, planIndex });
                     if (success) {
                         // 使用统一的UI刷新
                         if (typeof window.refreshUI === 'function') {
                             window.refreshUI(this.dayId, { itemId, skipSync: false });
                         } else {
                             // 重新加载数据并刷新
-                            // 从统一结构获取 items
-            let items = [];
-            if (typeof tripDataStructure !== 'undefined') {
-                const unifiedData = tripDataStructure.loadUnifiedData();
-                if (unifiedData) {
-                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
-                    if (day && day.items) {
-                        items = day.items;
-                    }
-                }
-            }
-                            this.cards = items;
-                            this.renderCards();
-                            this.attachCardEventsForAll();
+                            if (typeof tripDataStructure !== 'undefined') {
+                                const unifiedData = tripDataStructure.loadUnifiedData();
+                                if (unifiedData) {
+                                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                                    if (day && day.items) {
+                                        this.cards = day.items;
+                                        this.renderCards();
+                                        this.attachCardEventsForAll();
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        console.warn('Plan 点赞失败，不刷新UI');
                     }
                 } else {
                     console.error('LikeHandler 未定义');
                 }
+                
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
                 requestAnimationFrame(() => {
                     window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
-                    // 恢复卡片内部滚动位置
                     const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
                     if (newCard) {
                         newCard.scrollTop = cardScrollTop;
                     }
+                    // 延迟重置处理标志，避免快速重复点击
+                    setTimeout(() => {
+                        btn.dataset.processing = 'false';
+                    }, 300);
                 });
-            });
+            };
             
-            // 也处理触摸事件
-            btn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                const planIndex = parseInt(btn.dataset.planIndex);
-                const itemId = card.dataset.itemId || null;
-                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                const cardScrollTop = card.scrollTop;
-                this.togglePlanItemLike(this.dayId, index, planIndex, itemId);
-                this.renderCards();
-                if (!this.sortMode) {
-                    // 重新绑定事件
-                }
-                this.attachCardEventsForAll();
-                requestAnimationFrame(() => {
-                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
-                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
-                    if (newCard) {
-                        newCard.scrollTop = cardScrollTop;
-                    }
-                });
-            });
+            // 记录触摸开始位置
+            btn.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            }, { passive: true });
+            
+            // 同时绑定 click 和 touchend 事件
+            btn.addEventListener('click', handlePlanLike);
+            btn.addEventListener('touchend', handlePlanLike);
         });
         
-        // 留言like事件
+        // 留言like事件（统一处理 click 和 touchend）
         card.querySelectorAll('.comment-like-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            // 触摸相关变量
+            let touchStartX = 0;
+            let touchStartY = 0;
+            
+            // 创建统一的点赞处理函数
+            const handleCommentLike = (e) => {
+                // 如果是触摸事件，检查移动距离（避免滚动时误触发）
+                if (e.type === 'touchend') {
+                    const touch = e.changedTouches[0];
+                    const moveX = Math.abs(touch.clientX - touchStartX);
+                    const moveY = Math.abs(touch.clientY - touchStartY);
+                    // 如果移动距离超过10px，认为是滚动操作，不触发点赞
+                    if (moveX > 10 || moveY > 10) {
+                        return;
+                    }
+                }
+                
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                console.log('Comment 点赞按钮被点击', { 
-                    dayId: this.dayId, 
-                    itemId: card.dataset.itemId, 
-                    commentIndex: btn.dataset.commentIndex 
-                });
+                
+                // 防止短时间内重复触发
+                if (btn.dataset.processing === 'true') {
+                    return;
+                }
+                btn.dataset.processing = 'true';
+                
                 const commentIndex = parseInt(btn.dataset.commentIndex);
                 const itemId = card.dataset.itemId || null;
+                
                 // 保存当前滚动位置和卡片滚动位置
                 const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                 const cardScrollTop = card.scrollTop;
+                
                 if (typeof window.LikeHandler !== 'undefined' && window.LikeHandler) {
                     const success = window.LikeHandler.toggleLike(this.dayId, itemId, 'comment', commentIndex);
-                    console.log('Comment 点赞操作结果', { success, dayId: this.dayId, itemId, commentIndex });
                     if (success) {
                         // 使用统一的UI刷新
                         if (typeof window.refreshUI === 'function') {
                             window.refreshUI(this.dayId, { itemId, skipSync: false });
                         } else {
                             // 重新加载数据并刷新
-                            // 从统一结构获取 items
-            let items = [];
-            if (typeof tripDataStructure !== 'undefined') {
-                const unifiedData = tripDataStructure.loadUnifiedData();
-                if (unifiedData) {
-                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
-                    if (day && day.items) {
-                        items = day.items;
-                    }
-                }
-            }
-                            this.cards = items;
-                            this.renderCards();
-                            this.attachCardEventsForAll();
+                            if (typeof tripDataStructure !== 'undefined') {
+                                const unifiedData = tripDataStructure.loadUnifiedData();
+                                if (unifiedData) {
+                                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                                    if (day && day.items) {
+                                        this.cards = day.items;
+                                        this.renderCards();
+                                        this.attachCardEventsForAll();
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        console.warn('Comment 点赞失败，不刷新UI');
                     }
                 } else {
                     console.error('LikeHandler 未定义');
                 }
+                
                 // 使用requestAnimationFrame确保DOM更新完成后再恢复滚动位置
                 requestAnimationFrame(() => {
                     window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
-                    // 恢复卡片内部滚动位置
                     const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
                     if (newCard) {
                         newCard.scrollTop = cardScrollTop;
                     }
+                    // 延迟重置处理标志，避免快速重复点击
+                    setTimeout(() => {
+                        btn.dataset.processing = 'false';
+                    }, 300);
                 });
-            });
+            };
             
-            // 也处理触摸事件
-            btn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                const commentIndex = parseInt(btn.dataset.commentIndex);
-                const itemId = card.dataset.itemId || null;
-                const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                const cardScrollTop = card.scrollTop;
-                this.toggleCommentLike(this.dayId, index, commentIndex, itemId);
-                this.renderCards();
-                if (!this.sortMode) {
-                    // 重新绑定事件
-                }
-                this.attachCardEventsForAll();
-                requestAnimationFrame(() => {
-                    window.scrollTo({ top: pageScrollTop, behavior: 'instant' });
-                    const newCard = this.container.querySelector(`.card[data-index="${index}"]`);
-                    if (newCard) {
-                        newCard.scrollTop = cardScrollTop;
-                    }
-                });
-            });
+            // 记录触摸开始位置
+            btn.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            }, { passive: true });
+            
+            // 同时绑定 click 和 touchend 事件
+            btn.addEventListener('click', handleCommentLike);
+            btn.addEventListener('touchend', handleCommentLike);
         });
         
         // 留言提交事件

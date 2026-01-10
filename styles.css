@@ -1121,6 +1121,11 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 14px;
+    /* 移动端优化：确保触摸区域足够大 */
+    min-width: 44px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
     min-width: auto;
     justify-content: center;
     margin-left: 10px;
@@ -1860,6 +1865,11 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 14px;
+    /* 移动端优化：确保触摸区域足够大 */
+    min-width: 44px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
     min-width: auto;
     justify-content: center;
 }

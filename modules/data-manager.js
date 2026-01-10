@@ -227,7 +227,7 @@ function addItem(dayId, itemData) {
     refreshUIAndSync(dayId, newItem.id);
 }
 
-// 删除行程项（硬删除）
+// 删除行程项（软删除：移到备份中）
 function deleteItem(dayId, itemId) {
     if (!validateWriteOperation(dayId)) return;
     
@@ -243,7 +243,7 @@ function deleteItem(dayId, itemId) {
         return;
     }
     
-    // 成功删除项
+    // 成功删除项（已移到备份中）
     
     // 通过事件总线通知数据更新
     if (typeof window.eventBus !== 'undefined') {
@@ -253,7 +253,7 @@ function deleteItem(dayId, itemId) {
         });
     }
     
-    // 刷新UI和同步
+    // 刷新UI和同步（备份数据会自动包含在 unifiedData 中上传）
     refreshUIAndSync(dayId);
 }
 

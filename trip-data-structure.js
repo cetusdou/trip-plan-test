@@ -40,6 +40,7 @@ function initializeTripDataStructure(originalData) {
         title: originalData.title || "",
         overview: overview, // 从days的title自动生成
         days: days,
+        _backup: [], // 备份已删除的数据
         _version: DATA_STRUCTURE_VERSION,
         _lastSync: null,
         _syncUser: null
@@ -390,6 +391,11 @@ function loadUnifiedData() {
                             return null;
                         }
                         
+                        // 确保 _backup 字段存在（向后兼容）
+                        if (!parsed._backup) {
+                            parsed._backup = [];
+                        }
+                        
                         // 验证数据完整性，成功加载统一数据
                         return parsed;
                     } else {
@@ -692,7 +698,7 @@ function addItemData(unifiedData, dayId, itemData) {
     return newItem;
 }
 
-// 删除item（硬删除）
+// 删除item（软删除：移到备份中）
 function deleteItemData(unifiedData, dayId, itemId) {
     const day = tripDataStructure.getDayData(unifiedData, dayId);
     if (!day || !day.items) return false;
@@ -700,10 +706,100 @@ function deleteItemData(unifiedData, dayId, itemId) {
     const itemIndex = day.items.findIndex(item => item.id === itemId);
     if (itemIndex === -1) return false;
     
-    // 真正从数组中删除
+    // 获取要删除的 item（深拷贝，避免引用问题）
+    const deletedItem = JSON.parse(JSON.stringify(day.items[itemIndex]));
+    
+    // 初始化备份数组（如果不存在）
+    if (!unifiedData._backup) {
+        unifiedData._backup = [];
+    }
+    
+    // 将删除的数据添加到备份中，包含删除时间和用户信息
+    const backupEntry = {
+        ...deletedItem,
+        _deletedAt: new Date().toISOString(),
+        _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null,
+        _deletedFromDay: dayId,
+        _originalItemId: itemId
+    };
+    
+    unifiedData._backup.push(backupEntry);
+    
+    // 从原数组中删除
     day.items.splice(itemIndex, 1);
+    
+    // 更新 order 字段（重新排序剩余的 items）
+    day.items.forEach((item, index) => {
+        item.order = index;
+    });
+    
     saveUnifiedData(unifiedData);
     return true;
+}
+
+// 恢复已删除的 item（从备份中恢复）
+function restoreItemFromBackup(unifiedData, backupIndex, targetDayId = null) {
+    if (!unifiedData || !unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+        console.error('备份数据不存在或格式不正确');
+        return false;
+    }
+    
+    if (backupIndex < 0 || backupIndex >= unifiedData._backup.length) {
+        console.error('备份索引无效:', backupIndex);
+        return false;
+    }
+    
+    const backupEntry = unifiedData._backup[backupIndex];
+    if (!backupEntry) {
+        console.error('备份项不存在');
+        return false;
+    }
+    
+    // 确定目标 dayId（优先使用参数，否则使用备份中的原始 dayId）
+    const dayId = targetDayId || backupEntry._deletedFromDay;
+    if (!dayId) {
+        console.error('无法确定目标 dayId');
+        return false;
+    }
+    
+    const day = tripDataStructure.getDayData(unifiedData, dayId);
+    if (!day) {
+        console.error('目标 day 不存在:', dayId);
+        return false;
+    }
+    
+    // 创建恢复的 item（移除备份相关的元数据）
+    const restoredItem = { ...backupEntry };
+    delete restoredItem._deletedAt;
+    delete restoredItem._deletedBy;
+    delete restoredItem._deletedFromDay;
+    delete restoredItem._originalItemId;
+    
+    // 更新恢复时间
+    restoredItem._restoredAt = new Date().toISOString();
+    restoredItem._restoredBy = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
+    
+    // 添加到目标 day 的 items 数组末尾
+    if (!day.items) {
+        day.items = [];
+    }
+    restoredItem.order = day.items.length;
+    day.items.push(restoredItem);
+    
+    // 从备份中移除（可选：保留备份记录，只标记为已恢复）
+    // 这里选择移除，如果需要保留历史，可以改为标记
+    unifiedData._backup.splice(backupIndex, 1);
+    
+    saveUnifiedData(unifiedData);
+    return true;
+}
+
+// 获取所有备份数据
+function getBackupData(unifiedData) {
+    if (!unifiedData || !unifiedData._backup) {
+        return [];
+    }
+    return unifiedData._backup;
 }
 
 // 导出供全局使用
@@ -725,6 +821,8 @@ window.tripDataStructure = {
     updateItemData,
     addItemData,
     deleteItemData,
+    restoreItemFromBackup,
+    getBackupData,
     normalizePlan,
     getUnifiedDataSize,
     DATA_STRUCTURE_VERSION
