@@ -1065,7 +1065,6 @@ class CardSlider {
                 // 保存备注的函数
                 const saveNote = () => {
                     const newNote = noteInput.value.trim();
-                    noteDisplay.innerHTML = window.markdownToHtml ? window.markdownToHtml(newNote || '') : (newNote || '');
                     
                     // 使用统一的更新方法
                     const cardData = this.cards[index];
@@ -1073,13 +1072,39 @@ class CardSlider {
                         const itemId = cardData.id;
                         if (itemId) {
                             try {
+                                // updateCardData 内部会处理增量更新和本地保存
+                                // 但是为了确保数据正确保存，我们需要确保本地数据已经更新
+                                if (typeof tripDataStructure !== 'undefined') {
+                                    const unifiedData = tripDataStructure.loadUnifiedData();
+                                    if (unifiedData) {
+                                        const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                                        if (item) {
+                                            // 先更新本地数据
+                                            item.note = newNote;
+                                            item._updatedAt = new Date().toISOString();
+                                            tripDataStructure.saveUnifiedData(unifiedData);
+                                        }
+                                    }
+                                }
+                                
+                                // 调用 updateCardData 进行增量更新
                                 this.updateCardData(itemId, { note: newNote });
-                                // 只上传这个 item，不进行全量上传
+                                
+                                // 使用 uploadItem 确保数据上传到云端（updateCardData 的增量更新可能失败）
                                 if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
-                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                    dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
+                                        if (result.success) {
+                                            console.log('备注已成功上传到云端');
+                                        } else {
+                                            console.warn('备注上传失败:', result.message);
+                                        }
+                                    }).catch(error => {
                                         console.error('上传 item 失败:', error);
                                     });
                                 }
+                                
+                                // 更新显示内容
+                                noteDisplay.innerHTML = window.markdownToHtml ? window.markdownToHtml(newNote || '') : (newNote || '');
                             } catch (error) {
                                 console.error('更新备注失败:', error);
                             }
@@ -2646,14 +2671,45 @@ class CardSlider {
                     Object.assign(item, updates);
                     item._updatedAt = new Date().toISOString();
                     
-                    // 使用增量更新直接上传到 Firebase，避免全量保存到 localStorage
-                    const subPath = `days/${this.dayId}/items/${itemId}`;
-                    dataSyncFirebase.cloudIncrementalUpdate(subPath, updates).catch(error => {
-                        console.error('增量更新失败，回退到全量保存:', error);
-                        // 如果增量更新失败，回退到全量保存
-                        tripDataStructure.saveUnifiedData(unifiedData);
-                    });
-                    return; // 增量更新成功，不需要全量保存
+                    // 获取数组索引（因为 Firebase 中数组存储为对象，需要使用索引而不是字符串ID）
+                    const dayIndex = dataSyncFirebase.getDayIndex(this.dayId);
+                    const itemIndex = dataSyncFirebase.getItemIndex(this.dayId, itemId);
+                    
+                    // 先确保数据已保存到 localStorage（无论增量更新是否成功）
+                    tripDataStructure.saveUnifiedData(unifiedData);
+                    
+                    if (dayIndex !== null && itemIndex !== null) {
+                        // 使用正确的数组索引路径进行增量更新
+                        const subPath = `days/${dayIndex}/items/${itemIndex}`;
+                        dataSyncFirebase.cloudIncrementalUpdate(subPath, updates).then(result => {
+                            if (!result.success) {
+                                console.warn('增量更新失败，但数据已保存到本地:', result.message);
+                                // 如果增量更新失败，尝试使用 uploadItem 作为备用方案
+                                if (dataSyncFirebase.uploadItem) {
+                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
+                                        console.error('备用上传方案也失败:', err);
+                                    });
+                                }
+                            }
+                        }).catch(error => {
+                            console.error('增量更新出错，但数据已保存到本地:', error);
+                            // 如果增量更新出错，尝试使用 uploadItem 作为备用方案
+                            if (dataSyncFirebase.uploadItem) {
+                                dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
+                                    console.error('备用上传方案也失败:', err);
+                                });
+                            }
+                        });
+                    } else {
+                        console.warn('无法获取数组索引，数据已保存到本地', { dayId: this.dayId, itemId, dayIndex, itemIndex });
+                        // 如果无法获取索引，尝试使用 uploadItem 上传整个 item
+                        if (dataSyncFirebase.uploadItem) {
+                            dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
+                                console.error('上传 item 失败:', err);
+                            });
+                        }
+                    }
+                    return; // 已经处理，不需要继续执行
                 }
             }
         }
