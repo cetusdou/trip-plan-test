@@ -818,6 +818,16 @@ function getBackupData(unifiedData) {
     return unifiedData._backup;
 }
 
+// 清空所有备份数据
+function clearBackupData(unifiedData) {
+    if (!unifiedData) {
+        return false;
+    }
+    unifiedData._backup = [];
+    saveUnifiedData(unifiedData);
+    return true;
+}
+
 // 导出供全局使用
 // 获取统一数据大小（MB）
 function getUnifiedDataSize() {
@@ -839,6 +849,7 @@ window.tripDataStructure = {
     deleteItemData,
     restoreItemFromBackup,
     getBackupData,
+    clearBackupData,
     normalizePlan,
     getUnifiedDataSize,
     DATA_STRUCTURE_VERSION

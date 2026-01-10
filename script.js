@@ -2066,42 +2066,7 @@ class CardSlider {
                     deleteBtn.dataset.deleting = 'true';
                     const itemId = deleteBtn.dataset.itemId;
                     if (itemId) {
-                        // 优先使用统一结构的删除方法
-                        if (typeof tripDataStructure !== 'undefined') {
-                            const unifiedData = tripDataStructure.loadUnifiedData();
-                            if (unifiedData) {
-                                const success = tripDataStructure.deleteItemData(unifiedData, this.dayId, itemId);
-                                if (success) {
-                                    tripDataStructure.saveUnifiedData(unifiedData);
-                                    // 只上传被删除的卡片（部分更新）
-                                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
-                                        dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
-                                            if (result.success) {
-                                                console.log('卡片删除已同步到云端:', result.message);
-                                            } else {
-                                                console.warn('卡片删除同步失败:', result.message);
-                                                // 如果部分更新失败，回退到全量上传
-                                                triggerImmediateUpload();
-                                            }
-                                        }).catch(error => {
-                                            console.error('卡片删除同步出错:', error);
-                                            // 如果部分更新失败，回退到全量上传
-                                            triggerImmediateUpload();
-                                        });
-                                    } else {
-                                        // 如果部分更新方法不可用，使用全量上传
-                                        triggerImmediateUpload();
-                                    }
-                                    // 重新渲染当前视图，而不是重新加载整个day
-                                    this.cards = this.cards.filter(c => c.id !== itemId);
-                                    this.renderCards();
-                                    this.attachCardEventsForAll();
-                                    deleteBtn.dataset.deleting = 'false';
-                                    return;
-                                }
-                            }
-                        }
-                        // 使用统一结构删除
+                        // 使用统一结构删除（deleteItem 函数已经处理了备份和同步）
                         deleteItem(this.dayId, itemId);
                         // 重新渲染当前视图
                         this.cards = this.cards.filter(c => c.id !== itemId);
@@ -2610,8 +2575,8 @@ class CardSlider {
         
         if (commentIndex === -1) return;
         
-        // 从数组中删除
-        comments.splice(commentIndex, 1);
+        // 获取要删除的 comment（深拷贝，避免引用问题）
+        const deletedComment = JSON.parse(JSON.stringify(comments[commentIndex]));
         
         // 优先保存到统一结构
         // 如果itemId参数为null，尝试从card获取
@@ -2622,11 +2587,56 @@ class CardSlider {
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
+                // 初始化备份数组（如果不存在）
+                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+                    unifiedData._backup = [];
+                }
+                
+                // 将删除的 comment 添加到备份中
+                const backupEntry = {
+                    _type: 'comment', // 标记这是 comment 的备份
+                    _comment: deletedComment, // 被删除的 comment 内容
+                    _itemId: itemId, // 所属的 item ID
+                    _dayId: dayId, // 所属的 day ID
+                    _commentIndex: commentIndex, // 原始索引位置
+                    _commentHash: commentHash, // comment 的哈希值
+                    _deletedAt: new Date().toISOString(), // 删除时间
+                    _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
+                    _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
+                };
+                
+                unifiedData._backup.push(backupEntry);
+                console.log('已将被删除的 comment 添加到备份，当前备份数量:', unifiedData._backup.length);
+                
+                // 先保存包含备份的完整数据
+                tripDataStructure.saveUnifiedData(unifiedData);
+                
                 const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
                 if (item) {
+                    // 从数组中删除
+                    comments.splice(commentIndex, 1);
                     item.comments = comments;
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
+                    
+                    // 同步备份字段到 Firebase（增量更新）
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.cloudIncrementalUpdate) {
+                        // 重新加载最新的 unifiedData（确保包含最新的 _backup）
+                        const latestUnifiedData = tripDataStructure.loadUnifiedData();
+                        if (latestUnifiedData && latestUnifiedData._backup && Array.isArray(latestUnifiedData._backup)) {
+                            // 使用空路径 '' 来更新顶层字段 _backup
+                            dataSyncFirebase.cloudIncrementalUpdate('', { _backup: latestUnifiedData._backup }, false).then(backupResult => {
+                                if (backupResult.success) {
+                                    console.log(`删除 comment 后已增量更新备份字段，备份数量: ${latestUnifiedData._backup.length}`);
+                                } else {
+                                    console.warn('删除 comment 后增量更新备份字段失败:', backupResult.message);
+                                }
+                            }).catch(backupError => {
+                                console.error('删除 comment 后增量更新备份字段出错:', backupError);
+                            });
+                        }
+                    }
+                    
                     // 只上传这个 item，不进行全量上传
                     if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
                         dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
@@ -3166,7 +3176,31 @@ class CardSlider {
                     // 检查索引是否有效
                     console.log('目标索引:', targetIndex, 'plan 项长度:', planItems.length);
                     if (targetIndex >= 0 && targetIndex < planItems.length) {
-                        console.log('准备删除索引', targetIndex, '的 plan 项:', planItems[targetIndex]);
+                        // 获取要删除的 plan item（深拷贝，避免引用问题）
+                        const deletedPlanItem = JSON.parse(JSON.stringify(planItems[targetIndex]));
+                        console.log('准备删除索引', targetIndex, '的 plan 项:', deletedPlanItem);
+                        
+                        // 初始化备份数组（如果不存在）
+                        if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+                            unifiedData._backup = [];
+                        }
+                        
+                        // 将删除的 plan item 添加到备份中
+                        const backupEntry = {
+                            _type: 'plan_item', // 标记这是 plan item 的备份
+                            _planItem: deletedPlanItem, // 被删除的 plan item 内容
+                            _itemId: itemId, // 所属的 item ID
+                            _dayId: this.dayId, // 所属的 day ID
+                            _planIndex: targetIndex, // 原始索引位置
+                            _planHash: planHash || null, // plan item 的哈希值（如果有）
+                            _deletedAt: new Date().toISOString(), // 删除时间
+                            _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
+                            _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
+                        };
+                        
+                        unifiedData._backup.push(backupEntry);
+                        console.log('已将被删除的 plan item 添加到备份，当前备份数量:', unifiedData._backup.length);
+                        
                         // 真正从数组中删除
                         planItems.splice(targetIndex, 1);
                         console.log('删除后 plan 项数量:', planItems.length);
@@ -3175,6 +3209,9 @@ class CardSlider {
                         if (!Array.isArray(planItems)) {
                             planItems = planItems.length > 0 ? [planItems] : [];
                         }
+                        
+                        // 先保存包含备份的完整数据
+                        tripDataStructure.saveUnifiedData(unifiedData);
                         
                         // 使用 updateItemData 更新统一数据结构
                         const updateSuccess = tripDataStructure.updateItemData(unifiedData, this.dayId, itemId, { plan: planItems });
@@ -3189,41 +3226,70 @@ class CardSlider {
                             const cardElement = this.container.querySelector(`.card[data-index="${cardIndex}"]`);
                             const cardScrollTop = cardElement ? cardElement.scrollTop : 0;
                             
-                            // 硬删除后立即上传完整数组，确保 Firebase 端同步的是更新后的完整数组
-                            // 这样合并逻辑就不会"救回"已删除的项
-                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.updateArrayField) {
-                                // 使用 updateArrayField 上传完整数组，确保彻底删除
-                                dataSyncFirebase.updateArrayField(this.dayId, itemId, 'plan', planItems).then(result => {
-                                    if (result.success) {
-                                        console.log('plan 项删除已同步到云端（完整数组）:', result.message);
-                                    } else {
-                                        console.warn('plan 项删除同步失败，回退到 uploadItem:', result.message);
-                                        // 如果 updateArrayField 失败，回退到 uploadItem
-                                        if (dataSyncFirebase.uploadItem) {
-                                            dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                            // 同步到 Firebase：先更新 _backup 字段，再更新 plan 数组
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.cloudIncrementalUpdate) {
+                                // 先同步 _backup 字段（顶层字段，使用空路径）
+                                dataSyncFirebase.cloudIncrementalUpdate('', { _backup: unifiedData._backup }, false).then(backupResult => {
+                                    if (backupResult.success) {
+                                        console.log('plan item 备份已同步到云端，备份数量:', unifiedData._backup.length);
+                                        
+                                        // 备份同步成功，再同步 plan 数组
+                                        if (dataSyncFirebase.updateArrayField) {
+                                            dataSyncFirebase.updateArrayField(this.dayId, itemId, 'plan', planItems).then(planResult => {
+                                                if (planResult.success) {
+                                                    console.log('plan 项删除已同步到云端（完整数组）:', planResult.message);
+                                                } else {
+                                                    console.warn('plan 项删除同步失败，回退到 uploadItem:', planResult.message);
+                                                    // 如果 updateArrayField 失败，回退到 uploadItem
+                                                    if (dataSyncFirebase.uploadItem) {
+                                                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                                            console.error('plan 项删除同步出错:', error);
+                                                        });
+                                                    }
+                                                }
+                                            }).catch(error => {
+                                                console.error('plan 项删除同步出错:', error);
+                                                // 回退到 uploadItem
+                                                if (dataSyncFirebase.uploadItem) {
+                                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
+                                                        console.error('回退上传也失败:', err);
+                                                    });
+                                                }
+                                            });
+                                        } else if (dataSyncFirebase.uploadItem) {
+                                            // 如果 updateArrayField 不可用，使用 uploadItem
+                                            dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
+                                                if (result.success) {
+                                                    console.log('plan 项删除已同步到云端:', result.message);
+                                                } else {
+                                                    console.warn('plan 项删除同步失败:', result.message);
+                                                }
+                                            }).catch(error => {
                                                 console.error('plan 项删除同步出错:', error);
                                             });
                                         }
+                                    } else {
+                                        console.warn('plan item 备份同步失败:', backupResult.message);
+                                        // 如果备份同步失败，回退到全量上传
+                                        if (dataSyncFirebase.upload) {
+                                            dataSyncFirebase.upload(true).catch(error => {
+                                                console.error('回退全量上传也失败:', error);
+                                            });
+                                        }
                                     }
-                                }).catch(error => {
-                                    console.error('plan 项删除同步出错:', error);
-                                    // 回退到 uploadItem
-                                    if (dataSyncFirebase.uploadItem) {
-                                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
-                                            console.error('回退上传也失败:', err);
+                                }).catch(backupError => {
+                                    console.error('plan item 备份同步出错:', backupError);
+                                    // 如果备份同步失败，回退到全量上传
+                                    if (dataSyncFirebase.upload) {
+                                        dataSyncFirebase.upload(true).catch(error => {
+                                            console.error('回退全量上传也失败:', error);
                                         });
                                     }
                                 });
-                            } else if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem) {
-                                // 如果 updateArrayField 不可用，使用 uploadItem
-                                dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
-                                    if (result.success) {
-                                        console.log('plan 项删除已同步到云端:', result.message);
-                                    } else {
-                                        console.warn('plan 项删除同步失败:', result.message);
-                                    }
-                                }).catch(error => {
-                                    console.error('plan 项删除同步出错:', error);
+                            } else if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.upload) {
+                                // 如果增量更新不可用，使用全量上传
+                                dataSyncFirebase.upload(true).catch(error => {
+                                    console.error('plan 项删除全量上传出错:', error);
                                 });
                             }
                             
