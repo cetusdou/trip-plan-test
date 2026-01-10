@@ -173,12 +173,50 @@ function mergeUnifiedData(localData, remoteData) {
     
     mergedDays.push(...Array.from(dayMap.values()));
     
-    return {
-        ...remoteData,
+    // 合并 _backup 字段（合并本地和远程的备份数组）
+    const localBackup = Array.isArray(localData._backup) ? localData._backup : [];
+    const remoteBackup = Array.isArray(remoteData._backup) ? remoteData._backup : [];
+    
+    // 合并备份数组：使用 itemId 去重，保留最新的备份记录
+    const backupMap = new Map();
+    localBackup.forEach(backup => {
+        if (backup && backup._originalItemId) {
+            backupMap.set(backup._originalItemId, backup);
+        }
+    });
+    remoteBackup.forEach(backup => {
+        if (backup && backup._originalItemId) {
+            const existing = backupMap.get(backup._originalItemId);
+            if (existing) {
+                // 如果已存在，比较删除时间，保留最新的
+                const localDeletedAt = new Date(existing._deletedAt || 0);
+                const remoteDeletedAt = new Date(backup._deletedAt || 0);
+                if (remoteDeletedAt > localDeletedAt) {
+                    backupMap.set(backup._originalItemId, backup);
+                }
+                // 否则保留本地的
+            } else {
+                // 不存在，添加远程的
+                backupMap.set(backup._originalItemId, backup);
+            }
+        }
+    });
+    
+    const mergedBackup = Array.from(backupMap.values());
+    
+    // 构建合并后的数据结构，确保 _backup 字段被包含
+    const mergedResult = {
+        id: remoteData.id || localData.id,
+        title: remoteData.title || localData.title,
+        overview: remoteData.overview || localData.overview || [],
         days: mergedDays,
+        _backup: mergedBackup, // 确保 _backup 字段被包含（合并后的备份数组）
         _version: Math.max(localData._version || 0, remoteData._version || 0),
-        _lastSync: new Date().toISOString()
+        _lastSync: new Date().toISOString(),
+        _syncUser: remoteData._syncUser || localData._syncUser || null
     };
+    
+    return mergedResult;
 }
 
 // 增量更新点赞数组：保留远程的所有点赞，只根据本地操作添加/删除当前用户
@@ -599,7 +637,25 @@ class DataSyncFirebase {
         if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 直接存储对象，Firebase 会自动序列化
+                // 确保 _backup 字段存在且是数组（在上传前强制初始化）
+                let needSave = false;
+                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+                    unifiedData._backup = [];
+                    needSave = true;
+                    console.log('检测到 _backup 字段缺失，已初始化为空数组');
+                }
+                
+                // 如果需要保存，保存回 localStorage（确保本地数据也更新）
+                if (needSave) {
+                    try {
+                        tripDataStructure.saveUnifiedData(unifiedData);
+                        console.log('已保存初始化后的 _backup 字段到 localStorage');
+                    } catch (e) {
+                        console.warn('初始化 _backup 字段后保存到 localStorage 失败:', e);
+                    }
+                }
+                
+                // 直接存储对象，Firebase 会自动序列化（确保包含 _backup）
                 data['trip_unified_data'] = unifiedData;
                 // 仍然包含其他配置数据（如果有）
                 for (let i = 0; i < localStorage.length; i++) {
@@ -693,6 +749,11 @@ class DataSyncFirebase {
                         delete data['trip_unified_data'];
                         return;
                     }
+                }
+                
+                // 确保 _backup 字段存在（向后兼容）
+                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+                    unifiedData._backup = [];
                 }
                 
                 // 数据结构正确，保存
@@ -988,13 +1049,26 @@ class DataSyncFirebase {
                         return;
                     }
                     
-                    // 确保 _backup 字段被包含在上传的数据中
+                    // 确保 _backup 字段被包含在上传的数据中（双重检查）
                     if (data['trip_unified_data'] && typeof data['trip_unified_data'] === 'object') {
                         // 确保 _backup 字段存在且是数组
                         if (!data['trip_unified_data']._backup || !Array.isArray(data['trip_unified_data']._backup)) {
                             data['trip_unified_data']._backup = [];
+                            console.warn('上传前检测到 _backup 字段缺失，已强制初始化为空数组');
                         }
-                        console.log(`上传数据包含备份字段，备份数量: ${data['trip_unified_data']._backup.length}`);
+                        // 验证 _backup 字段确实存在
+                        if (!data['trip_unified_data'].hasOwnProperty('_backup')) {
+                            data['trip_unified_data']._backup = [];
+                            console.warn('上传前检测到 _backup 字段不存在，已强制添加');
+                        }
+                        console.log(`✅ 上传数据验证：_backup 字段存在，类型: ${Array.isArray(data['trip_unified_data']._backup) ? 'Array' : typeof data['trip_unified_data']._backup}，备份数量: ${data['trip_unified_data']._backup.length}`);
+                        console.log('上传数据的 trip_unified_data 键:', Object.keys(data['trip_unified_data']));
+                    } else {
+                        console.error('❌ 上传数据中 trip_unified_data 不存在或格式不正确:', {
+                            hasTripUnifiedData: !!data['trip_unified_data'],
+                            type: typeof data['trip_unified_data'],
+                            dataKeys: Object.keys(data)
+                        });
                     }
                     
                     // 添加时间戳
@@ -1003,7 +1077,12 @@ class DataSyncFirebase {
 
                     // 上传到Firebase（直接传对象，Firebase 会自动序列化）
                     const uploadPath = this.databaseRef.toString();
+                    console.log(`准备上传数据到路径: ${uploadPath}，数据键:`, Object.keys(data));
+                    if (data['trip_unified_data']) {
+                        console.log(`trip_unified_data 的键:`, Object.keys(data['trip_unified_data']));
+                    }
                     await this.set(this.databaseRef, data);
+                    console.log(`✅ 数据已成功上传到 Firebase，路径: ${uploadPath}`);
                     
                     resolve({ 
                         success: true, 
@@ -1068,6 +1147,10 @@ class DataSyncFirebase {
                 // 移除元数据（这些会在保存时重新添加）
                 delete unifiedDataObj._lastSync;
                 delete unifiedDataObj._syncUser;
+                // 确保 _backup 字段存在（向后兼容）
+                if (!unifiedDataObj._backup || !Array.isArray(unifiedDataObj._backup)) {
+                    unifiedDataObj._backup = [];
+                }
                 // 创建新的数据结构（直接使用对象，不需要 JSON.stringify）
                 processedRemoteData = {
                     trip_unified_data: unifiedDataObj
@@ -1103,8 +1186,14 @@ class DataSyncFirebase {
                         return true;
                     });
                 
-                // 如果本地没有有效数据，直接使用云端数据
+                // 如果本地没有有效数据，直接使用云端数据，但确保 _backup 字段存在
                 if (!hasLocalData) {
+                    // 确保远程数据中的 _backup 字段存在
+                    if (processedRemoteData['trip_unified_data'] && typeof processedRemoteData['trip_unified_data'] === 'object') {
+                        if (!processedRemoteData['trip_unified_data']._backup || !Array.isArray(processedRemoteData['trip_unified_data']._backup)) {
+                            processedRemoteData['trip_unified_data']._backup = [];
+                        }
+                    }
                     this.setAllLocalData(processedRemoteData);
                     return { success: true, message: '同步成功！已从云端加载数据。', data: processedRemoteData };
                 }
@@ -1119,15 +1208,25 @@ class DataSyncFirebase {
                     const remoteUnified = parseUnifiedData(processedRemoteData['trip_unified_data']);
                     
                     if (remoteUnified && localUnified) {
-                        // 合并两个统一结构
+                        // 合并两个统一结构（mergeUnifiedData 已经确保 _backup 字段存在）
                         const mergedUnified = mergeUnifiedData(localUnified, remoteUnified);
+                        // 再次确保 _backup 字段存在（双重保险）
+                        if (!mergedUnified._backup || !Array.isArray(mergedUnified._backup)) {
+                            mergedUnified._backup = [];
+                        }
                         mergedData['trip_unified_data'] = mergedUnified; // 直接使用对象
                     } else if (remoteUnified) {
-                        // 只有远程有统一结构，使用远程的（直接使用对象）
-                        mergedData['trip_unified_data'] = remoteUnified;
+                        // 只有远程有统一结构，使用远程的，但确保 _backup 字段存在
+                        if (!remoteUnified._backup || !Array.isArray(remoteUnified._backup)) {
+                            remoteUnified._backup = [];
+                        }
+                        mergedData['trip_unified_data'] = remoteUnified; // 直接使用对象
                     } else if (localUnified) {
-                        // 只有本地有统一结构，保留本地的（直接使用对象）
-                        mergedData['trip_unified_data'] = localUnified;
+                        // 只有本地有统一结构，保留本地的，确保 _backup 字段存在
+                        if (!localUnified._backup || !Array.isArray(localUnified._backup)) {
+                            localUnified._backup = [];
+                        }
+                        mergedData['trip_unified_data'] = localUnified; // 直接使用对象
                     }
                     
                     // 删除已处理的键，避免重复处理
@@ -1308,10 +1407,24 @@ class DataSyncFirebase {
             const remoteUnified = parseUnifiedData(remoteData['trip_unified_data']);
             
             if (remoteUnified && localUnified) {
-                mergedData['trip_unified_data'] = mergeUnifiedData(localUnified, remoteUnified);
+                // 合并两个统一结构（mergeUnifiedData 已经确保 _backup 字段存在）
+                const mergedUnified = mergeUnifiedData(localUnified, remoteUnified);
+                // 再次确保 _backup 字段存在（双重保险）
+                if (!mergedUnified._backup || !Array.isArray(mergedUnified._backup)) {
+                    mergedUnified._backup = [];
+                }
+                mergedData['trip_unified_data'] = mergedUnified;
             } else if (remoteUnified) {
+                // 只有远程有统一结构，使用远程的，但确保 _backup 字段存在
+                if (!remoteUnified._backup || !Array.isArray(remoteUnified._backup)) {
+                    remoteUnified._backup = [];
+                }
                 mergedData['trip_unified_data'] = remoteUnified;
             } else if (localUnified) {
+                // 只有本地有统一结构，保留本地的，确保 _backup 字段存在
+                if (!localUnified._backup || !Array.isArray(localUnified._backup)) {
+                    localUnified._backup = [];
+                }
                 mergedData['trip_unified_data'] = localUnified;
             }
             

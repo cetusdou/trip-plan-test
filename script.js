@@ -43,6 +43,28 @@ window.onLoginSuccess = function() {
                 if (window.stateManager && window.tripDataStructure) {
                     const unifiedData = window.tripDataStructure.loadUnifiedData();
                     if (unifiedData) {
+                        // 确保 _backup 字段存在（向后兼容）
+                        if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+                            unifiedData._backup = [];
+                            tripDataStructure.saveUnifiedData(unifiedData);
+                            console.log('登录后检测到 _backup 字段缺失，已初始化为空数组');
+                            
+                            // 如果 Firebase 已配置，自动上传一次，确保 _backup 字段被上传到 Firebase
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+                                setTimeout(() => {
+                                    dataSyncFirebase.upload(true).then(uploadResult => {
+                                        if (uploadResult.success) {
+                                            console.log('✅ 已自动上传 _backup 字段到 Firebase');
+                                        } else {
+                                            console.warn('自动上传 _backup 字段失败:', uploadResult.message);
+                                        }
+                                    }).catch(error => {
+                                        console.error('自动上传 _backup 字段出错:', error);
+                                    });
+                                }, 500); // 延迟500ms，确保数据已保存
+                            }
+                        }
+                        
                         window.stateManager.setState({ 
                             tripData: unifiedData,
                             unifiedData: unifiedData 
@@ -414,18 +436,8 @@ class CardSlider {
         // 如果退出排序模式，保存当前顺序
         if (!this.sortMode) {
             this.saveCardOrder();
-        }
-        
-        // 如果进入排序模式，按order字段排序（而不是重新加载）
-        if (this.sortMode) {
-            // 按order字段排序当前cards数组
-            this.cards.sort((a, b) => {
-                const orderA = a.order !== undefined ? a.order : 999999;
-                const orderB = b.order !== undefined ? b.order : 999999;
-                return orderA - orderB;
-            });
-        } else {
-            // 退出排序模式时，使用统一的数据获取函数重新加载数据
+            
+            // 退出排序模式时，重新加载数据并应用排序
             // 从统一结构获取 items
             let items = [];
             if (typeof tripDataStructure !== 'undefined') {
@@ -437,7 +449,33 @@ class CardSlider {
                     }
                 }
             }
+            
+            // 应用排序（确保按照保存的 order 字段排序）
+            if (typeof window.applyCardOrder === 'function') {
+                items = window.applyCardOrder(this.dayId, items);
+            } else {
+                // 如果没有 applyCardOrder，直接按 order 字段排序
+                items = items.sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+            }
+            
+            // 应用筛选（如果需要）
+            if (typeof window.applyFilter === 'function') {
+                items = window.applyFilter(items, this.dayId);
+            }
+            
             this.cards = items;
+        } else {
+            // 如果进入排序模式，按order字段排序（而不是重新加载）
+            // 按order字段排序当前cards数组
+            this.cards.sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
         }
         
         this.renderCards();
