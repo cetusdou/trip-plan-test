@@ -176,7 +176,10 @@ function mergeUnifiedData(localData, remoteData) {
     // _backup 字段只保留本地的，不合并远程的备份
     // 备份是本地删除操作的记录，不需要从云端同步
     // 备份只需要增量更新到云端，不需要从云端下载
-    const localBackup = Array.isArray(localData._backup) ? localData._backup : [];
+    // 只保留本地的备份（对象结构），不合并远程的备份
+    const localBackup = (localData._backup && typeof localData._backup === 'object' && localData._backup !== null && !Array.isArray(localData._backup))
+        ? localData._backup 
+        : {};
     
     // 构建合并后的数据结构，确保 _backup 字段被包含（只使用本地的备份）
     const mergedResult = {
@@ -184,7 +187,7 @@ function mergeUnifiedData(localData, remoteData) {
         title: remoteData.title || localData.title,
         overview: remoteData.overview || localData.overview || [],
         days: mergedDays,
-        _backup: localBackup, // 只保留本地的备份，不合并远程的备份
+        _backup: localBackup, // 只保留本地的备份（对象结构），不合并远程的备份
         _version: Math.max(localData._version || 0, remoteData._version || 0),
         _lastSync: new Date().toISOString(),
         _syncUser: remoteData._syncUser || localData._syncUser || null
@@ -611,12 +614,31 @@ class DataSyncFirebase {
         if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 确保 _backup 字段存在且是数组（在上传前强制初始化）
+                // 确保 _backup 字段存在且是对象（在上传前强制初始化）
                 let needSave = false;
-                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-                    unifiedData._backup = [];
+                if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+                    unifiedData._backup = {};
                     needSave = true;
-                    console.log('检测到 _backup 字段缺失，已初始化为空数组');
+                    console.log('检测到 _backup 字段缺失，已初始化为空对象');
+                } else if (Array.isArray(unifiedData._backup)) {
+                    // 如果是从旧数组格式迁移过来的，转换为对象格式
+                    const backupObj = {};
+                    unifiedData._backup.forEach((entry, index) => {
+                        if (entry && entry._deletedAt) {
+                            // 使用安全的 key（移除 Firebase 不允许的字符）
+                            // Firebase 不允许: ".", "#", "$", "/", "[", "]"
+                            const safeKey = String(entry._deletedAt).replace(/[.#$\/\[\]]/g, '_') + '_' + Date.now() + '_' + index;
+                            backupObj[safeKey] = entry;
+                        } else if (entry) {
+                            // 如果没有 _deletedAt，使用当前时间戳（纯数字格式）
+                            const timestamp = Date.now() + '_' + index;
+                            entry._deletedAt = new Date().toISOString();
+                            backupObj[timestamp] = entry;
+                        }
+                    });
+                    unifiedData._backup = backupObj;
+                    needSave = true;
+                    console.log('已从数组格式迁移 _backup 到对象格式');
                 }
                 
                 // 如果需要保存，保存回 localStorage（确保本地数据也更新）
@@ -630,14 +652,14 @@ class DataSyncFirebase {
                 }
                 
                 // 提取 _backup 作为独立字段（和 trip_unified_data 同级）
-                const backupData = unifiedData._backup || [];
+                const backupData = unifiedData._backup || {};
                 // 从 unifiedData 中移除 _backup（因为它是独立字段）
                 const unifiedDataWithoutBackup = { ...unifiedData };
                 delete unifiedDataWithoutBackup._backup;
                 
                 // 存储统一数据（不包含 _backup）
                 data['trip_unified_data'] = unifiedDataWithoutBackup;
-                // 存储备份数据作为独立字段
+                // 存储备份数据作为独立字段（对象结构）
                 data['_backup'] = backupData;
                 
                 // 仍然包含其他配置数据（如果有）
@@ -736,9 +758,26 @@ class DataSyncFirebase {
                 
                 // 忽略独立的 _backup 字段（不下载备份数据，以控制下载量）
                 // 只保留本地的 trip_unified_data._backup，不做任何合并
-                // 如果没有 _backup 字段，确保 unifiedData._backup 存在
-                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-                    unifiedData._backup = [];
+                // 如果没有 _backup 字段，确保 unifiedData._backup 存在（对象结构）
+                if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+                    unifiedData._backup = {};
+                } else if (Array.isArray(unifiedData._backup)) {
+                    // 如果是从旧数组格式迁移过来的，转换为对象格式
+                    const backupObj = {};
+                    unifiedData._backup.forEach((entry, index) => {
+                        if (entry && entry._deletedAt) {
+                            // 使用安全的 key（移除 Firebase 不允许的字符）
+                            // Firebase 不允许: ".", "#", "$", "/", "[", "]"
+                            const safeKey = String(entry._deletedAt).replace(/[.#$\/\[\]]/g, '_') + '_' + Date.now() + '_' + index;
+                            backupObj[safeKey] = entry;
+                        } else if (entry) {
+                            // 如果没有 _deletedAt，使用当前时间戳（纯数字格式）
+                            const timestamp = Date.now() + '_' + index;
+                            entry._deletedAt = new Date().toISOString();
+                            backupObj[timestamp] = entry;
+                        }
+                    });
+                    unifiedData._backup = backupObj;
                 }
                 
                 // 数据结构正确，保存
@@ -927,10 +966,17 @@ class DataSyncFirebase {
                 }
                 
                 if (isBackupUpdate && key === '_backup') {
-                    // _backup 是独立字段，直接更新到顶层
+                    // _backup 是独立字段，对象结构（时间戳作为 key）
+                    // 如果 dataObj[key] 是一个对象（包含 timestampKey: backupEntry），将其合并到云端的 _backup
                     if (dataObj[key] === null) {
                         updates['_backup'] = null;
+                    } else if (typeof dataObj[key] === 'object' && dataObj[key] !== null) {
+                        // 对象结构：将每个 key-value 对合并到云端的 _backup 中
+                        Object.keys(dataObj[key]).forEach(timestampKey => {
+                            updates[`_backup/${timestampKey}`] = dataObj[key][timestampKey];
+                        });
                     } else {
+                        // 如果不是对象，直接替换（向后兼容）
                         updates['_backup'] = dataObj[key];
                     }
                 } else {
@@ -1054,12 +1100,31 @@ class DataSyncFirebase {
                         return;
                     }
                     
-                    // 确保 _backup 字段作为独立字段存在（和 trip_unified_data 同级）
-                    if (!data['_backup'] || !Array.isArray(data['_backup'])) {
-                        data['_backup'] = [];
-                        console.warn('上传前检测到 _backup 字段缺失，已强制初始化为空数组');
+                    // 确保 _backup 字段作为独立字段存在（和 trip_unified_data 同级，对象结构）
+                    if (!data['_backup'] || typeof data['_backup'] !== 'object' || data['_backup'] === null) {
+                        data['_backup'] = {};
+                        console.warn('上传前检测到 _backup 字段缺失，已强制初始化为空对象');
+                    } else if (Array.isArray(data['_backup'])) {
+                        // 如果是从旧数组格式迁移过来的，转换为对象格式
+                        const backupObj = {};
+                        data['_backup'].forEach((entry, index) => {
+                            if (entry && entry._deletedAt) {
+                                // 使用安全的 key（移除 Firebase 不允许的字符）
+                                // Firebase 不允许: ".", "#", "$", "/", "[", "]"
+                                const safeKey = String(entry._deletedAt).replace(/[.#$\/\[\]]/g, '_') + '_' + Date.now() + '_' + index;
+                                backupObj[safeKey] = entry;
+                            } else if (entry) {
+                                // 如果没有 _deletedAt，使用当前时间戳（纯数字格式）
+                                const timestamp = Date.now() + '_' + index;
+                                entry._deletedAt = new Date().toISOString();
+                                backupObj[timestamp] = entry;
+                            }
+                        });
+                        data['_backup'] = backupObj;
+                        console.warn('上传前检测到 _backup 是数组格式，已转换为对象格式');
                     }
-                    console.log(`✅ 上传数据验证：_backup 字段存在（独立字段），类型: ${Array.isArray(data['_backup']) ? 'Array' : typeof data['_backup']}，备份数量: ${data['_backup'].length}`);
+                    const backupCount = Object.keys(data['_backup']).length;
+                    console.log(`✅ 上传数据验证：_backup 字段存在（独立字段），类型: Object，备份数量: ${backupCount}`);
                     console.log('上传数据的顶级键:', Object.keys(data));
                     if (data['trip_unified_data']) {
                         console.log('上传数据的 trip_unified_data 键:', Object.keys(data['trip_unified_data']));
@@ -1189,7 +1254,7 @@ class DataSyncFirebase {
                     delete processedRemoteData['_backup'];
                     // 确保 trip_unified_data 中没有 _backup 字段
                     if (processedRemoteData['trip_unified_data'] && typeof processedRemoteData['trip_unified_data'] === 'object') {
-                        processedRemoteData['trip_unified_data']._backup = [];
+                        processedRemoteData['trip_unified_data']._backup = {};
                     }
                     this.setAllLocalData(processedRemoteData);
                     return { success: true, message: '同步成功！已从云端加载数据。', data: processedRemoteData };
@@ -1200,12 +1265,12 @@ class DataSyncFirebase {
                 
                 // 处理备份数据：只保留本地的备份（不合并远程的）
                 // 备份是本地删除操作的记录，不应该从云端下载
-                if (localData['_backup'] && Array.isArray(localData['_backup'])) {
-                    // 保留本地的备份
+                if (localData['_backup'] && typeof localData['_backup'] === 'object' && localData['_backup'] !== null) {
+                    // 保留本地的备份（对象结构）
                     mergedData['_backup'] = localData['_backup'];
                 } else {
-                    // 本地没有备份，初始化为空数组
-                    mergedData['_backup'] = [];
+                    // 本地没有备份，初始化为空对象
+                    mergedData['_backup'] = {};
                 }
                 // 删除远程的备份字段（不下载）
                 delete processedRemoteData['_backup'];
@@ -1406,12 +1471,12 @@ class DataSyncFirebase {
         
         // 处理备份数据：只保留本地的备份（不合并远程的）
         // 备份是本地删除操作的记录，不应该从云端下载
-        if (localData['_backup'] && Array.isArray(localData['_backup'])) {
-            // 保留本地的备份
+        if (localData['_backup'] && typeof localData['_backup'] === 'object' && localData['_backup'] !== null) {
+            // 保留本地的备份（对象结构）
             mergedData['_backup'] = localData['_backup'];
         } else {
-            // 本地没有备份，初始化为空数组
-            mergedData['_backup'] = [];
+            // 本地没有备份，初始化为空对象
+            mergedData['_backup'] = {};
         }
         // 删除远程的备份字段（不下载）
         delete remoteData['_backup'];

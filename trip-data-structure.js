@@ -40,7 +40,7 @@ function initializeTripDataStructure(originalData) {
         title: originalData.title || "",
         overview: overview, // 从days的title自动生成
         days: days,
-        _backup: [], // 备份已删除的数据
+        _backup: {}, // 备份已删除的数据（对象结构，时间戳作为 key）
         _version: DATA_STRUCTURE_VERSION,
         _lastSync: null,
         _syncUser: null
@@ -391,15 +391,37 @@ function loadUnifiedData() {
                             return null;
                         }
                         
-                        // 确保 _backup 字段存在（向后兼容）
-                        if (!parsed._backup || !Array.isArray(parsed._backup)) {
-                            parsed._backup = [];
-                            // 如果是从旧数据迁移过来的，需要保存回 localStorage
+                        // 确保 _backup 字段存在（向后兼容：支持从数组迁移到对象）
+                        if (!parsed._backup) {
+                            parsed._backup = {};
+                        } else if (Array.isArray(parsed._backup)) {
+                            // 如果是从旧数组格式迁移过来的，转换为对象格式
+                            // 将数组中的每个备份项转换为对象，使用 _deletedAt 作为 key
+                            const backupObj = {};
+                            parsed._backup.forEach((entry, index) => {
+                                if (entry && entry._deletedAt) {
+                                    // 使用安全的 key（移除 Firebase 不允许的字符）
+                                    // Firebase 不允许: ".", "#", "$", "/", "[", "]"
+                                    const safeKey = String(entry._deletedAt).replace(/[.#$\/\[\]]/g, '_') + '_' + Date.now() + '_' + index;
+                                    backupObj[safeKey] = entry;
+                                } else if (entry) {
+                                    // 如果没有 _deletedAt，使用当前时间戳（纯数字格式）
+                                    const timestamp = Date.now() + '_' + index;
+                                    entry._deletedAt = new Date().toISOString();
+                                    backupObj[timestamp] = entry;
+                                }
+                            });
+                            parsed._backup = backupObj;
+                            // 保存迁移后的数据
                             try {
                                 saveUnifiedData(parsed);
+                                console.log('已从数组格式迁移 _backup 到对象格式');
                             } catch (e) {
-                                console.warn('初始化 _backup 字段后保存失败:', e);
+                                console.warn('迁移 _backup 字段后保存失败:', e);
                             }
+                        } else if (typeof parsed._backup !== 'object' || parsed._backup === null) {
+                            // 如果类型不正确，初始化为空对象
+                            parsed._backup = {};
                         }
                         
                         // 验证数据完整性，成功加载统一数据
@@ -715,21 +737,29 @@ function deleteItemData(unifiedData, dayId, itemId) {
     // 获取要删除的 item（深拷贝，避免引用问题）
     const deletedItem = JSON.parse(JSON.stringify(day.items[itemIndex]));
     
-    // 初始化备份数组（如果不存在）
-    if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-        unifiedData._backup = [];
+    // 初始化备份对象（如果不存在）
+    if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+        unifiedData._backup = {};
     }
+    
+    // 生成唯一的时间戳作为 key（确保唯一性）
+    // Firebase 不允许 key 中包含 ".", "#", "$", "/", "[", "]" 等字符
+    // 使用纯数字时间戳 + 随机字符串，避免特殊字符
+    const timestamp = new Date().toISOString();
+    const timestampKey = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     
     // 将删除的数据添加到备份中，包含删除时间和用户信息
     const backupEntry = {
         ...deletedItem,
-        _deletedAt: new Date().toISOString(),
+        _type: 'item',
+        _deletedAt: timestamp,
         _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null,
         _deletedFromDay: dayId,
         _originalItemId: itemId
     };
     
-    unifiedData._backup.push(backupEntry);
+    // 使用时间戳作为 key 添加到备份对象
+    unifiedData._backup[timestampKey] = backupEntry;
     
     // 从原数组中删除
     day.items.splice(itemIndex, 1);
@@ -744,30 +774,27 @@ function deleteItemData(unifiedData, dayId, itemId) {
     
     // 验证 _backup 是否已保存
     const savedData = loadUnifiedData();
-    if (savedData && savedData._backup && Array.isArray(savedData._backup)) {
-        console.log(`删除项已移到备份，当前备份数量: ${savedData._backup.length}`);
+    if (savedData && savedData._backup && typeof savedData._backup === 'object') {
+        const backupCount = Object.keys(savedData._backup).length;
+        console.log(`删除项已移到备份，当前备份数量: ${backupCount}`);
+        return { success: true, timestampKey, backupEntry };
     } else {
         console.warn('警告：备份数据可能未正确保存');
+        return { success: false };
     }
-    
-    return true;
 }
 
 // 恢复已删除的 item（从备份中恢复）
-function restoreItemFromBackup(unifiedData, backupIndex, targetDayId = null) {
-    if (!unifiedData || !unifiedData._backup || !Array.isArray(unifiedData._backup)) {
+// backupKey: 备份项的 key（时间戳）
+function restoreItemFromBackup(unifiedData, backupKey, targetDayId = null) {
+    if (!unifiedData || !unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
         console.error('备份数据不存在或格式不正确');
         return false;
     }
     
-    if (backupIndex < 0 || backupIndex >= unifiedData._backup.length) {
-        console.error('备份索引无效:', backupIndex);
-        return false;
-    }
-    
-    const backupEntry = unifiedData._backup[backupIndex];
+    const backupEntry = unifiedData._backup[backupKey];
     if (!backupEntry) {
-        console.error('备份项不存在');
+        console.error('备份项不存在，key:', backupKey);
         return false;
     }
     
@@ -790,6 +817,7 @@ function restoreItemFromBackup(unifiedData, backupIndex, targetDayId = null) {
     delete restoredItem._deletedBy;
     delete restoredItem._deletedFromDay;
     delete restoredItem._originalItemId;
+    delete restoredItem._type;
     
     // 更新恢复时间
     restoredItem._restoredAt = new Date().toISOString();
@@ -804,16 +832,16 @@ function restoreItemFromBackup(unifiedData, backupIndex, targetDayId = null) {
     
     // 从备份中移除（可选：保留备份记录，只标记为已恢复）
     // 这里选择移除，如果需要保留历史，可以改为标记
-    unifiedData._backup.splice(backupIndex, 1);
+    delete unifiedData._backup[backupKey];
     
     saveUnifiedData(unifiedData);
     return true;
 }
 
-// 获取所有备份数据
+// 获取所有备份数据（返回对象）
 function getBackupData(unifiedData) {
-    if (!unifiedData || !unifiedData._backup) {
-        return [];
+    if (!unifiedData || !unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+        return {};
     }
     return unifiedData._backup;
 }
@@ -823,7 +851,7 @@ function clearBackupData(unifiedData) {
     if (!unifiedData) {
         return false;
     }
-    unifiedData._backup = [];
+    unifiedData._backup = {};
     saveUnifiedData(unifiedData);
     return true;
 }

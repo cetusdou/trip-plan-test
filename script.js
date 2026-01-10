@@ -2587,10 +2587,16 @@ class CardSlider {
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 初始化备份数组（如果不存在）
-                if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-                    unifiedData._backup = [];
+                // 初始化备份对象（如果不存在）
+                if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+                    unifiedData._backup = {};
                 }
+                
+                // 生成唯一的时间戳作为 key（确保唯一性）
+                // Firebase 不允许 key 中包含 ".", "#", "$", "/", "[", "]" 等字符
+                // 使用纯数字时间戳 + 随机字符串，避免特殊字符
+                const timestamp = new Date().toISOString();
+                const timestampKey = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 
                 // 将删除的 comment 添加到备份中
                 const backupEntry = {
@@ -2600,13 +2606,15 @@ class CardSlider {
                     _dayId: dayId, // 所属的 day ID
                     _commentIndex: commentIndex, // 原始索引位置
                     _commentHash: commentHash, // comment 的哈希值
-                    _deletedAt: new Date().toISOString(), // 删除时间
+                    _deletedAt: timestamp, // 删除时间
                     _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
                     _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
                 };
                 
-                unifiedData._backup.push(backupEntry);
-                console.log('已将被删除的 comment 添加到备份，当前备份数量:', unifiedData._backup.length);
+                // 使用时间戳作为 key 添加到备份对象
+                unifiedData._backup[timestampKey] = backupEntry;
+                const backupCount = Object.keys(unifiedData._backup).length;
+                console.log('已将被删除的 comment 添加到备份，当前备份数量:', backupCount, '备份 key:', timestampKey);
                 
                 // 先保存包含备份的完整数据
                 tripDataStructure.saveUnifiedData(unifiedData);
@@ -2619,22 +2627,25 @@ class CardSlider {
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
                     
-                    // 同步备份字段到 Firebase（增量更新）
-                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.cloudIncrementalUpdate) {
-                        // 重新加载最新的 unifiedData（确保包含最新的 _backup）
-                        const latestUnifiedData = tripDataStructure.loadUnifiedData();
-                        if (latestUnifiedData && latestUnifiedData._backup && Array.isArray(latestUnifiedData._backup)) {
-                            // 使用空路径 '' 来更新顶层字段 _backup
-                            dataSyncFirebase.cloudIncrementalUpdate('', { _backup: latestUnifiedData._backup }, false).then(backupResult => {
-                                if (backupResult.success) {
-                                    console.log(`删除 comment 后已增量更新备份字段，备份数量: ${latestUnifiedData._backup.length}`);
-                                } else {
-                                    console.warn('删除 comment 后增量更新备份字段失败:', backupResult.message);
-                                }
-                            }).catch(backupError => {
-                                console.error('删除 comment 后增量更新备份字段出错:', backupError);
-                            });
-                        }
+                    // 同步备份字段到 Firebase（只上传新添加的那一条备份项）
+                    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.update) {
+                        // 只上传新添加的那一条备份项，使用时间戳作为 key
+                        const updates = {};
+                        updates[`_backup/${timestampKey}`] = backupEntry;
+                        updates['_lastSync'] = new Date().toISOString();
+                        updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                        
+                        dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                            console.log(`删除 comment 后已增量更新备份字段，备份 key: ${timestampKey}`);
+                        }).catch(backupError => {
+                            console.error('删除 comment 后增量更新备份字段出错:', backupError);
+                            // 如果备份同步失败，回退到全量上传
+                            if (dataSyncFirebase.upload) {
+                                dataSyncFirebase.upload(true).catch(error => {
+                                    console.error('回退全量上传也失败:', error);
+                                });
+                            }
+                        });
                     }
                     
                     // 只上传这个 item，不进行全量上传
@@ -3180,10 +3191,16 @@ class CardSlider {
                         const deletedPlanItem = JSON.parse(JSON.stringify(planItems[targetIndex]));
                         console.log('准备删除索引', targetIndex, '的 plan 项:', deletedPlanItem);
                         
-                        // 初始化备份数组（如果不存在）
-                        if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-                            unifiedData._backup = [];
+                        // 初始化备份对象（如果不存在）
+                        if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
+                            unifiedData._backup = {};
                         }
+                        
+                        // 生成唯一的时间戳作为 key（确保唯一性）
+                        // Firebase 不允许 key 中包含 ".", "#", "$", "/", "[", "]" 等字符
+                        // 使用纯数字时间戳 + 随机字符串，避免特殊字符
+                        const timestamp = new Date().toISOString();
+                        const timestampKey = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                         
                         // 将删除的 plan item 添加到备份中
                         const backupEntry = {
@@ -3193,13 +3210,15 @@ class CardSlider {
                             _dayId: this.dayId, // 所属的 day ID
                             _planIndex: targetIndex, // 原始索引位置
                             _planHash: planHash || null, // plan item 的哈希值（如果有）
-                            _deletedAt: new Date().toISOString(), // 删除时间
+                            _deletedAt: timestamp, // 删除时间
                             _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
                             _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
                         };
                         
-                        unifiedData._backup.push(backupEntry);
-                        console.log('已将被删除的 plan item 添加到备份，当前备份数量:', unifiedData._backup.length);
+                        // 使用时间戳作为 key 添加到备份对象
+                        unifiedData._backup[timestampKey] = backupEntry;
+                        const backupCount = Object.keys(unifiedData._backup).length;
+                        console.log('已将被删除的 plan item 添加到备份，当前备份数量:', backupCount, '备份 key:', timestampKey);
                         
                         // 真正从数组中删除
                         planItems.splice(targetIndex, 1);
@@ -3227,11 +3246,15 @@ class CardSlider {
                             const cardScrollTop = cardElement ? cardElement.scrollTop : 0;
                             
                             // 同步到 Firebase：先更新 _backup 字段，再更新 plan 数组
-                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.cloudIncrementalUpdate) {
-                                // 先同步 _backup 字段（顶层字段，使用空路径）
-                                dataSyncFirebase.cloudIncrementalUpdate('', { _backup: unifiedData._backup }, false).then(backupResult => {
-                                    if (backupResult.success) {
-                                        console.log('plan item 备份已同步到云端，备份数量:', unifiedData._backup.length);
+                            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.update) {
+                                // 只上传新添加的那一条备份项，使用时间戳作为 key
+                                const updates = {};
+                                updates[`_backup/${timestampKey}`] = backupEntry;
+                                updates['_lastSync'] = new Date().toISOString();
+                                updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                                
+                                dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                                    console.log('plan item 备份已同步到云端，备份 key:', timestampKey);
                                         
                                         // 备份同步成功，再同步 plan 数组
                                         if (dataSyncFirebase.updateArrayField) {
@@ -3268,15 +3291,6 @@ class CardSlider {
                                                 console.error('plan 项删除同步出错:', error);
                                             });
                                         }
-                                    } else {
-                                        console.warn('plan item 备份同步失败:', backupResult.message);
-                                        // 如果备份同步失败，回退到全量上传
-                                        if (dataSyncFirebase.upload) {
-                                            dataSyncFirebase.upload(true).catch(error => {
-                                                console.error('回退全量上传也失败:', error);
-                                            });
-                                        }
-                                    }
                                 }).catch(backupError => {
                                     console.error('plan item 备份同步出错:', backupError);
                                     // 如果备份同步失败，回退到全量上传
