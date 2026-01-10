@@ -606,7 +606,6 @@ class DataSyncFirebase {
                     const key = localStorage.key(i);
                     if (key && key.startsWith('trip_') && 
                         !key.includes('_token') && 
-                        !key.includes('_gist_id') && 
                         !key.includes('_auto_sync') &&
                         !key.includes('_current_user') &&
                         !key.includes('_firebase_config') &&
@@ -626,7 +625,6 @@ class DataSyncFirebase {
             const key = localStorage.key(i);
             if (key && key.startsWith('trip_') && 
                 !key.includes('_token') && 
-                !key.includes('_gist_id') && 
                 !key.includes('_auto_sync') &&
                 !key.includes('_current_user') &&
                 !key.includes('_firebase_config')) {
@@ -1071,7 +1069,7 @@ class DataSyncFirebase {
             }
 
             if (merge) {
-                // 智能合并策略（与Gist版本相同）
+                // 智能合并策略
                 const localData = this.getAllLocalData();
                 const localDataKeys = Object.keys(localData);
                 
@@ -1397,39 +1395,12 @@ class DataSyncFirebase {
             this.uploadDebounceTimer = null;
         }
     }
-
-//     // 导出数据（与Gist版本兼容）
-//     exportData() {
-//         const data = this.getAllLocalData();
-//         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-//         const url = URL.createObjectURL(blob);
-//         const a = document.createElement('a');
-//         a.href = url;
-//         a.download = `trip_data_${new Date().toISOString().split('T')[0]}.json`;
-//         a.click();
-//         URL.revokeObjectURL(url);
-//         return { success: true, message: '数据已导出' };
-//     }
-
-//     // 导入数据（与Gist版本兼容）
-//     importData(file) {
-//         return new Promise((resolve, reject) => {
-//             const reader = new FileReader();
-//             reader.onload = (e) => {
-//                 try {
-//                     const data = JSON.parse(e.target.result);
-//                     this.setAllLocalData(data);
-//                     resolve({ success: true, message: '数据已导入' });
-//                 } catch (error) {
-//                     reject({ success: false, message: '文件格式错误' });
-//                 }
-//             };
-//             reader.onerror = () => reject({ success: false, message: '读取文件失败' });
-//             reader.readAsText(file);
-//         });
-//     }
 }
 
 // 全局实例
 let dataSyncFirebase = new DataSyncFirebase();
 
+// 暴露到全局
+if (typeof window !== 'undefined') {
+    window.dataSyncFirebase = dataSyncFirebase;
+}

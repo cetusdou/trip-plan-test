@@ -308,7 +308,7 @@ function getAllEditedData() {
     // 如果需要导出，应该使用统一数据结构
     return {
         timestamp: new Date().toISOString(),
-        note: '所有数据已迁移到统一结构，请使用统一数据结构导出'
+        note: '所有数据都在统一结构中，请使用统一数据结构导出'
     };
 }
 
@@ -322,8 +322,4 @@ window.applyCardOrder = applyCardOrder;
 window.getAllEditedData = getAllEditedData;
 window.refreshUI = refreshUI;
 window.refreshUIAndSync = refreshUIAndSync;
-
-// 保持向后兼容（已废弃）
-window.addCustomItem = addItem;
-window.deleteCustomItem = deleteItem;
 

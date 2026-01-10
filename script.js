@@ -1,461 +1,91 @@
 // Cloudinary 服务已移至 modules/cloudinary.js
+// 用户认证已移至 modules/auth-manager.js
 
-// 当前用户管理
-let currentUser = null; // 初始为null，需要登录
-let isLoggedIn = false; // 登录状态
+// 当前日期管理（已移至 State Manager，这里保留变量供过渡期使用）
 let currentDayId = 'day1';
-// 将 currentDayId 和 showDay 暴露到全局，供实时同步回调使用
-window.currentDayId = currentDayId;
 
 // 工具函数已移至 modules/utils.js
 
-// 检查是否已登录
-function checkLoginStatus() {
-    const savedUser = localStorage.getItem('trip_current_user');
-    const savedPasswordHash = localStorage.getItem('trip_password_hash');
-    if (savedUser && savedPasswordHash) {
-        // 验证保存的密码hash是否有效（需要从Firebase验证）
-        verifyStoredPassword(savedUser, savedPasswordHash);
-    } else {
-        showLoginUI();
+/**
+ * 获取当前用户（统一接口）
+ */
+function getCurrentUser() {
+    if (window.AuthManager && window.AuthManager.getCurrentUser) {
+        return window.AuthManager.getCurrentUser();
     }
+    return null;
 }
 
-// 显示登录界面
-function showLoginUI() {
-    const loginModal = document.getElementById('login-modal');
-    const loggedInContainer = document.getElementById('user-logged-in');
-    const mainContent = document.getElementById('main-content');
-    
-    if (loginModal) loginModal.style.display = 'flex';
-    if (loggedInContainer) loggedInContainer.style.display = 'none';
-    if (mainContent) mainContent.style.display = 'none';
-    
-    isLoggedIn = false;
-    currentUser = null;
-    
-    // 清空输入框
-    const usernameInput = document.getElementById('login-username');
-    const passwordInput = document.getElementById('login-password');
-    if (usernameInput) usernameInput.value = '';
-    if (passwordInput) passwordInput.value = '';
-}
-
-// 显示已登录界面
-function showLoggedInUI(user) {
-    const loginModal = document.getElementById('login-modal');
-    const loggedInContainer = document.getElementById('user-logged-in');
-    const mainContent = document.getElementById('main-content');
-    const userNameSpan = document.getElementById('logged-in-user-name');
-    
-    // 确保登录弹窗关闭（使用 !important 覆盖 CSS）
-    if (loginModal) {
-        loginModal.style.setProperty('display', 'none', 'important');
-    }
-    if (loggedInContainer) loggedInContainer.style.display = 'flex';
-    if (mainContent) mainContent.style.display = 'block';
-    if (userNameSpan) userNameSpan.textContent = user === 'mrb' ? '👤 mrb' : '👤 djy';
-    
-    isLoggedIn = true;
-    currentUser = user;
-    localStorage.setItem('trip_current_user', user);
-}
-
-// 处理登录
-async function handleLogin() {
-    // 添加调试信息
-    // console.log('handleLogin 被调用');
-    
-    const usernameEl = document.getElementById('login-username');
-    const passwordEl = document.getElementById('login-password');
-    
-    if (!usernameEl || !passwordEl) {
-        alert('找不到登录表单元素，请刷新页面重试');
-        return;
-    }
-    
-    const username = usernameEl.value.trim().toLowerCase();
-    const password = passwordEl.value;
-    
-    // 验证用户名
-    if (!username || (username !== 'mrb' && username !== 'djy')) {
-        updateSyncStatus('用户名不存在', 'error');
-        return;
-    }
-    
-    if (!password) {
-        updateSyncStatus('请输入密码', 'error');
-        return;
-    }
-    
-    updateSyncStatus('正在验证密码...', 'info');
-    
-    try {
-        // 测试模式：使用明文密码（不进行hash）
-        console.log('使用明文密码验证（测试模式）');
-        
-        // 检查Firebase是否可用
-        console.log('检查Firebase配置...');
-        console.log('window.firebaseDatabase:', typeof window.firebaseDatabase);
-        
-        if (typeof window.firebaseDatabase === 'undefined') {
-            alert('Firebase数据库未初始化，请刷新页面重试');
-            updateSyncStatus('Firebase数据库未初始化', 'error');
-            return;
-        }
-        
-        // 从Firebase读取密码配置
-        console.log('从Firebase读取密码配置...');
-        const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-        
-        // 检查数据库URL
-        console.log('数据库URL:', window.firebaseDatabase.app.options.databaseURL);
-        
-        // 先尝试读取根路径，看看有什么数据
-        const rootRef = ref(window.firebaseDatabase, '/');
-        const rootSnapshot = await get(rootRef);
-        const rootData = rootSnapshot.val();
-        console.log('根路径数据:', rootData);
-        console.log('根路径数据键:', rootData ? Object.keys(rootData) : '无数据');
-        
-        let passwords;
-        
-        // 方法1：直接从根路径数据中获取（优先使用）
-        if (rootData) {
-            // 尝试不同的键名格式
-            if (rootData.user_passwords) {
-                console.log('从根路径数据中获取密码 (user_passwords)');
-                passwords = rootData.user_passwords;
-            } else if (rootData['"user_passwords"']) {
-                console.log('从根路径数据中获取密码 ("user_passwords")');
-                passwords = rootData['"user_passwords"'];
-            } else {
-                // 遍历所有键，查找可能的密码数据
-                console.warn('user_passwords 路径不存在，检查其他路径...');
-                for (const key in rootData) {
-                    console.log(`发现路径: ${key}`, rootData[key]);
-                    // 尝试匹配可能的键名（包括带引号的）
-                    if (key === 'user_passwords' || key === '"user_passwords"') {
-                        passwords = rootData[key];
-                        console.log('从根路径中找到密码数据:', passwords);
-                        break;
-                    }
-                }
-            }
-            console.log('读取到的密码数据:', passwords);
-        }
-        
-        
-        console.log('准备验证密码...');
-        console.log('passwords对象:', passwords);
-        console.log('passwords类型:', typeof passwords);
-        console.log('passwords是否为null:', passwords === null);
-        console.log('passwords是否为undefined:', passwords === undefined);
-        console.log('username:', username);
-        console.log('输入的密码:', password);
-        
-        // 尝试不同的方式访问密码数据
-        let storedPassword = null;
-        if (passwords) {
-            // 方法1：直接属性访问（不带引号）
-            storedPassword = passwords[username];
-            console.log('方法1 - passwords[username]:', storedPassword);
-            }
-        
-        console.log('最终获取的密码:', storedPassword);
-        console.log('passwords[username]:', passwords ? passwords[username] : 'passwords为空');
-        
-        if (!passwords) {
-            console.error('passwords为空，无法验证');
-            updateSyncStatus('无法读取密码数据', 'error');
-            return;
-        }
-        
-        if (!storedPassword) {
-            console.error('该用户的密码不存在');
-            console.log('可用的用户:', Object.keys(passwords));
-            updateSyncStatus('该用户密码未初始化，请先初始化密码', 'error');
-            return;
-        }
-        
-        // 验证密码（明文比较）
-        console.log('开始密码比较...');
-        console.log('存储的密码:', storedPassword);
-        console.log('输入的密码:', password);
-        console.log('存储的密码类型:', typeof storedPassword);
-        console.log('输入的密码类型:', typeof password);
-        console.log('密码是否匹配:', storedPassword === password);
-        
-        if (storedPassword === password) {
-            // 登录成功
-            console.log('密码验证成功，登录成功！');
-            // 保存明文密码到localStorage（测试模式）
-            localStorage.setItem('trip_password_hash', password);
-            showLoggedInUI(username);
-            updateSyncStatus('登录成功，正在下载数据...', 'info');
-            
-            // 登录后第一件事：从数据库拉取数据覆盖本地内容
-            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
-                dataSyncFirebase.download(false).then(result => {
-                    if (result.success) {
-                        updateSyncStatus('数据下载成功', 'success');
-                        // 下载完成后渲染内容
-                        renderOverview();
-                        renderNavigation();
-                        if (currentDayId) {
-                            showDay(currentDayId);
-                        } else {
-                            showDay('day1');
-                        }
-                    } else {
-                        updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
-                        // 即使下载失败，也渲染本地内容
-                        renderOverview();
-                        renderNavigation();
-                        if (currentDayId) {
-                            showDay(currentDayId);
-                        } else {
-                            showDay('day1');
-                        }
-                    }
-                }).catch(error => {
-                    console.error('下载失败:', error);
-                    updateSyncStatus('下载失败，使用本地数据', 'error');
-                    // 即使下载失败，也渲染本地内容
-                    renderOverview();
-                    renderNavigation();
-                    if (currentDayId) {
-                        showDay(currentDayId);
-                    } else {
-                        showDay('day1');
-                    }
-                });
-            } else {
-                // Firebase未配置，直接渲染本地内容
-                updateSyncStatus('Firebase未配置，使用本地数据', 'info');
-                renderOverview();
-                renderNavigation();
-                if (currentDayId) {
-                    showDay(currentDayId);
-                } else {
-                    showDay('day1');
-                }
-            }
-        } else {
-            console.log('密码验证失败');
-            console.log('存储的密码类型:', typeof passwords[username]);
-            console.log('输入的密码类型:', typeof password);
-            console.log('存储的密码长度:', passwords[username] ? passwords[username].length : 0);
-            console.log('输入的密码长度:', password ? password.length : 0);
-            updateSyncStatus('密码错误', 'error');
-        }
-    } catch (error) {
-        updateSyncStatus(`登录失败: ${error.message}`, 'error');
-    }
-}
-
-// 验证存储的密码（用于页面刷新后保持登录状态）
-async function verifyStoredPassword(user, storedPassword) {
-    try {
-        if (typeof window.firebaseDatabase === 'undefined') {
-            showLoginUI();
-            return;
-        }
-        
-        const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-        const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
-        const snapshot = await get(passwordsRef);
-        const passwords = snapshot.val();
-        
-        // 测试模式：明文比较
-        if (passwords && passwords[user] === storedPassword) {
-            // 密码验证成功，保持登录状态
-            showLoggedInUI(user);
-            updateSyncStatus('正在下载数据...', 'info');
-            
-            // 登录后第一件事：从数据库拉取数据覆盖本地内容
-            if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
-                dataSyncFirebase.download(false).then(result => {
-                    if (result.success) {
-                        updateSyncStatus('数据下载成功', 'success');
-                        // 下载完成后渲染内容
-                        renderOverview();
-                        renderNavigation();
-                        if (currentDayId) {
-                            showDay(currentDayId);
-                        } else {
-                            showDay('day1');
-                        }
-                    } else {
-                        updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
-                        // 即使下载失败，也渲染本地内容
-                        renderOverview();
-                        renderNavigation();
-                        if (currentDayId) {
-                            showDay(currentDayId);
-                        } else {
-                            showDay('day1');
-                        }
-                    }
-                }).catch(error => {
-                    console.error('下载失败:', error);
-                    updateSyncStatus('下载失败，使用本地数据', 'error');
-                    // 即使下载失败，也渲染本地内容
-                    renderOverview();
-                    renderNavigation();
-                    if (currentDayId) {
-                        showDay(currentDayId);
-                    } else {
-                        showDay('day1');
-                    }
-                });
-            } else {
-                // Firebase未配置，直接渲染本地内容
-                updateSyncStatus('Firebase未配置，使用本地数据', 'info');
-                renderOverview();
-                renderNavigation();
-                if (currentDayId) {
-                    showDay(currentDayId);
-                } else {
-                    showDay('day1');
-                }
-            }
-        } else {
-            // 密码验证失败，需要重新登录
-            localStorage.removeItem('trip_password_hash');
-            localStorage.removeItem('trip_current_user');
-            showLoginUI();
-        }
-    } catch (error) {
-        console.error('验证存储密码时出错:', error);
-        showLoginUI();
-    }
-}
-
-// 退出登录
-function handleLogout() {
-    localStorage.removeItem('trip_password_hash');
-    localStorage.removeItem('trip_current_user');
-    showLoginUI();
-    updateSyncStatus('已退出登录', 'info');
-}
-
-// 显示初始化密码模态框
-function showInitPasswordModal() {
-    // 添加调试信息
-    console.log('showInitPasswordModal 被调用');
-    
-    const modal = document.getElementById('init-password-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        console.log('模态框已显示');
-    } else {
-        alert('找不到初始化密码模态框，请检查页面是否完整加载');
-        console.error('找不到 init-password-modal 元素');
-    }
-}
-
-// 关闭初始化密码模态框
-function closeInitPasswordModal() {
-    const modal = document.getElementById('init-password-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        // 清空输入
-        document.getElementById('init-mrb-password').value = '';
-        document.getElementById('init-djy-password').value = '';
-    }
-}
-
-// 初始化密码
-async function initPasswords() {
-    // 添加调试信息
-    console.log('initPasswords 被调用');
-    
-    const mrbPasswordEl = document.getElementById('init-mrb-password');
-    const djyPasswordEl = document.getElementById('init-djy-password');
-    
-    if (!mrbPasswordEl || !djyPasswordEl) {
-        alert('找不到密码输入框，请检查页面是否完整加载');
-        return;
-    }
-    
-    const mrbPassword = mrbPasswordEl.value;
-    const djyPassword = djyPasswordEl.value;
-    
-    if (!mrbPassword || !djyPassword) {
-        updateSyncStatus('请为两个用户都设置密码', 'error');
-        return;
-    }
-    
-    if (mrbPassword.length < 4 || djyPassword.length < 4) {
-        updateSyncStatus('密码长度至少为4位', 'error');
-        return;
-    }
-    
-    updateSyncStatus('正在初始化密码...', 'info');
-    
-    try {
-        // 测试模式：使用明文密码（不进行hash）
-        console.log('使用明文密码存储（测试模式）');
-        
-        // 检查Firebase是否可用
-        console.log('检查Firebase配置...');
-        console.log('window.firebaseDatabase:', typeof window.firebaseDatabase);
-        
-        if (typeof window.firebaseDatabase === 'undefined') {
-            alert('Firebase数据库未初始化，请刷新页面重试');
-            updateSyncStatus('Firebase数据库未初始化', 'error');
-            return;
-        }
-        
-        console.log('保存密码到Firebase（明文）...');
-        const { ref, set, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-        const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
-        console.log('保存密码路径:', passwordsRef.toString());
-        console.log('准备保存的数据（明文）:', { mrb: mrbPassword, djy: djyPassword });
-        
-        try {
-            await set(passwordsRef, {
-                mrb: mrbPassword,
-                djy: djyPassword
-            });
-            console.log('密码保存成功！');
-            
-            // 验证保存是否成功
-            const verifySnapshot = await get(passwordsRef);
-            const verifyData = verifySnapshot.val();
-            console.log('验证保存结果:', verifyData ? '成功' : '失败');
-            console.log('保存的数据:', verifyData);
-            
-            if (verifyData && verifyData.mrb && verifyData.djy) {
-                updateSyncStatus('密码初始化成功！现在可以登录了', 'success');
-                closeInitPasswordModal();
-            } else {
-                throw new Error('保存后验证失败，数据可能未正确写入');
-            }
-        } catch (setError) {
-            console.error('保存密码时出错:', setError);
-            throw setError; // 重新抛出错误，让外层catch处理
-        }
-    } catch (error) {
-        console.error('初始化密码时出错:', error);
-        console.error('错误堆栈:', error.stack);
-        alert(`初始化失败: ${error.message}\n请查看控制台获取详细信息`);
-        updateSyncStatus(`初始化失败: ${error.message}`, 'error');
-    }
-}
-
-// 检查写权限（只有登录后才能写入）
+/**
+ * 检查写权限（统一接口）
+ */
 function checkWritePermission() {
-    if (!isLoggedIn || !currentUser) {
-        updateSyncStatus('请先登录才能进行此操作', 'error');
-        return false;
+    if (window.AuthManager && window.AuthManager.checkWritePermission) {
+        return window.AuthManager.checkWritePermission();
     }
-    return true;
+    return false;
 }
 
-// 将函数暴露到全局，供其他模块使用
-window.checkWritePermission = checkWritePermission;
+/**
+ * 登录成功后的回调函数
+ * 下载数据并渲染UI
+ */
+window.onLoginSuccess = function() {
+    // 登录后第一件事：从数据库拉取数据覆盖本地内容
+    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        dataSyncFirebase.download(false).then(result => {
+            if (result.success) {
+                if (typeof window.updateSyncStatus === 'function') {
+                    window.updateSyncStatus('数据下载成功', 'success');
+                }
+                // 下载完成后渲染内容（使用 UIRenderer 模块）
+                if (window.UIRenderer) {
+                    window.UIRenderer.renderOverview();
+                    window.UIRenderer.renderNavigation();
+                    const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+                    window.UIRenderer.renderDay(dayId || 'day1');
+                }
+            } else {
+                if (typeof window.updateSyncStatus === 'function') {
+                    window.updateSyncStatus('下载失败: ' + (result.message || '未知错误') + '，使用本地数据', 'error');
+                }
+                // 即使下载失败，也渲染本地内容
+                if (window.UIRenderer) {
+                    window.UIRenderer.renderOverview();
+                    window.UIRenderer.renderNavigation();
+                    const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+                    window.UIRenderer.renderDay(dayId || 'day1');
+                }
+            }
+        }).catch(error => {
+            console.error('下载失败:', error);
+            if (typeof window.updateSyncStatus === 'function') {
+                window.updateSyncStatus('下载失败，使用本地数据', 'error');
+            }
+            // 即使下载失败，也渲染本地内容
+            if (window.UIRenderer) {
+                window.UIRenderer.renderOverview();
+                window.UIRenderer.renderNavigation();
+                const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+                window.UIRenderer.renderDay(dayId || 'day1');
+            }
+        });
+    } else {
+        // Firebase未配置，直接渲染本地内容
+        if (typeof window.updateSyncStatus === 'function') {
+            window.updateSyncStatus('Firebase未配置，使用本地数据', 'info');
+        }
+        if (window.UIRenderer) {
+            window.UIRenderer.renderOverview();
+            window.UIRenderer.renderNavigation();
+            const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
+            window.UIRenderer.renderDay(dayId || 'day1');
+        }
+    }
+};
+
+// 用户认证相关功能已移至 modules/auth-manager.js
+// 使用 AuthManager 模块提供的功能
 // 更新同步状态显示
 function updateSyncStatus(message, type = 'info') {
     const statusEl = document.getElementById('sync-status');
@@ -476,6 +106,7 @@ window.closeInitPasswordModal = closeInitPasswordModal;
 window.handleLogout = handleLogout;
 
 // 卡片显示逻辑（滚动模式）
+// 将 CardSlider 暴露到全局，供其他模块使用
 class CardSlider {
     constructor(containerId, cards, dayId) {
         this.container = document.getElementById(containerId);
@@ -505,16 +136,16 @@ class CardSlider {
             }
         }
         
-        // 【二次防御】如果是误传了 tripId，修正它
+        // 如果是误传了 tripId，修正它
         if (cleanId.startsWith('trip_')) {
-            console.warn('CardSlider: 检测到 tripId 错误注入，已修正为当前全局 dayId', {
-                tripId: cleanId,
-                currentDayId: window.currentDayId
-            });
-            cleanId = window.currentDayId || 'day1';
+            if (window.stateManager) {
+                cleanId = window.stateManager.getState('currentDayId') || 'day1';
+            } else {
+                cleanId = 'day1';
+            }
         }
         
-        // 【最终验证】确保 cleanId 是有效的 dayId
+        // 最终验证：确保 cleanId 是有效的 dayId
         if (!cleanId || cleanId.startsWith('trip_')) {
             console.error('CardSlider: 无法获取有效的 dayId，使用默认值 day1', {
                 originalDayId: dayId,
@@ -756,7 +387,17 @@ class CardSlider {
             });
         } else {
             // 退出排序模式时，使用统一的数据获取函数重新加载数据
-            const items = typeof window.getDayItems === 'function' ? window.getDayItems(this.dayId) : [];
+            // 从统一结构获取 items
+            let items = [];
+            if (typeof tripDataStructure !== 'undefined') {
+                const unifiedData = tripDataStructure.loadUnifiedData();
+                if (unifiedData) {
+                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                    if (day && day.items) {
+                        items = day.items;
+                    }
+                }
+            }
             this.cards = items;
         }
         
@@ -825,7 +466,11 @@ class CardSlider {
                     let safeDayId = this.dayId;
                     if (!safeDayId || String(safeDayId).startsWith('trip_')) {
                         // this.dayId 无效，使用全局 currentDayId
-                        safeDayId = window.currentDayId || 'day1';
+                        if (window.stateManager) {
+                            safeDayId = window.stateManager.getState('currentDayId') || 'day1';
+                        } else {
+                            safeDayId = 'day1';
+                        }
                     }
                     // 确保是字符串
                     safeDayId = String(safeDayId);
@@ -866,10 +511,14 @@ class CardSlider {
             // 如果没有 comments，检查一下数据是否正确加载
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 【实时容错】确保 dayId 安全：如果实例内的脏了，用全局的
+                // 确保 dayId 安全
                 let safeDayId = this.dayId;
                 if (!safeDayId || String(safeDayId).startsWith('trip_')) {
-                    safeDayId = window.currentDayId || 'day1';
+                    if (window.stateManager) {
+                        safeDayId = window.stateManager.getState('currentDayId') || 'day1';
+                    } else {
+                        safeDayId = 'day1';
+                    }
                 }
                 // 确保是字符串
                 safeDayId = String(safeDayId);
@@ -954,7 +603,6 @@ class CardSlider {
                         </div>
                     ` : `
                         <div class="image-placeholder">
-                            <div class="image-placeholder-icon">🗺️</div>
                             <div class="image-placeholder-text">暂无图片</div>
                         </div>
                     `}
@@ -968,10 +616,14 @@ class CardSlider {
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 【实时容错】确保 dayId 安全：如果实例内的脏了，用全局的
+                // 确保 dayId 安全
                 let safeDayId = this.dayId;
                 if (!safeDayId || String(safeDayId).startsWith('trip_')) {
-                    safeDayId = window.currentDayId || 'day1';
+                    if (window.stateManager) {
+                        safeDayId = window.stateManager.getState('currentDayId') || 'day1';
+                    } else {
+                        safeDayId = 'day1';
+                    }
                 }
                 // 确保是字符串
                 safeDayId = String(safeDayId);
@@ -1082,8 +734,7 @@ class CardSlider {
                             window.LikeHandler.getLikes(this.dayId, itemId, 'plan', planIndex) : [];
                         // 新格式：planItemLikes 是数组 ['mrb', 'djy']
                         const planItemLikeCount = Array.isArray(planItemLikes) ? planItemLikes.length : 0;
-                        const currentUser = typeof window.currentUser !== 'undefined' ? window.currentUser : 
-                                           (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
+                        const currentUser = getCurrentUser();
                         const isLiked = Array.isArray(planItemLikes) && currentUser && planItemLikes.includes(currentUser);
                     return `
                         <li class="plan-item">
@@ -1094,7 +745,7 @@ class CardSlider {
                                         data-plan-hash="${planHash || ''}"
                                         data-item-id="${itemId || ''}"
                                         title="点赞">
-                                    <span class="like-icon">${isLiked ? '❤️' : '🤍'}</span>
+                                    <span class="like-icon">${isLiked ? '♥' : '♥'}</span>
                                     ${planItemLikeCount > 0 ? `<span class="like-count">${planItemLikeCount}</span>` : ''}
                                 </button>
                                 <button class="plan-item-delete-btn" 
@@ -1198,7 +849,7 @@ class CardSlider {
         // 添加留言区域（移到备注下面）- 总是显示，允许添加新留言
         html += `
             <div class="card-section">
-                <div class="card-section-title comment">💬 留言</div>
+                <div class="card-section-title comment"> 留言</div>
                 <div class="comments-container">
                     ${comments.length > 0 ? comments
                         .map((comment, originalIndex) => {
@@ -1214,6 +865,9 @@ class CardSlider {
                                 window.LikeHandler.getLikes(this.dayId, itemId, 'comment', originalIndex) : [];
                             // 新格式：commentLikes 是数组 ['mrb', 'djy']
                             const commentLikeCount = Array.isArray(commentLikes) ? commentLikes.length : 0;
+                            const currentUser = (typeof window.AuthManager !== 'undefined' && window.AuthManager.getCurrentUser) 
+                                               ? window.AuthManager.getCurrentUser() 
+                                               : (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
                             const isLiked = Array.isArray(commentLikes) && commentLikes.includes(currentUser);
                             
                             // 安全获取字段值
@@ -1233,7 +887,7 @@ class CardSlider {
                                 <div class="comment-content">${window.escapeHtml ? window.escapeHtml(commentMessage) : commentMessage}</div>
                                 <button class="comment-like-btn ${isLiked ? 'liked' : ''}" 
                                         data-comment-index="${originalIndex}" title="点赞">
-                                    <span class="like-icon">${isLiked ? '❤️' : '🤍'}</span>
+                                    <span class="like-icon">${isLiked ? '♥' : '♥'}</span>
                                     ${commentLikeCount > 0 ? `<span class="like-count">${commentLikeCount}</span>` : ''}
                                 </button>
                             </div>
@@ -2266,7 +1920,17 @@ class CardSlider {
                             window.refreshUI(this.dayId, { itemId, skipSync: false });
                         } else {
                             // 重新加载数据并刷新
-                            const items = typeof window.getDayItems === 'function' ? window.getDayItems(this.dayId) : [];
+                            // 从统一结构获取 items
+            let items = [];
+            if (typeof tripDataStructure !== 'undefined') {
+                const unifiedData = tripDataStructure.loadUnifiedData();
+                if (unifiedData) {
+                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                    if (day && day.items) {
+                        items = day.items;
+                    }
+                }
+            }
                             this.cards = items;
                             this.renderCards();
                             this.attachCardEventsForAll();
@@ -2338,7 +2002,17 @@ class CardSlider {
                             window.refreshUI(this.dayId, { itemId, skipSync: false });
                         } else {
                             // 重新加载数据并刷新
-                            const items = typeof window.getDayItems === 'function' ? window.getDayItems(this.dayId) : [];
+                            // 从统一结构获取 items
+            let items = [];
+            if (typeof tripDataStructure !== 'undefined') {
+                const unifiedData = tripDataStructure.loadUnifiedData();
+                if (unifiedData) {
+                    const day = tripDataStructure.getDayData(unifiedData, this.dayId);
+                    if (day && day.items) {
+                        items = day.items;
+                    }
+                }
+            }
                             this.cards = items;
                             this.renderCards();
                             this.attachCardEventsForAll();
@@ -2455,7 +2129,8 @@ class CardSlider {
             const spendPayerInput = card.querySelector('.spend-payer-input');
             if (spendInputConfirm && spendItemInput && spendAmountInput && spendPayerInput) {
                 // 设置默认支出人为当前用户
-                if (typeof currentUser !== 'undefined' && currentUser) {
+                const currentUser = getCurrentUser();
+                if (currentUser) {
                     spendPayerInput.value = currentUser;
                 }
                 
@@ -2755,6 +2430,7 @@ class CardSlider {
         const timestamp = Date.now();
         
         // 生成哈希值
+        const currentUser = getCurrentUser();
         const hash = await generateContentHash(message, currentUser, timestamp);
         
         // 检查是否已存在相同哈希的留言（防止重复）
@@ -3065,6 +2741,7 @@ class CardSlider {
         const planItems = Array.isArray(card.plan) ? card.plan : [card.plan];
         
         // 生成时间戳和哈希值
+        const currentUser = getCurrentUser();
         const timestamp = Date.now();
         const hash = await generateContentHash(trimmedItem, currentUser, timestamp);
         
@@ -3584,7 +3261,7 @@ class CardSlider {
         this.saveCardOrder();
         
         // 触发自动同步
-        autoSyncToGist();
+        autoSync();
         
         updateSyncStatus('卡片已保存并同步', 'success');
     }
@@ -3599,51 +3276,28 @@ class CardSlider {
 
     // 工具函数已移至 modules/utils.js，直接使用全局函数
     // 不再需要包装方法，直接使用 window.escapeHtml 等
-
-    // 滑动功能已停用，使用滚动模式
 }
 
-// 从URL参数中读取配置（已简化，不再支持Gist）
-function loadConfigFromURL() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoSync = urlParams.get('auto_sync') === 'true' || urlParams.get('autoSync') === 'true';
-    
-    // 如果从URL导入了配置，清除URL参数（保护隐私）
-    if (autoSync) {
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-    }
+// 将 CardSlider 暴露到全局，供其他模块使用
+if (typeof window !== 'undefined') {
+    window.CardSlider = CardSlider;
 }
 
-// 页面初始化
+// 页面初始化（使用 AppInitializer）
 document.addEventListener('DOMContentLoaded', async () => {
-    // 首先从URL加载配置
-    loadConfigFromURL();
-    
-    // 执行数据迁移（合并最新的分散数据）
-    if (typeof tripDataStructure !== 'undefined' && typeof tripData !== 'undefined') {
+    // 使用新的应用初始化器（定义严格的生命周期）
+    if (typeof window.appInitializer !== 'undefined') {
         try {
-            const existingData = tripDataStructure.loadUnifiedData();
-            const needsMigration = !existingData || existingData._version !== tripDataStructure.DATA_STRUCTURE_VERSION;
-            
-            if (needsMigration) {
-                console.log('执行数据迁移（首次迁移）...');
-                await tripDataStructure.migrateToUnifiedStructure(tripData, false);
-                console.log('数据迁移完成');
-            } else {
-                // 即使已有统一数据，也合并最新的分散数据（可能有新的留言、图片等）
-                console.log('已存在统一结构数据，合并最新的分散数据...');
-                await tripDataStructure.migrateToUnifiedStructure(tripData, false);
-                console.log('数据合并完成');
-            }
+            await window.appInitializer.initialize();
         } catch (error) {
-            console.error('数据迁移失败:', error);
+            console.error('应用初始化失败，使用降级模式:', error);
+            // 降级模式：使用旧的初始化方式
+            await fallbackInitialization();
         }
+    } else {
+        console.warn('AppInitializer 未加载，使用降级模式');
+        await fallbackInitialization();
     }
-    
-    // 检查登录状态（等待Firebase初始化后）
-    // 先显示登录界面，然后检查是否有保存的登录状态
-    showLoginUI();
     
     // 添加登录按钮事件监听器（支持移动端）
     const loginBtn = document.getElementById('login-btn');
@@ -3652,128 +3306,93 @@ document.addEventListener('DOMContentLoaded', async () => {
         loginBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            handleLogin();
+            if (typeof window.handleLogin === 'function') {
+                window.handleLogin();
+            } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.handleLogin) {
+                window.AuthManager.handleLogin();
+            }
         });
         
         // 触摸事件（移动端）
         loginBtn.addEventListener('touchend', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            handleLogin();
+            if (typeof window.handleLogin === 'function') {
+                window.handleLogin();
+            } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.handleLogin) {
+                window.AuthManager.handleLogin();
+            }
         });
     }
     
     // 添加密码输入框的回车键事件（移动端兼容）
     const passwordInput = document.getElementById('login-password');
     if (passwordInput) {
-        // 支持 Enter 键和移动端虚拟键盘的完成按钮
         passwordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                handleLogin();
+                if (typeof window.handleLogin === 'function') {
+                    window.handleLogin();
+                } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.handleLogin) {
+                    window.AuthManager.handleLogin();
+                }
             }
         });
         
-        // 移动端虚拟键盘的完成按钮
         passwordInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.keyCode === 13) {
                 e.preventDefault();
-                handleLogin();
+                if (typeof window.handleLogin === 'function') {
+                    window.handleLogin();
+                } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.handleLogin) {
+                    window.AuthManager.handleLogin();
+                }
             }
         });
     }
-    
-    setTimeout(() => {
-        checkLoginStatus();
-    }, 1000);
-    
-    // 只有在登录后才渲染内容（在showLoggedInUI中调用）
-    // renderOverview();
-    // renderNavigation();
-    // showDay('day1');
     
     // 返回顶部按钮
-    initBackToTop();
-    
-    // 如果已配置同步，页面加载时自动下载数据（合并策略）
-    const syncType = localStorage.getItem('trip_sync_type') || 'firebase';
-    
-    if (syncType === 'firebase' && typeof dataSyncFirebase !== 'undefined') {
-        // 等待Firebase加载完成
-        const initFirebase = async () => {
-            // 如果Firebase已加载，使用默认配置初始化
-            if (window.firebaseConfig && window.firebaseDatabase) {
-                const defaultConfig = {
-                    ...window.firebaseConfig,
-                    databasePath: 'trip_plan_data'
-                };
-                const result = await dataSyncFirebase.initialize(defaultConfig);
-                if (result.success) {
-                    // 先尝试从Firebase下载数据（静默，不显示错误）
-                    dataSyncFirebase.download().then(result => {
-                        if (result.success) {
-                            // 下载成功后，重新显示当前日期以刷新数据
-                            if (currentDayId) {
-                                showDay(currentDayId);
-                            }
-                        }
-                    }).catch(() => {
-                        // 静默处理错误，不影响页面正常使用
-                    });
-                    
-                    // 如果启用自动同步，初始化实时同步
-                    if (dataSyncFirebase.autoSyncEnabled) {
-                        dataSyncFirebase.setAutoSync(true);
-                    }
-                }
-            } else {
-                // 尝试从localStorage加载配置
-                dataSyncFirebase.loadConfig().then(result => {
-                    if (result.success && dataSyncFirebase.isConfigured()) {
-                        // 先尝试从Firebase下载数据（静默，不显示错误）
-                        dataSyncFirebase.download().then(result => {
-                            if (result.success) {
-                                // 下载成功后，重新渲染（数据已在统一结构中）
-                                // 重新渲染总览和导航
-                                renderOverview();
-                                renderNavigation();
-                                // 重新显示当前日期以刷新数据
-                                if (currentDayId) {
-                                    showDay(currentDayId);
-                                }
-                            }
-                        }).catch(() => {
-                            // 静默处理错误，不影响页面正常使用
-                        });
-                        
-                        // 如果启用自动同步，初始化实时同步
-                        if (dataSyncFirebase.autoSyncEnabled) {
-                            dataSyncFirebase.setAutoSync(true);
-                        }
-                    }
-                });
-            }
-        };
-        
-        // 如果Firebase已加载，直接初始化；否则等待加载完成
-        if (window.firebaseLoaded) {
-            initFirebase();
-        } else {
-            window.addEventListener('firebaseReady', initFirebase, { once: true });
-        }
-    }
-    // 只使用Firebase同步，不再支持Gist
-    
-    // 点击模态框外部关闭
-    const modal = document.getElementById('sync-config-modal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeSyncConfig();
-            }
-        });
+    if (typeof window.initBackToTop === 'function') {
+        window.initBackToTop();
     }
 });
+
+/**
+ * 降级初始化（当 AppInitializer 不可用时）
+ */
+async function fallbackInitialization() {
+    console.log('使用降级初始化模式...');
+    
+    // 数据迁移功能已停用（不再从分散存储合并数据）
+    // 如果已有统一结构数据，直接使用；如果没有，初始化新结构
+    if (typeof tripDataStructure !== 'undefined' && typeof tripData !== 'undefined') {
+        try {
+            const existingData = tripDataStructure.loadUnifiedData();
+            if (!existingData) {
+                console.log('初始化统一数据结构...');
+                const newData = tripDataStructure.initializeTripDataStructure(tripData);
+                tripDataStructure.saveUnifiedData(newData);
+                console.log('统一数据结构初始化完成');
+            }
+        } catch (error) {
+            console.error('初始化数据结构失败:', error);
+        }
+    }
+    
+    // 检查登录状态（等待Firebase初始化后）
+    setTimeout(() => {
+        if (typeof window.AuthManager !== 'undefined' && window.AuthManager.checkLoginStatus) {
+            window.AuthManager.checkLoginStatus();
+        } else if (typeof window.checkLoginStatus === 'function') {
+            window.checkLoginStatus();
+        } else {
+            // 显示登录界面
+            if (typeof window.AuthManager !== 'undefined' && window.AuthManager.showLoginUI) {
+                window.AuthManager.showLoginUI();
+            }
+        }
+    }, 1000);
+}
 
 // 初始化用户选择器
 function initUserSelector() {
@@ -3788,238 +3407,50 @@ function initUserSelector() {
 
 // loadTripData 已移至 modules/data-manager.js
 
-// 渲染总览
+// 渲染总览（使用 UIRenderer 模块）
 function renderOverview() {
-    const header = document.querySelector('.header');
-    const tripData = loadTripData();
-    if (header && tripData) {
-        header.innerHTML = `
-            <div class="header-title-container">
-                <h1 class="header-title-display">${tripData.title || '行程计划'}</h1>
-                <input type="text" class="header-title-input" value="${tripData.title || '行程计划'}" style="display: none;" />
-            </div>
-            <div class="header-actions">
-                <button class="btn-expense-summary" onclick="showExpenseSummary()">开支总计</button>
-            </div>
-        `;
-        
-        // 添加标题编辑事件
-        const titleDisplay = header.querySelector('.header-title-display');
-        const titleInput = header.querySelector('.header-title-input');
-        
-        if (titleDisplay && titleInput) {
-            titleDisplay.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!checkWritePermission()) return;
-                
-                titleDisplay.style.display = 'none';
-                titleInput.style.display = 'block';
-                titleInput.focus();
-                titleInput.select();
-            });
-            
-            titleInput.addEventListener('blur', () => {
-                const newTitle = titleInput.value.trim();
-                if (newTitle) {
-                    titleDisplay.textContent = newTitle;
-                    
-                    // 保存到统一结构
-                    if (typeof tripDataStructure !== 'undefined') {
-                        const unifiedData = tripDataStructure.loadUnifiedData();
-                        if (unifiedData) {
-                            unifiedData.title = newTitle;
-                            tripDataStructure.saveUnifiedData(unifiedData);
-                            triggerImmediateUpload();
-                        }
-                    }
-                }
-                
-                titleDisplay.style.display = 'block';
-                titleInput.style.display = 'none';
-            });
-            
-            titleInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    titleInput.blur();
-                }
-            });
-        }
+    if (window.UIRenderer && window.UIRenderer.renderOverview) {
+        return window.UIRenderer.renderOverview();
     }
+    console.error('UIRenderer 未加载，无法渲染总览');
 }
 
-// 渲染导航（总览从每天的title自动生成）
+// 渲染导航（使用 UIRenderer 模块）
 function renderNavigation() {
-    const navContainer = document.querySelector('.nav-container');
-    const tripData = loadTripData();
-    if (!navContainer || !tripData) return;
-    
-    // 从每天的title自动生成总览
-    const days = tripData.days || [];
-    
-    let html = '<h2>行程总览</h2><ul class="nav-list">';
-    days.forEach((day, index) => {
-        const dayId = day.id || `day${index + 1}`;
-        const dayTitle = day.title || `Day ${index + 1}`;
-        html += `
-            <li class="nav-item">
-                <a href="#" class="nav-link" data-day="${dayId}">${dayTitle}</a>
-            </li>
-        `;
-    });
-    html += '</ul>';
-    navContainer.innerHTML = html;
-    
-    // 添加导航点击事件
-    navContainer.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const dayId = link.dataset.day;
-            showDay(dayId);
-            
-            // 更新活动状态
-            navContainer.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-        });
-    });
+    if (window.UIRenderer && window.UIRenderer.renderNavigation) {
+        return window.UIRenderer.renderNavigation();
+    }
+    console.error('UIRenderer 未加载，无法渲染导航');
 }
 
-// 显示指定日期的行程
+// 显示指定日期的行程（使用 UIRenderer 模块）
 function showDay(dayId) {
-    // 确保 dayId 是字符串，并且不是 tripId
-    let dayIdStr = String(dayId);
-    if (dayIdStr.startsWith('trip_')) {
-        console.error('showDay: 错误！传入的是 tripId 而不是 dayId', {
-            tripId: dayIdStr,
-            originalDayId: dayId
-        });
-        // 尝试从 unifiedData 获取第一个 day 的 id
-        if (typeof tripDataStructure !== 'undefined') {
-            const unifiedData = tripDataStructure.loadUnifiedData();
-            if (unifiedData && unifiedData.days && unifiedData.days.length > 0) {
-                dayIdStr = unifiedData.days[0].id || 'day1';
-                console.warn('showDay: 使用第一个 day 的 id 作为默认值', dayIdStr);
-            } else {
-                dayIdStr = 'day1';
-            }
-        } else {
-            dayIdStr = 'day1';
-        }
+    if (window.UIRenderer && window.UIRenderer.renderDay) {
+        return window.UIRenderer.renderDay(dayId);
     }
-    
-    currentDayId = dayIdStr;
-    // 更新全局变量，供实时同步回调使用
-    window.currentDayId = currentDayId;
-    
-    // 通过事件总线通知日期切换
-    if (typeof window.eventBus !== 'undefined') {
-        window.eventBus.emit(window.EventTypes.DAY_CHANGED, { dayId: dayIdStr });
-    }
-    
-    // 使用统一的数据获取函数
-    const day = typeof window.getDayData === 'function' ? window.getDayData(dayIdStr) : null;
-    if (!day) {
-        console.warn(`未找到日期数据: ${dayIdStr}`);
-        return;
-    }
-    
-    // 获取已排序和过滤的items
-    const allItems = typeof window.getDayItems === 'function' ? window.getDayItems(dayIdStr) : (day.items || []);
-    
-    // 更新日期标题
-    const dayHeader = document.querySelector('.day-header');
-    if (dayHeader) {
-        dayHeader.innerHTML = `
-            <div class="day-title-container">
-                <h2 class="day-title-display">${day.title || ''}</h2>
-                <input type="text" class="day-title-input" value="${day.title || ''}" style="display: none;" />
-            </div>
-            <div class="day-header-actions">
-                <button class="add-item-btn" onclick="showAddItemModal('${dayIdStr}')" title="新增行程项">
-                    ➕ 新增行程项
-                </button>
-                <button class="filter-btn" onclick="toggleFilterPanel()" title="筛选">
-                    🔍 筛选
-                </button>
-                <button class="sort-mode-btn" onclick="toggleSortMode()" title="排序">
-                    📋 排序
-                </button>
-            </div>
-        `;
-        
-        // 添加日期标题编辑事件
-        const dayTitleDisplay = dayHeader.querySelector('.day-title-display');
-        const dayTitleInput = dayHeader.querySelector('.day-title-input');
-        
-        if (dayTitleDisplay && dayTitleInput) {
-            dayTitleDisplay.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!checkWritePermission()) return;
-                
-                dayTitleDisplay.style.display = 'none';
-                dayTitleInput.style.display = 'block';
-                dayTitleInput.focus();
-                dayTitleInput.select();
-            });
-            
-            dayTitleInput.addEventListener('blur', () => {
-                const newTitle = dayTitleInput.value.trim();
-                if (newTitle) {
-                    dayTitleDisplay.textContent = newTitle;
-                    
-                    // 保存到统一结构
-                    if (typeof tripDataStructure !== 'undefined') {
-                        const unifiedData = tripDataStructure.loadUnifiedData();
-                        if (unifiedData) {
-                            const dayData = tripDataStructure.getDayData(unifiedData, dayIdStr);
-                            if (dayData) {
-                                dayData.title = newTitle;
-                                tripDataStructure.saveUnifiedData(unifiedData);
-                                triggerImmediateUpload();
-                            }
-                        }
-                    }
-                }
-                
-                dayTitleDisplay.style.display = 'block';
-                dayTitleInput.style.display = 'none';
-            });
-            
-            dayTitleInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    dayTitleInput.blur();
-                }
-            });
-        }
-    }
-    
-    // 应用筛选
-    const filteredItems = applyFilter(allItems, dayIdStr);
-    
-    // 创建卡片容器（滚动模式）
-    const cardsContainer = document.getElementById('cards-container');
-    if (cardsContainer) {
-        // 创建新的卡片显示器（滚动模式）
-        const slider = new CardSlider('cards-container', filteredItems, dayIdStr);
-        // 只有在当前日期时才保存引用，避免跨日期状态混乱
-        if (dayIdStr === currentDayId) {
-            currentSlider = slider; // 保存引用
-        }
-        
-        // 不再自动滚动到卡片区域，让用户保持在当前位置
-    }
+    console.error('UIRenderer 未加载，无法渲染日期');
 }
 
 // applyCardOrder 已移至 modules/data-manager.js
 
-// 应用筛选
-let currentFilter = null;
+// 应用筛选（支持 State Manager）
+let currentFilter = null; // 向后兼容
 function applyFilter(items, dayId) {
+    // 优先使用 State Manager
+    if (window.stateManager) {
+        const filter = window.stateManager.getState('currentFilter');
+        if (!filter) return items;
+        
+        return items.filter(item => {
+            const tag = item.tag || item.category || '其他';
+            return filter === 'all' || tag === filter;
+        });
+    }
+    
+    // 降级方案：使用旧变量
     if (!currentFilter) return items;
     
     return items.filter(item => {
-        // 使用item.tag（在showDay中已经为所有项添加了tag属性）
         const tag = item.tag || item.category || '其他';
         return currentFilter === 'all' || tag === currentFilter;
     });
@@ -4033,15 +3464,30 @@ function toggleFilterPanel() {
     }
 }
 
-// 设置筛选
+// 设置筛选（支持 State Manager）
 function setFilter(tag) {
-    currentFilter = tag;
-    if (currentDayId) {
-        showDay(currentDayId);
+    // 更新 State Manager
+    if (window.stateManager) {
+        window.stateManager.setState({ currentFilter: tag });
     }
+    
+    // 向后兼容：更新旧变量
+    currentFilter = tag;
+    
+    // 重新渲染当前日期
+    const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : currentDayId;
+    if (dayId) {
+        showDay(dayId);
+    }
+    
     const panel = document.getElementById('filter-panel');
     if (panel) {
         panel.style.display = 'none';
+    }
+    
+    // 触发事件
+    if (window.eventBus && window.EventTypes) {
+        window.eventBus.emit(window.EventTypes.FILTER_CHANGED, { filter: tag });
     }
 }
 
@@ -4202,9 +3648,6 @@ function autoSync() {
     }, 2000); // 2秒后同步
 }
 
-// 保持向后兼容（已废弃，仅用于兼容旧代码）
-const autoSyncToGist = autoSync;
-
 // 手动上传函数（供按钮调用）
 function syncUpload() {
     triggerImmediateUpload();
@@ -4280,362 +3723,7 @@ function toggleSyncPanel() {
     }
 }
 
-// 收集所有消费数据
-function getAllExpenses() {
-    const expenses = [];
-    
-    // 只从统一数据结构读取
-    if (typeof tripDataStructure !== 'undefined') {
-        const unifiedData = tripDataStructure.loadUnifiedData();
-        if (unifiedData && unifiedData.days) {
-            unifiedData.days.forEach(day => {
-                if (day.items && Array.isArray(day.items)) {
-                    day.items.forEach(item => {
-                        if (item.spend && Array.isArray(item.spend)) {
-                            item.spend.forEach(spendItem => {
-                                expenses.push({
-                                    dayId: day.id || '',
-                                    dayTitle: day.title || '',
-                                    itemId: item.id || '',
-                                    itemCategory: item.category || '',
-                                    itemTime: item.time || '',
-                                    itemName: item.plan?.[0] || '',
-                                    spendItem: spendItem.item || '',
-                                    amount: parseFloat(spendItem.amount) || 0,
-                                    payer: spendItem.payer || ''
-                                });
-                            });
-                        }
-                    });
-                }
-            });
-        }
-    }
-    
-    return expenses;
-}
-
-// 显示开支总计
-function showExpenseSummary() {
-    const modal = document.getElementById('expense-summary-modal');
-    const content = document.getElementById('expense-summary-content');
-    
-    if (!modal || !content) return;
-    
-    const expenses = getAllExpenses();
-    
-    if (expenses.length === 0) {
-        content.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">暂无消费记录</p>';
-        modal.style.display = 'flex';
-        return;
-    }
-    
-    // 按支出人统计
-    const payerStats = {};
-    // 按日期统计
-    const dayStats = {};
-    // 总计
-    let totalAmount = 0;
-    
-    expenses.forEach(expense => {
-        const amount = expense.amount || 0;
-        totalAmount += amount;
-        
-        // 按支出人统计
-        const payer = expense.payer || '未指定';
-        if (!payerStats[payer]) {
-            payerStats[payer] = { amount: 0, count: 0, items: [] };
-        }
-        payerStats[payer].amount += amount;
-        payerStats[payer].count += 1;
-        payerStats[payer].items.push(expense);
-        
-        // 按日期统计
-        const dayTitle = expense.dayTitle || '未知日期';
-        if (!dayStats[dayTitle]) {
-            dayStats[dayTitle] = { amount: 0, count: 0, items: [] };
-        }
-        dayStats[dayTitle].amount += amount;
-        dayStats[dayTitle].count += 1;
-        dayStats[dayTitle].items.push(expense);
-    });
-    
-    // 生成HTML
-    let html = '<div class="expense-summary-container">';
-    
-    // 总计
-    html += `
-        <div class="expense-summary-section">
-            <h3>💰 总计</h3>
-            <div class="expense-total">
-                <span class="expense-total-label">总支出：</span>
-                <span class="expense-total-amount">¥${totalAmount.toFixed(2)}</span>
-            </div>
-            <div class="expense-total">
-                <span class="expense-total-label">消费项数：</span>
-                <span class="expense-total-count">${expenses.length} 项</span>
-            </div>
-        </div>
-    `;
-    
-    // 按支出人统计
-    html += `
-        <div class="expense-summary-section">
-            <h3>👥 按支出人统计</h3>
-            <table class="expense-summary-table">
-                <thead>
-                    <tr>
-                        <th>支出人</th>
-                        <th>金额</th>
-                        <th>项数</th>
-                        <th>占比</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-    
-    Object.keys(payerStats).sort().forEach(payer => {
-        const stats = payerStats[payer];
-        const percentage = totalAmount > 0 ? ((stats.amount / totalAmount) * 100).toFixed(1) : 0;
-        html += `
-            <tr>
-                <td>${payer === '未指定' ? '<span style="color: #999;">未指定</span>' : payer}</td>
-                <td class="expense-amount">¥${stats.amount.toFixed(2)}</td>
-                <td>${stats.count}</td>
-                <td>${percentage}%</td>
-            </tr>
-        `;
-    });
-    
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
-    
-    // 按日期统计
-    html += `
-        <div class="expense-summary-section">
-            <h3>📅 按日期统计</h3>
-            <table class="expense-summary-table">
-                <thead>
-                    <tr>
-                        <th>日期</th>
-                        <th>金额</th>
-                        <th>项数</th>
-                        <th>占比</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-    
-    Object.keys(dayStats).sort().forEach(dayTitle => {
-        const stats = dayStats[dayTitle];
-        const percentage = totalAmount > 0 ? ((stats.amount / totalAmount) * 100).toFixed(1) : 0;
-        html += `
-            <tr>
-                <td>${dayTitle}</td>
-                <td class="expense-amount">¥${stats.amount.toFixed(2)}</td>
-                <td>${stats.count}</td>
-                <td>${percentage}%</td>
-            </tr>
-        `;
-    });
-    
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
-    
-    // 详细列表（可选，可折叠）
-    html += `
-        <div class="expense-summary-section">
-            <h3>📋 详细列表</h3>
-            <div class="expense-detail-list">
-    `;
-    
-    expenses.forEach((expense, index) => {
-        html += `
-            <div class="expense-detail-item">
-                <div class="expense-detail-header">
-                    <span class="expense-detail-day">${expense.dayTitle}</span>
-                    <span class="expense-detail-amount">¥${expense.amount.toFixed(2)}</span>
-                </div>
-                <div class="expense-detail-content">
-                    <span class="expense-detail-item-name">${expense.spendItem || '未命名'}</span>
-                    <span class="expense-detail-payer">${expense.payer ? '👤 ' + expense.payer : ''}</span>
-                </div>
-            </div>
-        `;
-    });
-    
-    html += `
-            </div>
-        </div>
-    `;
-    
-    // 一键分账按钮和结果
-    html += `
-        <div class="expense-summary-section">
-            <h3>💸 一键分账</h3>
-            <button class="btn-split-expense" onclick="calculateExpenseSplit()">计算分账</button>
-            <div id="expense-split-result" style="display: none; margin-top: 16px;"></div>
-        </div>
-    `;
-    
-    html += '</div>';
-    
-    content.innerHTML = html;
-    modal.style.display = 'flex';
-}
-
-// 关闭开支总计
-function closeExpenseSummary() {
-    const modal = document.getElementById('expense-summary-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// 计算分账
-function calculateExpenseSplit() {
-    const resultDiv = document.getElementById('expense-split-result');
-    if (!resultDiv) return;
-    
-    const expenses = getAllExpenses();
-    
-    // 过滤掉"共同"支出（因为每个人独立出了自己的部分，不计算在内）
-    const validExpenses = expenses.filter(expense => {
-        const payer = expense.payer || '';
-        return payer !== '共同' && payer !== '' && payer !== '未指定';
-    });
-    
-    if (validExpenses.length === 0) {
-        resultDiv.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">没有有效的个人支出记录（已排除"共同"支出）</p>';
-        resultDiv.style.display = 'block';
-        return;
-    }
-    
-    // 计算每个人的实际支出
-    const userExpenses = {
-        'mrb': 0,
-        'djy': 0
-    };
-    
-    validExpenses.forEach(expense => {
-        const payer = expense.payer || '';
-        const amount = expense.amount || 0;
-        if (payer === 'mrb' || payer === 'djy') {
-            userExpenses[payer] = (userExpenses[payer] || 0) + amount;
-        }
-    });
-    
-    // 计算总支出（不包括"共同"）
-    const totalExpense = validExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-    
-    // 平均每人应该支付
-    const averagePerPerson = totalExpense / 2;
-    
-    // 计算每个人的差额
-    const mrbActual = userExpenses['mrb'] || 0;
-    const djyActual = userExpenses['djy'] || 0;
-    const mrbDifference = averagePerPerson - mrbActual;
-    const djyDifference = averagePerPerson - djyActual;
-    
-    // 生成分账结果HTML
-    let html = '<div class="expense-split-container">';
-    
-    // 总支出信息
-    html += `
-        <div class="expense-split-summary">
-            <div class="split-summary-item">
-                <span class="split-label">总支出（不含共同）：</span>
-                <span class="split-value">¥${totalExpense.toFixed(2)}</span>
-            </div>
-            <div class="split-summary-item">
-                <span class="split-label">平均每人应支付：</span>
-                <span class="split-value">¥${averagePerPerson.toFixed(2)}</span>
-            </div>
-        </div>
-    `;
-    
-    // 每个人的实际支出和差额
-    html += `
-        <table class="expense-split-table">
-            <thead>
-                <tr>
-                    <th>人员</th>
-                    <th>实际支出</th>
-                    <th>应支付</th>
-                    <th>差额</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><strong>mrb</strong></td>
-                    <td class="expense-amount">¥${mrbActual.toFixed(2)}</td>
-                    <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
-                    <td class="${mrbDifference >= 0 ? 'split-owe' : 'split-receive'}">
-                        ${mrbDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(mrbDifference).toFixed(2)}
-                    </td>
-                </tr>
-                <tr>
-                    <td><strong>djy</strong></td>
-                    <td class="expense-amount">¥${djyActual.toFixed(2)}</td>
-                    <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
-                    <td class="${djyDifference >= 0 ? 'split-owe' : 'split-receive'}">
-                        ${djyDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(djyDifference).toFixed(2)}
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    `;
-    
-    // 分账说明
-    html += `
-        <div class="expense-split-note">
-            <p><strong>分账说明：</strong></p>
-            <ul>
-                <li>总支出不包括"共同"支出的部分（因为每个人独立出了自己的部分）</li>
-                <li>平均每人应支付 = 总支出 ÷ 人数</li>
-                <li>差额 = 平均每人应支付 - 实际支出</li>
-                <li>差额为正表示需要支付给其他人，差额为负表示应该收到其他人的支付</li>
-            </ul>
-        </div>
-    `;
-    
-    // 如果差额不为0，显示转账建议
-    if (Math.abs(mrbDifference) > 0.01 || Math.abs(djyDifference) > 0.01) {
-        html += `
-            <div class="expense-split-action">
-                <p><strong>转账建议：</strong></p>
-        `;
-        
-        if (mrbDifference > 0 && djyDifference < 0) {
-            // mrb需要支付给djy
-            html += `<p class="split-action-text">mrb 需要支付给 djy：<strong>¥${Math.abs(mrbDifference).toFixed(2)}</strong></p>`;
-        } else if (mrbDifference < 0 && djyDifference > 0) {
-            // djy需要支付给mrb
-            html += `<p class="split-action-text">djy 需要支付给 mrb：<strong>¥${Math.abs(djyDifference).toFixed(2)}</strong></p>`;
-        } else if (Math.abs(mrbDifference) < 0.01 && Math.abs(djyDifference) < 0.01) {
-            html += `<p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>`;
-        }
-        
-        html += `</div>`;
-    } else {
-        html += `
-            <div class="expense-split-action">
-                <p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>
-            </div>
-        `;
-    }
-    
-    html += '</div>';
-    
-    resultDiv.innerHTML = html;
-    resultDiv.style.display = 'block';
-}
+// 开支相关功能已移至 modules/expense-manager.js
 
 // ==================== 事件总线集成 ====================
 // 初始化事件监听器，实现模块间解耦

@@ -25,7 +25,7 @@ class LikeHandler {
         if (!item) {
             // 调试：如果找不到 item，记录日志
             if (type === 'plan' && index !== null) {
-                console.warn('LikeHandler.getLikes: 找不到 item', { dayId, itemId, type, index });
+                // console.warn('LikeHandler.getLikes: 找不到 item', { dayId, itemId, type, index });
             }
             return type === 'item' ? {} : [];
         }
@@ -94,35 +94,35 @@ class LikeHandler {
      * @returns {boolean} 是否成功
      */
     static toggleLike(dayId, itemId, type, index = null, section = null) {
-        console.log('toggleLike 被调用', { dayId, itemId, type, index, section });
+        // console.log('toggleLike 被调用', { dayId, itemId, type, index, section });
         
         // 检查写权限
         if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
-            console.warn('toggleLike: 没有写权限');
+            // console.warn('toggleLike: 没有写权限');
             return false;
         }
         
         if (typeof tripDataStructure === 'undefined' || !itemId) {
-            console.error('tripDataStructure 未定义或 itemId 为空，无法保存点赞', { 
-                tripDataStructure: typeof tripDataStructure, 
-                itemId 
-            });
+            // console.error('tripDataStructure 未定义或 itemId 为空，无法保存点赞', { 
+            //     tripDataStructure: typeof tripDataStructure, 
+            //     itemId 
+            // });
             return false;
         }
         
         const unifiedData = tripDataStructure.loadUnifiedData();
         if (!unifiedData) {
-            console.error('无法加载统一数据');
+            // console.error('无法加载统一数据');
             return false;
         }
         
         const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
         if (!item) {
-            console.error('找不到 item', { dayId, itemId, unifiedDataValid: !!unifiedData });
+            // console.error('找不到 item', { dayId, itemId, unifiedDataValid: !!unifiedData });
             return false;
         }
         
-        console.log('toggleLike: 找到 item', { dayId, itemId, type, index, section });
+        // console.log('toggleLike: 找到 item', { dayId, itemId, type, index, section });
         
         const currentUser = typeof window.currentUser !== 'undefined' ? window.currentUser : 
                            (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
@@ -135,7 +135,7 @@ class LikeHandler {
             return false;
         }
         
-        console.log('toggleLike: 当前用户', { currentUser, type, index, section });
+        // console.log('toggleLike: 当前用户', { currentUser, type, index, section });
         
         let targetLikes = null;
         let targetObject = null;

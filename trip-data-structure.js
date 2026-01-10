@@ -69,14 +69,15 @@ function normalizePlan(plan) {
     return [];
 }
 
-// 数据迁移：将现有分散的localStorage数据合并到新结构
-async function migrateToUnifiedStructure(originalData, force = false) {
+// 数据迁移：将现有分散的localStorage数据合并到新结构（已废弃，不再使用）
+// 此函数已停用，不再从分散存储合并数据
+async function migrateToUnifiedStructure(originalData) {
     // 开始数据迁移
     
     // 检查是否已经有统一结构的数据
     let unifiedData = null;
     const existingUnifiedData = localStorage.getItem('trip_unified_data');
-    if (existingUnifiedData && !force) {
+    if (existingUnifiedData) {
         try {
             const parsed = JSON.parse(existingUnifiedData);
             if (parsed._version === DATA_STRUCTURE_VERSION) {
@@ -88,7 +89,7 @@ async function migrateToUnifiedStructure(originalData, force = false) {
         }
     }
     
-    // 如果没有现有数据或强制迁移，初始化新结构
+    // 如果没有现有数据，初始化新结构
     if (!unifiedData) {
         unifiedData = initializeTripDataStructure(originalData);
     }
@@ -329,38 +330,13 @@ function saveUnifiedData(data) {
         return true;
     } catch (e) {
         console.error('保存统一数据失败:', e);
-        // 如果数据太大，尝试清理已删除的项
         if (e.name === 'QuotaExceededError') {
-            console.warn('存储空间不足，尝试清理已删除的数据...');
-            cleanupDeletedData(data);
-            try {
-                const jsonString = JSON.stringify(data);
-                localStorage.setItem('trip_unified_data', jsonString);
-                // 清理后保存成功
-                return true;
-            } catch (e2) {
-                console.error('清理后仍无法保存:', e2);
-                alert('数据太大，无法保存。请删除一些不需要的内容。');
-                return false;
-            }
+            console.warn('存储空间不足，无法保存数据');
+            alert('数据太大，无法保存。请删除一些不需要的内容。');
+            return false;
         }
         return false;
     }
-}
-
-// 清理已删除的数据（已废弃，统一数据结构中不再使用 _deleted 标记）
-function cleanupDeletedData(data) {
-    // 统一数据结构中不再使用 _deleted 标记，直接硬删除
-    // 此函数保留用于向后兼容，但不执行任何操作
-    console.warn('cleanupDeletedData 已废弃，统一数据结构中不再使用 _deleted 标记');
-}
-
-// 恢复被标记为删除的项（已废弃，统一数据结构中不再使用 _deleted 标记）
-function restoreDeletedItems(data) {
-    // 统一数据结构中不再使用 _deleted 标记，直接硬删除
-    // 此函数保留用于向后兼容，但不执行任何操作
-    console.warn('restoreDeletedItems 已废弃，统一数据结构中不再使用 _deleted 标记');
-    return false;
 }
 
 // 加载统一数据
@@ -741,7 +717,7 @@ function getUnifiedDataSize() {
 // 导出供全局使用
 window.tripDataStructure = {
     initializeTripDataStructure,
-    migrateToUnifiedStructure,
+    // migrateToUnifiedStructure, // 已废弃，不再使用
     saveUnifiedData,
     loadUnifiedData,
     getDayData,
@@ -751,8 +727,6 @@ window.tripDataStructure = {
     deleteItemData,
     normalizePlan,
     getUnifiedDataSize,
-    cleanupDeletedData,
-    restoreDeletedItems,
     DATA_STRUCTURE_VERSION
 };
 
