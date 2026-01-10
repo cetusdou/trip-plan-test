@@ -1647,6 +1647,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* 允许垂直滚动，允许水平滑动用于轮播 */
+    touch-action: pan-y pan-x;
 }
 
 /* 图片轮播 */
@@ -1655,6 +1657,8 @@ body {
     width: 100%;
     height: 100%;
     min-height: 200px;
+    /* 允许垂直滚动，允许水平滑动用于轮播 */
+    touch-action: pan-y pan-x;
 }
 
 .carousel-wrapper {
@@ -1662,12 +1666,18 @@ body {
     width: 100%;
     height: 100%;
     overflow: hidden;
+    /* 允许垂直滚动（页面滚动）和水平滑动（轮播切换） */
+    touch-action: pan-y pan-x;
+    /* 不阻止页面垂直滚动 */
+    -webkit-overflow-scrolling: touch;
 }
 
 .carousel-track {
     display: flex;
     transition: transform 0.3s ease;
     height: 100%;
+    /* 允许垂直滚动 */
+    touch-action: pan-y pan-x;
 }
 
 .carousel-slide {
@@ -1677,6 +1687,8 @@ body {
     align-items: center;
     justify-content: center;
     height: 100%;
+    /* 允许垂直滚动（页面滚动）和水平滑动（轮播切换） */
+    touch-action: pan-y pan-x;
 }
 
 .card-image {
@@ -1686,6 +1698,10 @@ body {
     object-fit: contain;
     display: block;
     transition: transform 0.2s ease;
+    /* 允许垂直滚动，允许点击 */
+    touch-action: pan-y manipulation;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .card-image:hover {

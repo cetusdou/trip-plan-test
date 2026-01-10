@@ -244,6 +244,11 @@ function deleteItem(dayId, itemId) {
     }
     
     // 成功删除项（已移到备份中）
+    // 确保 _backup 字段存在且已初始化
+    if (!unifiedData._backup) {
+        unifiedData._backup = [];
+        tripDataStructure.saveUnifiedData(unifiedData);
+    }
     
     // 通过事件总线通知数据更新
     if (typeof window.eventBus !== 'undefined') {
@@ -253,8 +258,23 @@ function deleteItem(dayId, itemId) {
         });
     }
     
-    // 刷新UI和同步（备份数据会自动包含在 unifiedData 中上传）
-    refreshUIAndSync(dayId);
+    // 删除后需要上传整个 unifiedData（包括 _backup 字段）
+    // 不能只上传单个 item，因为 _backup 是顶层字段
+    if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase && window.dataSyncFirebase.upload) {
+        // 使用全量上传，确保 _backup 字段被同步
+        window.dataSyncFirebase.upload(true).then(result => {
+            if (result.success) {
+                console.log('删除项后已同步到云端（包含备份数据）:', result.message);
+            } else {
+                console.warn('删除项后同步失败:', result.message);
+            }
+        }).catch(error => {
+            console.error('删除项后同步出错:', error);
+        });
+    }
+    
+    // 刷新UI
+    refreshUI(dayId, { itemId });
 }
 
 // 应用卡片顺序

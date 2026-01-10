@@ -1800,25 +1800,88 @@ class CardSlider {
                 });
             });
             
-            // 触摸滑动支持
-            let startX = 0;
-            let isDragging = false;
+            // 触摸滑动支持（用于轮播切换，但只在水平滑动时切换，垂直滑动允许页面滚动）
+            let carouselStartX = 0;
+            let carouselStartY = 0;
+            let carouselIsDragging = false;
+            let carouselDirection = null; // 'horizontal' 或 'vertical' 或 null
+            
             track.addEventListener('touchstart', (e) => {
-                startX = e.touches[0].clientX;
-                isDragging = true;
-            });
+                // 如果是图片或删除按钮，不处理轮播滑动
+                if (e.target.closest('.card-image') || e.target.closest('.image-remove-btn')) {
+                    return;
+                }
+                carouselStartX = e.touches[0].clientX;
+                carouselStartY = e.touches[0].clientY;
+                carouselIsDragging = true;
+                carouselDirection = null;
+            }, { passive: true });
             
             track.addEventListener('touchmove', (e) => {
-                if (!isDragging) return;
-                e.preventDefault();
-            });
+                if (!carouselIsDragging || e.touches.length === 0) return;
+                
+                const touch = e.touches[0];
+                const moveX = Math.abs(touch.clientX - carouselStartX);
+                const moveY = Math.abs(touch.clientY - carouselStartY);
+                
+                // 如果已经确定是垂直滑动，立即退出，允许页面滚动
+                if (carouselDirection === 'vertical') {
+                    carouselIsDragging = false;
+                    return; // 不阻止默认行为，允许页面正常滚动
+                }
+                
+                // 优先检测垂直滑动：如果垂直移动距离明显大于水平移动距离，认为是垂直滑动（页面滚动）
+                // 必须在任何 preventDefault 调用之前检测，确保垂直滚动不被阻止
+                if (!carouselDirection && (moveX > 10 || moveY > 10)) {
+                    if (moveY > moveX * 1.2 && moveY > 15) {
+                        // 垂直滑动，允许页面滚动，立即取消拖拽标记并退出
+                        // 不调用 preventDefault，允许页面正常滚动
+                        carouselDirection = 'vertical';
+                        carouselIsDragging = false;
+                        carouselStartX = 0;
+                        carouselStartY = 0;
+                        return; // 立即退出，不阻止默认行为
+                    } else if (moveX > moveY * 1.2 && moveX > 15) {
+                        // 水平移动距离明显大于垂直移动，认为是水平滑动（轮播切换）
+                        carouselDirection = 'horizontal';
+                    }
+                }
+                
+                // 只处理水平滑动：阻止默认行为，避免页面左右滚动
+                // 但需要确保垂直移动不会被阻止（通过上面的提前检测和返回）
+                if (carouselDirection === 'horizontal' && moveX > moveY * 1.2 && moveX > 15) {
+                    e.preventDefault(); // 只在确认是水平滑动时阻止
+                } else if (moveY > moveX * 1.2 && moveY > 15) {
+                    // 如果在处理过程中发现是垂直滑动，切换到垂直模式并退出
+                    carouselDirection = 'vertical';
+                    carouselIsDragging = false;
+                    return; // 不阻止，允许页面滚动
+                }
+            }, { passive: false }); // 需要 passive: false 以便在必要时调用 preventDefault
             
             track.addEventListener('touchend', (e) => {
-                if (!isDragging) return;
-                isDragging = false;
-                const endX = e.changedTouches[0].clientX;
-                const diff = startX - endX;
+                // 如果是垂直滑动，不处理轮播切换
+                if (carouselDirection === 'vertical') {
+                    carouselIsDragging = false;
+                    carouselDirection = null;
+                    carouselStartX = 0;
+                    carouselStartY = 0;
+                    return;
+                }
                 
+                if (!carouselIsDragging || carouselDirection !== 'horizontal') {
+                    carouselIsDragging = false;
+                    carouselDirection = null;
+                    carouselStartX = 0;
+                    carouselStartY = 0;
+                    return;
+                }
+                
+                carouselIsDragging = false;
+                const endX = e.changedTouches[0].clientX;
+                const diff = carouselStartX - endX;
+                
+                // 只有在明显的水平滑动时才切换轮播
                 if (Math.abs(diff) > 50) {
                     if (diff > 0) {
                         currentIndex = (currentIndex + 1) % images.length;
@@ -1827,7 +1890,11 @@ class CardSlider {
                     }
                     updateCarousel();
                 }
-            });
+                
+                carouselDirection = null;
+                carouselStartX = 0;
+                carouselStartY = 0;
+            }, { passive: true });
             
             // 删除图片（只删除 URL，不删除 Cloudinary 上的实际文件）
             removeBtns.forEach((btn, btnIndex) => {
@@ -1896,16 +1963,27 @@ class CardSlider {
                 }, { passive: true });
                 
                 img.addEventListener('touchmove', (e) => {
-                    // 如果移动距离超过阈值，认为是拖拽
+                    // 使用 passive: true，不允许 preventDefault，确保不会阻止页面滚动
+                    // 如果移动距离超过阈值，判断是拖拽还是滚动
                     if (e.touches.length > 0) {
                         const touch = e.touches[0];
                         const moveX = Math.abs(touch.clientX - touchStartX);
                         const moveY = Math.abs(touch.clientY - touchStartY);
-                        if (moveX > 10 || moveY > 10) {
+                        
+                        // 优先检测垂直滑动：如果垂直移动距离明显大于水平移动距离，认为是页面滚动
+                        // 不应该阻止，允许页面正常滚动
+                        if (moveY > moveX * 1.2 && moveY > 15) {
+                            // 垂直滚动，允许页面滚动，不标记为拖拽，直接返回
+                            isImageDrag = false; // 确保不标记为拖拽
+                            return;
+                        }
+                        
+                        // 水平移动或移动距离较小，可能是拖拽（用于判断点击还是滑动）
+                        if ((moveX > moveY * 1.2 && moveX > 15) || (moveX > 10 && moveY < 10)) {
                             isImageDrag = true;
                         }
                     }
-                }, { passive: true });
+                }, { passive: true }); // 使用 passive: true，不允许 preventDefault，确保不会阻止页面滚动
                 
                 img.addEventListener('touchend', (e) => {
                     const touch = e.changedTouches[0];
