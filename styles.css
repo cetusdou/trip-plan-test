@@ -1902,40 +1902,7 @@ body {
 }
 /* 396185-517194-6981a3-93b1d1-a8c9e8-ded4ee-ffc8dd-f1b5c8-e2a2b3-db8c9f-cb7892 */
 /* 点赞按钮 */
-.like-btn,
-.comment-like-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background: transparent;
-    border: 0px solid #ccc;
-    border-radius: 20px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 14px;
-    /* 移动端优化：确保触摸区域足够大 */
-    min-height: 44px;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    justify-content: center;
-}
 
-.like-btn:hover,
-.comment-like-btn:hover {
-    border-color: #999;
-    transform: scale(1.05);
-}
-
-.like-btn.liked,
-.comment-like-btn.liked {
-    border-color: #e74c3c;
-}
-
-.like-btn.liked .like-icon,
-.comment-like-btn.liked .like-icon {
-    color: #e74c3c;
-}
 
 .like-icon {
     font-size: 16px;
@@ -2093,19 +2060,57 @@ body {
 }
 
 
-
-
-
-
-
+.like-btn,
 .comment-like-btn {
     position: absolute;
     bottom: -8px;
     right: 5px;
     padding: bottom 0px top 4px left 4px right 2px;
-    min-width: 44px; /* 确保移动端触摸区域足够大 */
-    flex-shrink: 0; /* 防止按钮被压缩 */
+    min-width: 44px; 
+    flex-shrink: 0; 
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 0px solid #ccc;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    /* 移动端优化：确保触摸区域足够大 */
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    justify-content: center;
 }
+
+.like-btn:hover,
+.comment-like-btn:hover {
+    border-color: #999;
+    transform: scale(1.05);
+}
+
+.like-btn.liked,
+.comment-like-btn.liked {
+    border-color: #e74c3c;
+}
+
+.like-btn.liked .like-icon,
+.comment-like-btn.liked .like-icon {
+    color: #e74c3c;
+}
+
+
+
+/* 
+.comment-like-btn {
+    position: absolute;
+    bottom: -8px;
+    right: 5px;
+    padding: bottom 0px top 4px left 4px right 2px;
+    min-width: 44px; 
+    flex-shrink: 0; 
+} */
 
 .comment-input-container {
     display: flex;
@@ -3157,4 +3162,50 @@ body {
     background: #f9f9f9;
     border-radius: 6px;
     /* border: 1px solid #eee; */
+}
+
+
+@media (max-width: 480px) {
+    /* 1. 强制不换行，且两端对齐 */
+    .user-sync-header {
+        flex-wrap: nowrap !important;
+        justify-content: space-between;
+        gap: 5px; /* 减小间隙 */
+    }
+
+    /* 2. 彻底隐藏 "当前用户：" 标签，节省大量空间 */
+    .user-label {
+        display: none !important;
+    }
+
+    /* 3. 用户信息区域：保证能收缩，防止顶开容器 */
+    .user-info {
+        flex: 1; /* 占据剩余空间 */
+        min-width: 0; /* 允许 flex 子元素小于内容宽度 (关键!) */
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* 4. 限制同步状态文字的宽度，超长省略 */
+    .user-info .sync-status {
+        display: inline-block;
+        max-width: 80px; /* 限制最大宽度 */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+        font-size: 10px; /* 字体改小一点 */
+        opacity: 0.8;
+    }
+
+    /* 5. 按钮组：保持紧凑但不要换行 */
+    .sync-buttons-top {
+        flex-shrink: 0; /* 禁止按钮被压缩 */
+        margin-left: 0;
+    }
+    
+    /* 稍微调小一点按钮在手机上的内边距 */
+    .sync-btn, .btn-logout {
+        padding: 4px 8px;
+    }
 }
