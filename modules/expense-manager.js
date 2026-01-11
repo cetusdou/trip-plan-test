@@ -18,26 +18,45 @@
         if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData && unifiedData.days) {
-                unifiedData.days.forEach(day => {
-                    if (day.items && Array.isArray(day.items)) {
-                        day.items.forEach(item => {
-                            if (item.spend && Array.isArray(item.spend)) {
-                                item.spend.forEach(spendItem => {
-                                    expenses.push({
-                                        dayId: day.id || '',
-                                        dayTitle: day.title || '',
-                                        itemId: item.id || '',
-                                        itemCategory: item.category || '',
-                                        itemTime: item.time || '',
-                                        itemName: item.plan?.[0] || '',
-                                        spendItem: spendItem.item || '',
-                                        amount: parseFloat(spendItem.amount) || 0,
-                                        payer: spendItem.payer || ''
-                                    });
-                                });
-                            }
-                        });
+                // days 现在是对象结构，需要转换为数组处理
+                let daysArray = [];
+                if (Array.isArray(unifiedData.days)) {
+                    daysArray = unifiedData.days;
+                } else if (typeof unifiedData.days === 'object' && unifiedData.days !== null) {
+                    daysArray = Object.values(unifiedData.days).sort((a, b) => (a.order || 0) - (b.order || 0));
+                }
+                
+                daysArray.forEach(day => {
+                    if (!day) return;
+                    
+                    // items 现在是对象结构，需要转换为数组处理
+                    let itemsArray = [];
+                    if (Array.isArray(day.items)) {
+                        itemsArray = day.items;
+                    } else if (day.items && typeof day.items === 'object' && day.items !== null) {
+                        itemsArray = Object.values(day.items);
                     }
+                    
+                    itemsArray.forEach(item => {
+                        if (!item) return;
+                        if (item.spend && Array.isArray(item.spend)) {
+                            item.spend.forEach(spendItem => {
+                                expenses.push({
+                                    dayId: day.id || '',
+                                    dayTitle: day.title || '',
+                                    itemId: item.id || '',
+                                    itemCategory: item.category || '',
+                                    itemTime: item.time || '',
+                                    itemName: (item.plan && typeof item.plan === 'object' && !Array.isArray(item.plan)) 
+                                        ? Object.values(item.plan)[0]?._text || ''
+                                        : (Array.isArray(item.plan) ? item.plan[0] : ''),
+                                    spendItem: spendItem.item || '',
+                                    amount: parseFloat(spendItem.amount) || 0,
+                                    payer: spendItem.payer || ''
+                                });
+                            });
+                        }
+                    });
                 });
             }
         }

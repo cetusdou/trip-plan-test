@@ -159,6 +159,20 @@
                 // onLoginSuccess 在 script.js 中定义，会更新状态并触发渲染
             }
             
+            // 关键修复：检查登录状态（如果 localStorage 中有缓存，自动恢复登录）
+            if (window.AuthManager && window.AuthManager.checkLoginStatus) {
+                console.log('📝 检查登录状态...');
+                // checkLoginStatus 会检查 localStorage 中的登录信息，如果存在则验证并恢复登录状态
+                // 等待登录状态检查完成（它会返回 Promise）
+                try {
+                    await window.AuthManager.checkLoginStatus();
+                } catch (error) {
+                    console.error('检查登录状态时出错:', error);
+                }
+            } else {
+                console.warn('⚠️ AuthManager.checkLoginStatus 未找到');
+            }
+            
             this.recordStep('AuthManager');
         }
 
@@ -310,8 +324,30 @@
         async finalize() {
             console.log('✨ 完成最终化...');
             
-            // 检查登录状态
-            const isLoggedIn = window.stateManager ? window.stateManager.getState('isLoggedIn') : false;
+            // 等待一小段时间，确保登录状态检查已完成
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // 检查登录状态（优先从 AuthManager 获取，其次从 stateManager）
+            let isLoggedIn = false;
+            if (window.AuthManager && window.AuthManager.getLoginStatus) {
+                isLoggedIn = window.AuthManager.getLoginStatus();
+            } else if (window.stateManager) {
+                isLoggedIn = window.stateManager.getState('isLoggedIn') || false;
+            }
+            
+            // 如果 localStorage 中有登录信息但状态未更新，重新检查
+            const savedUser = localStorage.getItem('trip_current_user');
+            const savedPasswordHash = localStorage.getItem('trip_password_hash');
+            if (savedUser && savedPasswordHash && !isLoggedIn) {
+                console.log('检测到缓存的登录信息，重新验证...');
+                if (window.AuthManager && window.AuthManager.checkLoginStatus) {
+                    await window.AuthManager.checkLoginStatus();
+                    // 再次检查登录状态
+                    if (window.AuthManager && window.AuthManager.getLoginStatus) {
+                        isLoggedIn = window.AuthManager.getLoginStatus();
+                    }
+                }
+            }
             
             if (isLoggedIn && window.UIRenderer) {
                 // 已登录，直接渲染
@@ -321,7 +357,7 @@
                 window.UIRenderer.renderDay(currentDayId || 'day1');
             } else {
                 // 未登录，显示登录界面
-                if (window.AuthManager) {
+                if (window.AuthManager && window.AuthManager.showLoginUI) {
                     window.AuthManager.showLoginUI();
                 }
             }

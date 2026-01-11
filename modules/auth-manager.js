@@ -69,6 +69,11 @@
         isLoggedIn = false;
         currentUser = null;
         
+        // 更新 stateManager 的状态（如果存在）
+        if (window.stateManager) {
+            window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+        }
+        
         // 清空输入框
         const usernameInput = document.getElementById('login-username');
         const passwordInput = document.getElementById('login-password');
@@ -99,6 +104,11 @@
         
         // 更新全局状态
         window.currentUser = user;
+        
+        // 更新 stateManager 的状态（如果存在）
+        if (window.stateManager) {
+            window.stateManager.setState({ isLoggedIn: true, currentUser: user });
+        }
     }
 
     /**
@@ -195,7 +205,7 @@
         try {
             if (!checkFirebaseAvailable()) {
                 showLoginUI();
-                return;
+                return false;
             }
             
             const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
@@ -208,6 +218,11 @@
                 // 密码验证成功，保持登录状态
                 showLoggedInUI(user);
                 
+                // 更新 stateManager 的状态（如果存在）
+                if (window.stateManager) {
+                    window.stateManager.setState({ isLoggedIn: true, currentUser: user });
+                }
+                
                 if (typeof window.updateSyncStatus === 'function') {
                     window.updateSyncStatus('正在下载数据...', 'info');
                 }
@@ -216,29 +231,52 @@
                 if (typeof window.onLoginSuccess === 'function') {
                     window.onLoginSuccess();
                 }
+                
+                return true;
             } else {
                 // 密码验证失败，需要重新登录
                 localStorage.removeItem('trip_password_hash');
                 localStorage.removeItem('trip_current_user');
                 showLoginUI();
+                
+                // 更新 stateManager 的状态（如果存在）
+                if (window.stateManager) {
+                    window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+                }
+                
+                return false;
             }
         } catch (error) {
             console.error('验证存储密码时出错:', error);
             showLoginUI();
+            
+            // 更新 stateManager 的状态（如果存在）
+            if (window.stateManager) {
+                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+            }
+            
+            return false;
         }
     }
 
     /**
-     * 检查登录状态
+     * 检查登录状态（返回 Promise，表示检查是否完成）
      */
-    function checkLoginStatus() {
+    async function checkLoginStatus() {
         const savedUser = localStorage.getItem('trip_current_user');
         const savedPasswordHash = localStorage.getItem('trip_password_hash');
         if (savedUser && savedPasswordHash) {
             // 验证保存的密码hash是否有效（需要从Firebase验证）
-            verifyStoredPassword(savedUser, savedPasswordHash);
+            return await verifyStoredPassword(savedUser, savedPasswordHash);
         } else {
             showLoginUI();
+            
+            // 更新 stateManager 的状态（如果存在）
+            if (window.stateManager) {
+                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+            }
+            
+            return false;
         }
     }
 
@@ -390,7 +428,8 @@
         closeInitPasswordModal,
         initPasswords,
         getCurrentUser,
-        getLoginStatus
+        getLoginStatus,
+        showLoginUI  // 添加 showLoginUI 到 AuthManager 对象
     };
 
     // 为了向后兼容，也导出到原来的全局函数名

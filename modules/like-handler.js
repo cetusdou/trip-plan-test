@@ -46,14 +46,30 @@ class LikeHandler {
                 
             case 'plan':
                 // Plan item 点赞：返回 ['user1', 'user2']
-                if (!item.plan || !Array.isArray(item.plan)) {
+                // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
+                if (!item.plan) {
                     return [];
                 }
+                
+                // 将 plan 对象转换为数组（按时间戳排序，与渲染逻辑保持一致）
+                let planArray = [];
+                if (Array.isArray(item.plan)) {
+                    planArray = item.plan;
+                } else if (typeof item.plan === 'object' && item.plan !== null) {
+                    planArray = Object.values(item.plan).sort((a, b) => {
+                        const timeA = a._timestamp || 0;
+                        const timeB = b._timestamp || 0;
+                        return timeA - timeB;
+                    });
+                } else {
+                    return [];
+                }
+                
                 // 如果 index 为 null 或无效，返回空数组
-                if (index === null || index === undefined || index < 0 || index >= item.plan.length) {
+                if (index === null || index === undefined || index < 0 || index >= planArray.length) {
                     return [];
                 }
-                const planItem = item.plan[index];
+                const planItem = planArray[index];
                 // 支持 planItem 是字符串或对象
                 if (!planItem) {
                     return [];
@@ -70,10 +86,31 @@ class LikeHandler {
                 
             case 'comment':
                 // Comment 点赞：返回 ['user1', 'user2']
-                if (!item.comments || !Array.isArray(item.comments) || index < 0 || index >= item.comments.length) {
+                // 关键修复：comments 现在是对象结构 {hash: comment}，需要适配
+                if (!item.comments) {
                     return [];
                 }
-                const comment = item.comments[index];
+                
+                // 将 comments 对象转换为数组（按时间戳排序，与渲染逻辑保持一致）
+                let commentsArray = [];
+                if (Array.isArray(item.comments)) {
+                    commentsArray = item.comments;
+                } else if (typeof item.comments === 'object' && item.comments !== null) {
+                    commentsArray = Object.values(item.comments)
+                        .filter(c => c && !c._deleted)
+                        .sort((a, b) => {
+                            const timeA = a.timestamp || 0;
+                            const timeB = b.timestamp || 0;
+                            return timeA - timeB;
+                        });
+                } else {
+                    return [];
+                }
+                
+                if (index === null || index === undefined || index < 0 || index >= commentsArray.length) {
+                    return [];
+                }
+                const comment = commentsArray[index];
                 if (!comment || typeof comment !== 'object' || !comment._likes) {
                     return [];
                 }
@@ -156,13 +193,35 @@ class LikeHandler {
                 
             case 'plan':
                 // Plan item 点赞：操作 plan[index]._likes
-                if (index === null || index < 0 || !item.plan || !Array.isArray(item.plan) || index >= item.plan.length) {
-                    console.error('找不到 plan item');
+                // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
+                if (index === null || index < 0 || !item.plan) {
+                    console.error('找不到 plan item: index 无效或 plan 不存在', { index, hasPlan: !!item.plan });
                     return false;
                 }
-                const planItem = item.plan[index];
+                
+                // 将 plan 对象转换为数组（按时间戳排序，与渲染逻辑保持一致）
+                let planArray = [];
+                if (Array.isArray(item.plan)) {
+                    planArray = item.plan;
+                } else if (typeof item.plan === 'object' && item.plan !== null) {
+                    planArray = Object.values(item.plan).sort((a, b) => {
+                        const timeA = a._timestamp || 0;
+                        const timeB = b._timestamp || 0;
+                        return timeA - timeB;
+                    });
+                } else {
+                    console.error('plan 类型不正确', { planType: typeof item.plan });
+                    return false;
+                }
+                
+                if (index >= planArray.length) {
+                    console.error('找不到 plan item: index 超出范围', { index, planLength: planArray.length });
+                    return false;
+                }
+                
+                const planItem = planArray[index];
                 if (!planItem || typeof planItem !== 'object') {
-                    console.error('plan item 无效');
+                    console.error('plan item 无效', { planItem, planItemType: typeof planItem });
                     return false;
                 }
                 if (!planItem._likes) planItem._likes = [];
@@ -173,13 +232,37 @@ class LikeHandler {
                 
             case 'comment':
                 // Comment 点赞：操作 comments[index]._likes
-                if (index === null || index < 0 || !item.comments || !Array.isArray(item.comments) || index >= item.comments.length) {
-                    console.error('找不到 comment');
+                // 关键修复：comments 现在是对象结构 {hash: comment}，需要适配
+                if (index === null || index < 0 || !item.comments) {
+                    console.error('找不到 comment: index 无效或 comments 不存在', { index, hasComments: !!item.comments });
                     return false;
                 }
-                const comment = item.comments[index];
+                
+                // 将 comments 对象转换为数组（按时间戳排序，与渲染逻辑保持一致）
+                let commentsArray = [];
+                if (Array.isArray(item.comments)) {
+                    commentsArray = item.comments;
+                } else if (typeof item.comments === 'object' && item.comments !== null) {
+                    commentsArray = Object.values(item.comments)
+                        .filter(c => c && !c._deleted)
+                        .sort((a, b) => {
+                            const timeA = a.timestamp || 0;
+                            const timeB = b.timestamp || 0;
+                            return timeA - timeB;
+                        });
+                } else {
+                    console.error('comments 类型不正确', { commentsType: typeof item.comments });
+                    return false;
+                }
+                
+                if (index >= commentsArray.length) {
+                    console.error('找不到 comment: index 超出范围', { index, commentsLength: commentsArray.length });
+                    return false;
+                }
+                
+                const comment = commentsArray[index];
                 if (!comment || typeof comment !== 'object') {
-                    console.error('comment 无效');
+                    console.error('comment 无效', { comment, commentType: typeof comment });
                     return false;
                 }
                 if (!comment._likes) comment._likes = [];

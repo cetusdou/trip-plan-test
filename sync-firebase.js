@@ -86,92 +86,167 @@ function mergeUnifiedData(localData, remoteData) {
         return localData || null;
     }
     
-    // 确保 days 是数组
-    const localDays = Array.isArray(localData.days) ? localData.days : [];
-    const remoteDays = Array.isArray(remoteData.days) ? remoteData.days : [];
+    // days 现在是对象结构 {dayId: dayData}
+    // 如果 days 是数组（旧数据），转换为对象
+    let localDaysObj = localData.days;
+    if (Array.isArray(localDaysObj)) {
+        localDaysObj = {};
+        localData.days.forEach(day => {
+            if (day && day.id) {
+                localDaysObj[day.id] = day;
+            }
+        });
+    } else if (!localDaysObj || typeof localDaysObj !== 'object' || localDaysObj === null) {
+        localDaysObj = {};
+    }
     
-    // 合并days数组
-    const mergedDays = [];
-    const dayMap = new Map();
+    let remoteDaysObj = remoteData.days;
+    if (Array.isArray(remoteDaysObj)) {
+        remoteDaysObj = {};
+        remoteData.days.forEach(day => {
+            if (day && day.id) {
+                remoteDaysObj[day.id] = day;
+            }
+        });
+    } else if (!remoteDaysObj || typeof remoteDaysObj !== 'object' || remoteDaysObj === null) {
+        remoteDaysObj = {};
+    }
     
-    // 先添加本地days
-    localDays.forEach(day => {
-        if (day && day.id) {
-            dayMap.set(day.id, { ...day });
-        }
-    });
+    // 合并days对象
+    const mergedDaysObj = { ...localDaysObj };
     
     // 合并远程days
-    remoteDays.forEach(remoteDay => {
-        const localDay = dayMap.get(remoteDay.id);
+    Object.keys(remoteDaysObj).forEach(dayId => {
+        const remoteDay = remoteDaysObj[dayId];
+        if (!remoteDay) return;
+        
+        const localDay = localDaysObj[dayId];
         if (localDay) {
-            // 合并items
-            const itemMap = new Map();
-            (localDay.items || []).forEach(item => {
-                itemMap.set(item.id, { ...item });
-            });
+            // 确保 items 是对象结构（支持从数组迁移）
+            let localItems = localDay.items;
+            if (Array.isArray(localItems)) {
+                const itemsObj = {};
+                localItems.forEach(item => {
+                    if (item && item.id) {
+                        itemsObj[item.id] = item;
+                    }
+                });
+                localItems = itemsObj;
+                localDay.items = itemsObj;
+            } else if (!localItems || typeof localItems !== 'object' || localItems === null) {
+                localItems = {};
+                localDay.items = {};
+            }
             
-            // 获取本地所有 item IDs（包括已删除的，用于判断哪些是本地删除的）
-            const localItemIds = new Set((localDay.items || []).map(item => item.id));
+            let remoteItems = remoteDay.items;
+            if (Array.isArray(remoteItems)) {
+                const itemsObj = {};
+                remoteItems.forEach(item => {
+                    if (item && item.id) {
+                        itemsObj[item.id] = item;
+                    }
+                });
+                remoteItems = itemsObj;
+            } else if (!remoteItems || typeof remoteItems !== 'object' || remoteItems === null) {
+                remoteItems = {};
+            }
             
-            // 合并远程items
-            (remoteDay.items || []).forEach(remoteItem => {
-                const localItem = itemMap.get(remoteItem.id);
+            // 合并items（对象结构）
+            const mergedItems = { ...localItems };
+            const localItemCount = Object.keys(localItems).length;
+            const remoteItemCount = Object.keys(remoteItems).length;
+            
+            // 获取本地所有 item IDs 和远程所有 item IDs
+            const localItemIds = new Set(Object.keys(localItems));
+            const remoteItemIds = new Set(Object.keys(remoteItems));
+            
+            // 关键修复：如果远程删除了 item（远程 items 中没有，但本地有），且远程的 _lastSync 更新，说明远程删除了
+            // 需要从合并结果中删除这个 item
+            const remoteDayLastSync = new Date(remoteDay._lastSync || remoteData._lastSync || 0);
+            const localDayLastSync = new Date(localDay._lastSync || localData._lastSync || 0);
+            const remoteIsNewer = remoteDayLastSync > localDayLastSync;
+            
+            // 如果远程的 _lastSync 更新，且远程的 item 数量少于本地，说明远程删除了某些 item
+            if (remoteIsNewer && remoteItemCount < localItemCount) {
+                // 删除本地有但远程没有的 item（这些是被远程删除的）
+                localItemIds.forEach(itemId => {
+                    if (!remoteItemIds.has(itemId)) {
+                        // 本地有这个 item，但远程没有，说明远程删除了它
+                        delete mergedItems[itemId];
+                        console.log(`远程删除了 item ${itemId}，已从本地移除`);
+                    }
+                });
+            }
+            
+            // 合并远程items（添加或更新）
+            Object.keys(remoteItems).forEach(itemId => {
+                const remoteItem = remoteItems[itemId];
+                if (!remoteItem) return;
+                
+                const localItem = localItems[itemId];
                 if (localItem) {
                     // 本地有这个 item，合并属性
                     const localUpdated = new Date(localItem._updatedAt || 0);
                     const remoteUpdated = new Date(remoteItem._updatedAt || 0);
                     if (remoteUpdated > localUpdated) {
-                        // 远程更新，使用远程数据，但合并comments、images、plan和_likes
-                        remoteItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
-                        remoteItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
-                        remoteItem.plan = mergePlanItems(localItem.plan || [], remoteItem.plan || []);
+                        // 远程更新，使用远程数据，但合并comments、images、plan和_likes（对象结构）
+                        remoteItem.comments = mergeCommentsObjects(localItem.comments, remoteItem.comments);
+                        remoteItem.images = mergeImagesObjects(localItem.images, remoteItem.images);
+                        remoteItem.plan = mergePlanObjects(localItem.plan, remoteItem.plan);
                         // 合并点赞
                         remoteItem._likes = mergeLikesObject(localItem._likes, remoteItem._likes, getCurrentUser());
-                        itemMap.set(remoteItem.id, remoteItem);
+                        mergedItems[itemId] = remoteItem;
                     } else {
-                    // 本地更新，保留本地数据，但合并comments、images、plan和_likes
-                    // 对于 plan：如果本地更新，以本地为准，只添加远程中本地没有的新项
-                    localItem.comments = mergeComments(localItem.comments || [], remoteItem.comments || []);
-                    localItem.images = mergeArrays(localItem.images || [], remoteItem.images || []);
-                    localItem.plan = mergePlanItemsWithLocalPriority(localItem.plan || [], remoteItem.plan || []);
-                    // 合并点赞（本地优先）
-                    localItem._likes = mergeLikesObject(remoteItem._likes, localItem._likes, getCurrentUser());
-                    itemMap.set(remoteItem.id, localItem);
+                        // 本地更新，保留本地数据，但合并comments、images、plan和_likes（对象结构）
+                        localItem.comments = mergeCommentsObjects(localItem.comments, remoteItem.comments);
+                        localItem.images = mergeImagesObjects(localItem.images, remoteItem.images);
+                        localItem.plan = mergePlanObjectsWithLocalPriority(localItem.plan, remoteItem.plan);
+                        // 合并点赞（本地优先）
+                        localItem._likes = mergeLikesObject(remoteItem._likes, localItem._likes, getCurrentUser());
+                        mergedItems[itemId] = localItem;
                     }
                 } else {
-                    // 本地没有这个 item
+                    // 本地没有这个 item，且远程有
                     // 判断：如果本地 day 有 _lastSync 且比远程 item 的 _updatedAt 新，说明本地有更新，可能删除了这个 item
-                    // 为了安全，我们只添加远程中明显是新增的 item（更新时间比本地最后同步时间新）
-                    const localDayLastSync = new Date(localDay._lastSync || localData._lastSync || 0);
                     const remoteItemUpdated = new Date(remoteItem._updatedAt || 0);
+                    const hasLocalUpdates = localDayLastSync > 0 && localDayLastSync > remoteItemUpdated;
                     
-                    // 如果本地最后同步时间存在且比远程 item 更新时间新，说明本地有更新，可能删除了这个 item
-                    // 在这种情况下，不恢复远程的 item（保留本地的删除操作）
-                    // 或者，如果本地 item 数量少于远程，说明本地可能删除了某些项，不恢复
-                    const localItemCount = (localDay.items || []).length;
-                    const remoteItemCount = (remoteDay.items || []).length;
-                    const hasLocalUpdates = localDayLastSync > 0 && localItemCount < remoteItemCount;
-                    
-                    if (hasLocalUpdates && remoteItemUpdated <= localDayLastSync) {
-                        // 不添加：可能是本地删除的，或者本地没有这个 item
-                        console.log(`跳过恢复远程 item ${remoteItem.id}，本地有更新（最后同步: ${localDayLastSync.toISOString()}, 本地item数: ${localItemCount}, 远程item数: ${remoteItemCount}）`);
+                    if (hasLocalUpdates) {
+                        // 不添加：本地有更新，可能删除了这个 item
+                        console.log(`跳过恢复远程 item ${itemId}，本地有更新（最后同步: ${localDayLastSync.toISOString()}, 远程item更新时间: ${remoteItemUpdated.toISOString()}）`);
                         return; // 跳过这个 item
                     }
                     
                     // 远程 item 是新的（在本地最后同步之后创建的），添加它
-                    itemMap.set(remoteItem.id, { ...remoteItem });
+                    mergedItems[itemId] = { ...remoteItem };
                 }
             });
             
-            localDay.items = Array.from(itemMap.values());
+            mergedDaysObj[dayId] = {
+                ...localDay,
+                items: mergedItems
+            };
         } else {
-            // 远程有新day，添加
-            dayMap.set(remoteDay.id, { ...remoteDay });
+            // 远程有新day，添加（但需要确保 items 是对象结构）
+            if (Array.isArray(remoteDay.items)) {
+                const itemsObj = {};
+                remoteDay.items.forEach(item => {
+                    if (item && item.id) {
+                        itemsObj[item.id] = item;
+                    }
+                });
+                remoteDay.items = itemsObj;
+            } else if (!remoteDay.items || typeof remoteDay.items !== 'object' || remoteDay.items === null) {
+                remoteDay.items = {};
+            }
+            mergedDaysObj[dayId] = { ...remoteDay };
         }
     });
     
-    mergedDays.push(...Array.from(dayMap.values()));
+    // 关键修复：处理远程删除的 day（如果本地有但远程没有，且远程的 _lastSync 更新，说明远程删除了）
+    // 但为了安全，我们保留本地的 day，除非明确知道远程删除了
+    // 这里我们采用保守策略：只合并双方都存在的 day，以及远程新增的 day
+    // 本地有但远程没有的 day 会被保留
     
     // _backup 字段只保留本地的，不合并远程的备份
     // 备份是本地删除操作的记录，不需要从云端同步
@@ -181,12 +256,17 @@ function mergeUnifiedData(localData, remoteData) {
         ? localData._backup 
         : {};
     
+    // 生成 overview（从合并后的 days 对象中提取）
+    const overview = Object.values(mergedDaysObj)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map(day => day.title || '');
+    
     // 构建合并后的数据结构，确保 _backup 字段被包含（只使用本地的备份）
     const mergedResult = {
         id: remoteData.id || localData.id,
         title: remoteData.title || localData.title,
-        overview: remoteData.overview || localData.overview || [],
-        days: mergedDays,
+        overview: overview, // 从合并后的 days 生成
+        days: mergedDaysObj, // 对象结构 {dayId: dayData}
         _backup: localBackup, // 只保留本地的备份（对象结构），不合并远程的备份
         _version: Math.max(localData._version || 0, remoteData._version || 0),
         _lastSync: new Date().toISOString(),
@@ -326,7 +406,225 @@ function mergeComments(localComments, remoteComments) {
     return Array.from(commentMap.values());
 }
 
-// 合并数组（去重）
+// 合并comments对象（对象结构：{hash: comment}）
+function mergeCommentsObjects(localComments, remoteComments) {
+    // 如果输入是数组，先转换为对象（向后兼容）
+    if (Array.isArray(localComments)) {
+        localComments = arrayToCommentsObject(localComments);
+    }
+    if (Array.isArray(remoteComments)) {
+        remoteComments = arrayToCommentsObject(remoteComments);
+    }
+    
+    if (!localComments || typeof localComments !== 'object' || Array.isArray(localComments)) {
+        localComments = {};
+    }
+    if (!remoteComments || typeof remoteComments !== 'object' || Array.isArray(remoteComments)) {
+        remoteComments = {};
+    }
+    
+    const mergedComments = { ...localComments };
+    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
+    
+    // 合并远程的 comments
+    Object.keys(remoteComments).forEach(hash => {
+        const remoteComment = remoteComments[hash];
+        if (!remoteComment) return;
+        
+        const localComment = localComments[hash];
+        if (localComment) {
+            // 已存在，比较时间戳，保留最新的，但合并 _likes
+            const localTime = new Date(localComment._timestamp || localComment._updatedAt || 0);
+            const remoteTime = new Date(remoteComment._timestamp || remoteComment._updatedAt || 0);
+            if (remoteTime > localTime) {
+                remoteComment._likes = mergeLikesIncremental(localComment._likes, remoteComment._likes, currentUser);
+                mergedComments[hash] = remoteComment;
+            } else {
+                localComment._likes = mergeLikesIncremental(remoteComment._likes, localComment._likes, currentUser);
+                mergedComments[hash] = localComment;
+            }
+        } else {
+            // 不存在，添加
+            mergedComments[hash] = remoteComment;
+        }
+    });
+    
+    return mergedComments;
+}
+
+// 辅助函数：将 comments 数组转换为对象
+function arrayToCommentsObject(commentsArray) {
+    const commentsObj = {};
+    if (Array.isArray(commentsArray)) {
+        commentsArray.forEach(comment => {
+            if (comment && comment._hash) {
+                commentsObj[comment._hash] = comment;
+            } else if (comment) {
+                // 如果没有 _hash，生成一个
+                const message = comment.message || '';
+                const user = comment.user || '';
+                const hash = generateSyncHash(message, user, null);
+                comment._hash = hash;
+                commentsObj[hash] = comment;
+            }
+        });
+    }
+    return commentsObj;
+}
+
+// 合并images对象（对象结构：{key: imageData}）
+function mergeImagesObjects(localImages, remoteImages) {
+    // 如果输入是数组，先转换为对象（向后兼容）
+    if (Array.isArray(localImages)) {
+        localImages = arrayToImagesObject(localImages);
+    }
+    if (Array.isArray(remoteImages)) {
+        remoteImages = arrayToImagesObject(remoteImages);
+    }
+    
+    if (!localImages || typeof localImages !== 'object' || Array.isArray(localImages)) {
+        localImages = {};
+    }
+    if (!remoteImages || typeof remoteImages !== 'object' || Array.isArray(remoteImages)) {
+        remoteImages = {};
+    }
+    
+    // 合并对象：以远程为主，但保留本地中远程没有的
+    const mergedImages = { ...localImages };
+    Object.keys(remoteImages).forEach(key => {
+        if (remoteImages[key]) {
+            mergedImages[key] = remoteImages[key];
+        }
+    });
+    
+    return mergedImages;
+}
+
+// 辅助函数：将 images 数组转换为对象
+function arrayToImagesObject(imagesArray) {
+    const imagesObj = {};
+    if (Array.isArray(imagesArray)) {
+        imagesArray.forEach((image, index) => {
+            if (image) {
+                const key = typeof image === 'string' 
+                    ? index.toString() 
+                    : (image.url ? image.url.split('/').pop().replace(/[.#$\/\[\]]/g, '_') : index.toString());
+                imagesObj[key] = typeof image === 'string' ? { url: image } : image;
+            }
+        });
+    }
+    return imagesObj;
+}
+
+// 合并plan对象（对象结构：{hash: planItem}）
+function mergePlanObjects(localPlan, remotePlan) {
+    // 如果输入是数组，先转换为对象（向后兼容）
+    if (Array.isArray(localPlan)) {
+        localPlan = arrayToPlanObject(localPlan);
+    }
+    if (Array.isArray(remotePlan)) {
+        remotePlan = arrayToPlanObject(remotePlan);
+    }
+    
+    if (!localPlan || typeof localPlan !== 'object' || Array.isArray(localPlan)) {
+        localPlan = {};
+    }
+    if (!remotePlan || typeof remotePlan !== 'object' || Array.isArray(remotePlan)) {
+        remotePlan = {};
+    }
+    
+    const mergedPlan = { ...localPlan };
+    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
+    
+    // 合并远程的 plan items
+    Object.keys(remotePlan).forEach(hash => {
+        const remotePlanItem = remotePlan[hash];
+        if (!remotePlanItem) return;
+        
+        const localPlanItem = localPlan[hash];
+        if (localPlanItem) {
+            // 已存在，比较时间戳，保留最新的，但合并 _likes
+            const localTime = new Date(localPlanItem._timestamp || localPlanItem._updatedAt || 0);
+            const remoteTime = new Date(remotePlanItem._timestamp || remotePlanItem._updatedAt || 0);
+            if (remoteTime > localTime) {
+                remotePlanItem._likes = mergeLikesIncremental(localPlanItem._likes, remotePlanItem._likes, currentUser);
+                mergedPlan[hash] = remotePlanItem;
+            } else {
+                localPlanItem._likes = mergeLikesIncremental(remotePlanItem._likes, localPlanItem._likes, currentUser);
+                mergedPlan[hash] = localPlanItem;
+            }
+        } else {
+            // 不存在，添加
+            mergedPlan[hash] = remotePlanItem;
+        }
+    });
+    
+    return mergedPlan;
+}
+
+// 合并plan对象（本地优先）
+function mergePlanObjectsWithLocalPriority(localPlan, remotePlan) {
+    // 如果输入是数组，先转换为对象（向后兼容）
+    if (Array.isArray(localPlan)) {
+        localPlan = arrayToPlanObject(localPlan);
+    }
+    if (Array.isArray(remotePlan)) {
+        remotePlan = arrayToPlanObject(remotePlan);
+    }
+    
+    if (!localPlan || typeof localPlan !== 'object' || Array.isArray(localPlan)) {
+        localPlan = {};
+    }
+    if (!remotePlan || typeof remotePlan !== 'object' || Array.isArray(remotePlan)) {
+        remotePlan = {};
+    }
+    
+    // 以本地为主，只添加远程中本地没有的新项
+    const mergedPlan = { ...localPlan };
+    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
+    
+    Object.keys(remotePlan).forEach(hash => {
+        const remotePlanItem = remotePlan[hash];
+        if (!remotePlanItem) return;
+        
+        const localPlanItem = localPlan[hash];
+        if (localPlanItem) {
+            // 已存在，合并 _likes（本地优先）
+            localPlanItem._likes = mergeLikesIncremental(remotePlanItem._likes, localPlanItem._likes, currentUser);
+            mergedPlan[hash] = localPlanItem;
+        } else {
+            // 不存在，添加远程的新项
+            mergedPlan[hash] = remotePlanItem;
+        }
+    });
+    
+    return mergedPlan;
+}
+
+// 辅助函数：将 plan 数组转换为对象
+function arrayToPlanObject(planArray) {
+    const planObj = {};
+    if (Array.isArray(planArray)) {
+        planArray.forEach((p, index) => {
+            if (p) {
+                const planItem = typeof p === 'string' ? { _text: p } : p;
+                if (planItem._hash) {
+                    planObj[planItem._hash] = planItem;
+                } else {
+                    // 如果没有 _hash，生成一个
+                    const text = planItem._text || JSON.stringify(planItem);
+                    const user = planItem._user || '';
+                    const hash = generateSyncHash(text, user, null);
+                    planItem._hash = hash;
+                    planObj[hash] = planItem;
+                }
+            }
+        });
+    }
+    return planObj;
+}
+
+// 合并数组（去重）- 保留用于向后兼容
 function mergeArrays(localArray, remoteArray) {
     return Array.from(new Set([...localArray, ...remoteArray]));
 }
@@ -651,13 +949,37 @@ class DataSyncFirebase {
                     }
                 }
                 
+                // 关键修复：确保 days 是对象结构（如果还是数组，转换为对象）
+                if (unifiedData.days && Array.isArray(unifiedData.days)) {
+                    const daysObj = {};
+                    unifiedData.days.forEach(day => {
+                        if (day && day.id) {
+                            daysObj[day.id] = day;
+                        }
+                    });
+                    unifiedData.days = daysObj;
+                    const daysSaveNeeded = true;
+                    needSave = needSave || daysSaveNeeded;
+                    console.log('上传前检测到 days 是数组格式，已转换为对象格式');
+                    // 保存转换后的数据
+                    if (daysSaveNeeded) {
+                        try {
+                            tripDataStructure.saveUnifiedData(unifiedData);
+                        } catch (e) {
+                            console.warn('转换 days 后保存失败:', e);
+                        }
+                    }
+                } else if (!unifiedData.days || typeof unifiedData.days !== 'object' || unifiedData.days === null) {
+                    unifiedData.days = {};
+                }
+                
                 // 提取 _backup 作为独立字段（和 trip_unified_data 同级）
                 const backupData = unifiedData._backup || {};
                 // 从 unifiedData 中移除 _backup（因为它是独立字段）
                 const unifiedDataWithoutBackup = { ...unifiedData };
                 delete unifiedDataWithoutBackup._backup;
                 
-                // 存储统一数据（不包含 _backup）
+                // 存储统一数据（不包含 _backup），days 现在是对象结构
                 data['trip_unified_data'] = unifiedDataWithoutBackup;
                 // 存储备份数据作为独立字段（对象结构）
                 data['_backup'] = backupData;
@@ -731,11 +1053,10 @@ class DataSyncFirebase {
             
             // 验证 unifiedData 的结构
             if (unifiedData && typeof unifiedData === 'object') {
-                // 检查是否是有效的统一数据结构（应该有 days 数组）
-                if (!unifiedData.days || !Array.isArray(unifiedData.days)) {
-                    console.error('setAllLocalData: trip_unified_data 结构不正确', {
+                // 关键修复：days 现在是对象结构 {dayId: dayData}，不再是数组
+                if (!unifiedData.days) {
+                    console.error('setAllLocalData: trip_unified_data 结构不正确，缺少 days', {
                         hasDays: !!unifiedData.days,
-                        daysIsArray: Array.isArray(unifiedData.days),
                         unifiedDataKeys: Object.keys(unifiedData),
                         unifiedDataType: typeof unifiedData
                     });
@@ -748,12 +1069,31 @@ class DataSyncFirebase {
                     }
                     
                     // 再次检查
-                    if (!unifiedData.days || !Array.isArray(unifiedData.days)) {
+                    if (!unifiedData.days) {
                         console.error('setAllLocalData: 无法修复数据，跳过保存');
                         // 删除统一数据键，避免重复处理
                         delete data['trip_unified_data'];
                         return;
                     }
+                }
+                
+                // 如果 days 是数组（旧数据），转换为对象结构
+                if (Array.isArray(unifiedData.days)) {
+                    const daysObj = {};
+                    unifiedData.days.forEach(day => {
+                        if (day && day.id) {
+                            daysObj[day.id] = day;
+                        }
+                    });
+                    unifiedData.days = daysObj;
+                    console.log('setAllLocalData: 已将 days 从数组转换为对象结构');
+                } else if (typeof unifiedData.days !== 'object' || unifiedData.days === null) {
+                    console.error('setAllLocalData: days 类型不正确，应该是对象结构', {
+                        hasDays: !!unifiedData.days,
+                        daysType: typeof unifiedData.days,
+                        daysIsArray: Array.isArray(unifiedData.days)
+                    });
+                    unifiedData.days = {}; // 初始化为空对象
                 }
                 
                 // 忽略独立的 _backup 字段（不下载备份数据，以控制下载量）
@@ -826,15 +1166,9 @@ class DataSyncFirebase {
                 throw new Error('未登录，无法删除数据');
             }
             
-            // 获取数组索引（因为 Firebase 中数组存储为对象）
-            const dayIndex = this.getDayIndex(dayId);
-            const itemIndex = this.getItemIndex(dayId, itemId);
-            
-            if (dayIndex === null || itemIndex === null) {
-                throw new Error(`无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引`);
-            }
-            
-            const subPath = `days/${dayIndex}/items/${itemIndex}`;
+            // days 现在是对象结构，直接使用 dayId 和 itemId 作为路径
+            // 路径格式：days/{dayId}/items/{itemId}
+            const subPath = `days/${dayId}/items/${itemId}`;
             const updates = {};
             // 在 Firebase 中，将一个路径设为 null 等同于彻底删除该节点
             updates[`trip_unified_data/${subPath}`] = null;
@@ -848,35 +1182,21 @@ class DataSyncFirebase {
         }
     }
 
-    // 辅助函数：将 dayId 转换为数组索引
-    // 因为 Firebase 中数组存储为对象，键是索引（0, 1, 2...）
+    // 辅助函数：获取 dayId（days 现在是对象结构，直接使用 dayId 作为 key）
+    // 为了向后兼容，保留函数名，但现在直接返回 dayId（不再需要索引）
     getDayIndex(dayId) {
-        if (typeof tripDataStructure === 'undefined') {
-            return null;
-        }
-        const unifiedData = tripDataStructure.loadUnifiedData();
-        if (!unifiedData || !unifiedData.days || !Array.isArray(unifiedData.days)) {
-            return null;
-        }
-        const dayIndex = unifiedData.days.findIndex(day => day && day.id === dayId);
-        return dayIndex >= 0 ? dayIndex : null;
+        // days 现在是对象结构 {dayId: dayData}，直接使用 dayId 即可
+        // 返回 dayId 本身，而不是索引
+        // 如果调用者期望数字索引，这里仍然返回 dayId（字符串），调用者需要适配
+        return dayId;
     }
     
-    // 辅助函数：将 itemId 转换为数组索引（在指定 day 中）
+    // 辅助函数：获取 itemId（items 现在是对象结构，直接使用 itemId 作为 key）
+    // 为了向后兼容，保留函数名，但现在直接返回 itemId（不再需要索引）
     getItemIndex(dayId, itemId) {
-        if (typeof tripDataStructure === 'undefined') {
-            return null;
-        }
-        const unifiedData = tripDataStructure.loadUnifiedData();
-        if (!unifiedData || !unifiedData.days || !Array.isArray(unifiedData.days)) {
-            return null;
-        }
-        const day = tripDataStructure.getDayData(unifiedData, dayId);
-        if (!day || !day.items || !Array.isArray(day.items)) {
-            return null;
-        }
-        const itemIndex = day.items.findIndex(item => item && item.id === itemId);
-        return itemIndex >= 0 ? itemIndex : null;
+        // items 现在是对象结构 {itemId: itemData}，直接使用 itemId 即可
+        // 返回 itemId 本身，而不是索引
+        return itemId;
     }
 
     // 上传单个卡片到云端（增量更新）
@@ -909,17 +1229,9 @@ class DataSyncFirebase {
                 return await this.cloudDeleteItem(dayId, itemId);
             }
             
-            // 获取数组索引（因为 Firebase 中数组存储为对象）
-            const dayIndex = this.getDayIndex(dayId);
-            const itemIndex = this.getItemIndex(dayId, itemId);
-            
-            if (dayIndex === null || itemIndex === null) {
-                throw new Error(`无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引`);
-            }
-            
-            // 使用统一增量更新函数：直接更新整个 item
-            // 路径使用数组索引：days/0/items/1
-            const subPath = `days/${dayIndex}/items/${itemIndex}`;
+            // days 和 items 现在都是对象结构，直接使用 dayId 和 itemId 作为路径
+            // 路径格式：days/{dayId}/items/{itemId}
+            const subPath = `days/${dayId}/items/${itemId}`;
             const result = await this.cloudIncrementalUpdate(subPath, item);
             
             if (result.success) {
@@ -1020,15 +1332,9 @@ class DataSyncFirebase {
     // 增量更新特定字段（用于点赞、评论等操作）
     // 使用统一增量更新函数
     async updateItemField(dayId, itemId, field, value) {
-        // 获取数组索引（因为 Firebase 中数组存储为对象）
-        const dayIndex = this.getDayIndex(dayId);
-        const itemIndex = this.getItemIndex(dayId, itemId);
-        
-        if (dayIndex === null || itemIndex === null) {
-            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
-        }
-        
-        const subPath = `days/${dayIndex}/items/${itemIndex}`;
+        // days 现在是对象结构，直接使用 dayId 和 itemId 作为路径
+        // 路径格式：days/{dayId}/items/{itemId}
+        const subPath = `days/${dayId}/items/${itemId}`;
         const result = await this.cloudIncrementalUpdate(subPath, { [field]: value });
         if (result.success) {
             result.message = `已更新字段 ${field}`;
@@ -1043,30 +1349,19 @@ class DataSyncFirebase {
     // @param {string} nestedPath - 嵌套路径，例如 'comments/0' 或 'plan/1'
     // @param {Object} dataObj - 要更新的键值对
     async updateNestedField(dayId, itemId, nestedPath, dataObj) {
-        // 获取数组索引（因为 Firebase 中数组存储为对象）
-        const dayIndex = this.getDayIndex(dayId);
-        const itemIndex = this.getItemIndex(dayId, itemId);
-        
-        if (dayIndex === null || itemIndex === null) {
-            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
-        }
-        
-        const subPath = `days/${dayIndex}/items/${itemIndex}/${nestedPath}`;
+        // days 现在是对象结构，直接使用 dayId 和 itemId 作为路径
+        // 路径格式：days/{dayId}/items/{itemId}/{nestedPath}
+        const subPath = `days/${dayId}/items/${itemId}/${nestedPath}`;
         return await this.cloudIncrementalUpdate(subPath, dataObj);
     }
 
     // 更新整个数组字段（例如：更新所有评论、所有计划项）
-    // 用于批量更新数组内容
+    // 用于批量更新数组内容（但现在字段是对象结构）
     async updateArrayField(dayId, itemId, fieldName, arrayValue) {
-        // 获取数组索引（因为 Firebase 中数组存储为对象）
-        const dayIndex = this.getDayIndex(dayId);
-        const itemIndex = this.getItemIndex(dayId, itemId);
-        
-        if (dayIndex === null || itemIndex === null) {
-            return { success: false, message: `无法找到 dayId=${dayId} 或 itemId=${itemId} 的索引` };
-        }
-        
-        const subPath = `days/${dayIndex}/items/${itemIndex}`;
+        // days 现在是对象结构，直接使用 dayId 和 itemId 作为路径
+        // 路径格式：days/{dayId}/items/{itemId}
+        const subPath = `days/${dayId}/items/${itemId}`;
+        // 注意：arrayValue 现在应该是对象结构，不是数组
         return await this.cloudIncrementalUpdate(subPath, { [fieldName]: arrayValue });
     }
 

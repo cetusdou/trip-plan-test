@@ -68,16 +68,58 @@ function getDayDataByDayId(dayId) {
     }
     
     // 确保所有item都有必要的字段
-    if (day.items && Array.isArray(day.items)) {
-        day.items.forEach(item => {
-            // 确保 images 是数组
-            if (!item.hasOwnProperty('images') || !Array.isArray(item.images)) {
-                item.images = Array.isArray(item.images) ? item.images : [];
+    // 关键修复：day.items 现在是对象结构，需要适配
+    if (day.items) {
+        let itemsArray = [];
+        if (Array.isArray(day.items)) {
+            itemsArray = day.items;
+        } else if (typeof day.items === 'object' && day.items !== null) {
+            // 对象结构：转换为数组进行处理
+            itemsArray = Object.values(day.items).filter(item => item !== null && item !== undefined);
+        }
+        
+        itemsArray.forEach(item => {
+            // 确保 images 是对象结构（如果原来是数组，需要转换）
+            if (item.images) {
+                if (Array.isArray(item.images)) {
+                    // 从数组转换为对象
+                    const imagesObj = {};
+                    item.images.forEach((img, index) => {
+                        if (img) {
+                            const key = typeof img === 'string' ? index.toString() : (img.url ? img.url.split('/').pop().replace(/[.#$\/\[\]]/g, '_') : index.toString());
+                            imagesObj[key] = typeof img === 'string' ? { url: img } : img;
+                        }
+                    });
+                    item.images = imagesObj;
+                } else if (typeof item.images !== 'object' || item.images === null) {
+                    item.images = {};
+                }
+            } else {
+                item.images = {};
             }
-            // 确保 comments 是数组
-            if (!item.hasOwnProperty('comments') || !Array.isArray(item.comments)) {
-                item.comments = Array.isArray(item.comments) ? item.comments : [];
+            
+            // 确保 comments 是对象结构（如果原来是数组，需要转换）
+            if (item.comments) {
+                if (Array.isArray(item.comments)) {
+                    // 从数组转换为对象
+                    const commentsObj = {};
+                    item.comments.forEach(comment => {
+                        if (comment && comment._hash) {
+                            commentsObj[comment._hash] = comment;
+                        } else if (comment) {
+                            const hash = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                            comment._hash = hash;
+                            commentsObj[hash] = comment;
+                        }
+                    });
+                    item.comments = commentsObj;
+                } else if (typeof item.comments !== 'object' || item.comments === null) {
+                    item.comments = {};
+                }
+            } else {
+                item.comments = {};
             }
+            
             // spend 可能是数组或 null
             if (!item.hasOwnProperty('spend')) {
                 item.spend = null;
@@ -85,6 +127,7 @@ function getDayDataByDayId(dayId) {
                 // 如果 spend 不是数组也不是 null，转换为数组
                 item.spend = [item.spend];
             }
+            
             if (!item.id) {
                 // 统一结构中的item缺少id，生成临时id
                 item.id = `${cleanDayId}_item_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -94,8 +137,19 @@ function getDayDataByDayId(dayId) {
             }
         });
         
-        // 按order排序
-        day.items.sort((a, b) => (a.order || 0) - (b.order || 0));
+        // 如果原来是对象结构，将处理后的数组转换回对象
+        if (!Array.isArray(day.items)) {
+            const itemsObj = {};
+            itemsArray.forEach(item => {
+                if (item && item.id) {
+                    itemsObj[item.id] = item;
+                }
+            });
+            day.items = itemsObj;
+        } else {
+            // 如果是数组，直接排序（但不修改原数组，因为数组已经在统一结构中按 order 排序）
+            // day.items 已经是排序后的数组
+        }
     }
     
     return day;
@@ -108,8 +162,17 @@ function getDayItems(dayId) {
         return [];
     }
     
+    // 关键修复：day.items 现在是对象结构，需要转换为数组
+    let itemsArray = [];
+    if (Array.isArray(day.items)) {
+        itemsArray = day.items;
+    } else if (typeof day.items === 'object' && day.items !== null) {
+        // 对象结构：转换为数组
+        itemsArray = Object.values(day.items).filter(item => item !== null && item !== undefined);
+    }
+    
     // 应用保存的顺序
-    const orderedItems = applyCardOrder(dayId, day.items);
+    const orderedItems = applyCardOrder(dayId, itemsArray);
     
     // 应用过滤器（如果存在）
     if (typeof window.applyFilter === 'function') {
@@ -227,6 +290,53 @@ function addItem(dayId, itemData) {
     refreshUIAndSync(dayId, newItem.id);
 }
 
+// 辅助函数：回退上传整个 items 数组（当无法找到索引时）
+function fallbackUploadItemsArray(dayId, dayIndex, items) {
+    if (typeof window.dataSyncFirebase === 'undefined' || !window.dataSyncFirebase.cloudIncrementalUpdate) {
+        console.warn('dataSyncFirebase 未定义，无法上传 items');
+        return;
+    }
+    
+    // 如果 dayIndex 为 null，尝试获取
+    if (dayIndex === null || dayIndex === undefined) {
+        dayIndex = window.dataSyncFirebase.getDayIndex ? window.dataSyncFirebase.getDayIndex(dayId) : null;
+    }
+    
+    if (dayIndex === null) {
+        console.warn(`无法找到 dayId=${dayId} 的索引，回退到全量上传`);
+        if (window.dataSyncFirebase.upload) {
+            window.dataSyncFirebase.upload(true).catch(error => {
+                console.error('回退全量上传失败:', error);
+            });
+        }
+        return;
+    }
+    
+    // 将 items 对象转换为数组（如果它是对象）
+    let itemsArray = [];
+    if (Array.isArray(items)) {
+        itemsArray = items;
+    } else if (typeof items === 'object' && items !== null) {
+        // 对象结构：转换为数组（按 order 排序）
+        itemsArray = Object.values(items).sort((a, b) => {
+            const orderA = a.order !== undefined ? a.order : 999999;
+            const orderB = b.order !== undefined ? b.order : 999999;
+            return orderA - orderB;
+        });
+    }
+    
+    // 上传整个 items 数组
+    window.dataSyncFirebase.cloudIncrementalUpdate(`days/${dayIndex}`, { items: itemsArray }, false).then(result => {
+        if (result.success) {
+            console.log(`回退：已上传整个 items 数组，items 数量: ${itemsArray.length}`);
+        } else {
+            console.warn('回退上传 items 数组失败:', result.message);
+        }
+    }).catch(error => {
+        console.error('回退上传 items 数组出错:', error);
+    });
+}
+
 // 删除行程项（软删除：移到备份中）
 function deleteItem(dayId, itemId) {
     if (!validateWriteOperation(dayId)) return;
@@ -272,27 +382,59 @@ function deleteItem(dayId, itemId) {
             
             window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
                 console.log(`删除项后已增量更新备份字段，备份 key: ${timestampKey}`);
-                    // 备份字段更新成功，现在还需要更新 day.items 数组
+                    // 备份字段更新成功，现在还需要更新 day.items（对象结构）
+                    // 关键修复：items 现在是对象结构，需要删除特定的 item，而不是替换整个 items
                     // 获取更新后的 day 数据
                     const latestUnifiedData = tripDataStructure.loadUnifiedData();
                     const day = tripDataStructure.getDayData(latestUnifiedData, dayId);
-                    if (day && day.items && Array.isArray(day.items)) {
-                        // 获取 day 的数组索引（Firebase 中数组存储为对象，需要索引）
-                        const dayIndex = window.dataSyncFirebase.getDayIndex ? window.dataSyncFirebase.getDayIndex(dayId) : null;
-                        if (dayIndex !== null) {
-                            // 更新 day 的 items 数组
-                            window.dataSyncFirebase.cloudIncrementalUpdate(`days/${dayIndex}`, { items: day.items }, false).then(itemsResult => {
+                    if (day && day.items) {
+                        // days 和 items 现在都是对象结构，直接使用 dayId 和 itemId 删除
+                        // 路径格式：days/{dayId}/items/{itemId}
+                        const updates = {};
+                        updates[`trip_unified_data/days/${dayId}/items/${itemId}`] = null; // 设置为 null 来删除
+                        updates['_lastSync'] = new Date().toISOString();
+                        updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                        
+                        window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
+                            console.log(`删除项后已删除云端 item，dayId: ${dayId}, itemId: ${itemId}`);
+                        }).catch(deleteError => {
+                            console.error('删除云端 item 出错:', deleteError);
+                            // 如果直接删除失败（可能是 Firebase 中还是数组格式），尝试上传整个 items 对象
+                            // 将 items 对象转换为数组（按 order 排序）作为回退方案
+                            let itemsArray = [];
+                            if (Array.isArray(day.items)) {
+                                itemsArray = day.items;
+                            } else if (typeof day.items === 'object' && day.items !== null) {
+                                itemsArray = Object.values(day.items).sort((a, b) => {
+                                    const orderA = a.order !== undefined ? a.order : 999999;
+                                    const orderB = b.order !== undefined ? b.order : 999999;
+                                    return orderA - orderB;
+                                });
+                            }
+                            
+                            // 回退：使用 cloudIncrementalUpdate 上传整个 items 数组
+                            window.dataSyncFirebase.cloudIncrementalUpdate(`days/${dayId}`, { items: itemsArray }, false).then(itemsResult => {
                                 if (itemsResult.success) {
-                                    console.log(`删除项后已增量更新 items 数组，items 数量: ${day.items.length}`);
+                                    console.log(`回退：已上传整个 items 数组，items 数量: ${itemsArray.length}`);
                                 } else {
-                                    console.warn('更新 items 数组失败:', itemsResult.message);
+                                    console.warn('回退上传 items 数组失败:', itemsResult.message);
+                                    // 最终回退：全量上传
+                                    if (window.dataSyncFirebase.upload) {
+                                        window.dataSyncFirebase.upload(true).catch(uploadError => {
+                                            console.error('最终回退全量上传也失败:', uploadError);
+                                        });
+                                    }
                                 }
                             }).catch(itemsError => {
-                                console.error('更新 items 数组出错:', itemsError);
+                                console.error('回退上传 items 数组出错:', itemsError);
+                                // 最终回退：全量上传
+                                if (window.dataSyncFirebase.upload) {
+                                    window.dataSyncFirebase.upload(true).catch(uploadError => {
+                                        console.error('最终回退全量上传也失败:', uploadError);
+                                    });
+                                }
                             });
-                        } else {
-                            console.warn(`无法找到 dayId=${dayId} 的索引，跳过 items 数组更新`);
-                        }
+                        });
                     }
             }).catch(error => {
                 console.error('删除项后增量更新备份字段出错:', error);
@@ -314,41 +456,77 @@ function deleteItem(dayId, itemId) {
 
 // 应用卡片顺序
 function applyCardOrder(dayId, items) {
+    // 关键修复：items 现在可能是对象结构或数组，需要先转换为数组
+    let itemsArray = [];
+    
+    // 确保 items 是有效值
+    if (!items) {
+        return [];
+    }
+    
+    if (Array.isArray(items)) {
+        itemsArray = items.filter(item => item !== null && item !== undefined);
+    } else if (typeof items === 'object' && items !== null) {
+        // 对象结构：转换为数组
+        try {
+            itemsArray = Object.values(items).filter(item => item !== null && item !== undefined);
+        } catch (e) {
+            console.error('applyCardOrder: 转换 items 对象失败', { dayId, items, error: e });
+            return [];
+        }
+    } else {
+        // 如果 items 类型不正确，返回空数组
+        console.warn('applyCardOrder: items 类型不正确', { dayId, items, itemsType: typeof items });
+        return [];
+    }
+    
     // 只使用统一结构中的order字段
     if (typeof tripDataStructure === 'undefined') {
         // 如果没有统一结构，直接按order字段排序
-        return items.sort((a, b) => (a.order || 0) - (b.order || 0));
+        return itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
     
     const unifiedData = tripDataStructure.loadUnifiedData();
     if (!unifiedData) {
-        return items.sort((a, b) => (a.order || 0) - (b.order || 0));
+        return itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
     
     const day = tripDataStructure.getDayData(unifiedData, dayId);
     if (!day || !day.items) {
-        return items.sort((a, b) => (a.order || 0) - (b.order || 0));
+        return itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+    
+    // day.items 现在也是对象结构，需要转换为数组
+    let dayItemsArray = [];
+    if (Array.isArray(day.items)) {
+        dayItemsArray = day.items;
+    } else if (typeof day.items === 'object' && day.items !== null) {
+        dayItemsArray = Object.values(day.items).filter(item => item !== null && item !== undefined);
     }
     
     // 创建itemId到item的映射
     const itemMap = new Map();
-    items.forEach(item => {
-        if (item.id) {
+    itemsArray.forEach(item => {
+        if (item && item.id) {
             itemMap.set(item.id, item);
         }
     });
     
     // 按order排序统一结构中的items
-    const orderedItems = day.items
-        .filter(item => itemMap.has(item.id))
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
+    const orderedItems = dayItemsArray
+        .filter(item => item && item.id && itemMap.has(item.id))
+        .sort((a, b) => {
+            const orderA = a.order !== undefined ? a.order : 999999;
+            const orderB = b.order !== undefined ? b.order : 999999;
+            return orderA - orderB;
+        })
         .map(item => itemMap.get(item.id))
-        .filter(item => item !== undefined);
+        .filter(item => item !== undefined && item !== null);
     
     // 添加没有在统一结构中的项（新添加的项）
-    const orderedIds = new Set(orderedItems.map(item => item.id));
-    items.forEach(item => {
-        if (item.id && !orderedIds.has(item.id)) {
+    const orderedIds = new Set(orderedItems.map(item => item.id).filter(id => id));
+    itemsArray.forEach(item => {
+        if (item && item.id && !orderedIds.has(item.id)) {
             orderedItems.push(item);
         }
     });

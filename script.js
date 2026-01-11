@@ -450,6 +450,15 @@ class CardSlider {
                 }
             }
             
+            // 如果 items 是对象结构，转换为数组（根据 order 排序）
+            if (items && typeof items === 'object' && !Array.isArray(items)) {
+                items = Object.values(items).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+            }
+            
             // 应用排序（确保按照保存的 order 字段排序）
             if (typeof window.applyCardOrder === 'function') {
                 items = window.applyCardOrder(this.dayId, items);
@@ -535,9 +544,10 @@ class CardSlider {
             // 【关键修复】每次都获取最新的 unifiedData，确保数据是最新的
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
+                // 关键修复：days 现在是对象结构 {dayId: dayData}，不再是数组
                 // 验证 unifiedData 的结构
-                if (!unifiedData.days || !Array.isArray(unifiedData.days)) {
-                    
+                if (!unifiedData.days) {
+                    console.warn('createCard: unifiedData 缺少 days', { unifiedData });
                 } else {
                     // 【实时容错】确保 dayId 安全：如果实例内的脏了，用全局的
                     let safeDayId = this.dayId;
@@ -562,10 +572,32 @@ class CardSlider {
                     } else {
                         const item = tripDataStructure.getItemData(unifiedData, safeDayId, itemId);
                         if (item) {
-                            // 确保 comments 是数组
-                            comments = Array.isArray(item.comments) ? item.comments : (item.comments ? [item.comments] : []);
-                            // 确保 images 是数组
-                            images = Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []);
+                            // comments 现在是对象结构 {hash: comment}，转换为数组并按时间排序
+                            if (item.comments && typeof item.comments === 'object' && !Array.isArray(item.comments)) {
+                                comments = Object.values(item.comments)
+                                    .filter(c => c && !c._deleted)
+                                    .sort((a, b) => {
+                                        // 按时间戳排序（旧的在前）
+                                        const timeA = a.timestamp || 0;
+                                        const timeB = b.timestamp || 0;
+                                        return timeA - timeB;
+                                    });
+                            } else {
+                                comments = Array.isArray(item.comments) 
+                                    ? item.comments.filter(c => c && !c._deleted).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+                                    : (item.comments ? [item.comments] : []);
+                            }
+                            
+                            // images 现在是对象结构 {key: imageData}，转换为数组
+                            if (item.images && typeof item.images === 'object' && !Array.isArray(item.images)) {
+                                images = Object.values(item.images).map(img => {
+                                    // 如果 image 是对象，提取 url；如果是字符串，直接使用
+                                    return typeof img === 'object' && img !== null ? (img.url || img) : img;
+                                });
+                            } else {
+                                images = Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []);
+                            }
+                            
                             // spend 可能是数组或 null
                             spendItems = Array.isArray(item.spend) ? item.spend : (item.spend ? [item.spend] : []);
                         } else {
@@ -731,35 +763,48 @@ class CardSlider {
         }
         
         // 总是显示计划区域，即使没有计划项也可以添加
-        // 支持plan为数组或字符串格式
-        // 如果是数组，直接使用；如果是字符串，转换为单元素数组
-        // 处理plan数据，支持字符串和对象格式，过滤已删除的项
+        // plan 现在是对象结构 {hash: planItem}，转换为数组
+        // 处理plan数据，支持对象、数组或字符串格式，过滤已删除的项
         let planItems = [];
         if (planData) {
-            if (Array.isArray(planData)) {
-                planItems = planData
+            // 如果 planData 是对象结构（不是数组），转换为数组
+            if (typeof planData === 'object' && !Array.isArray(planData) && planData !== null) {
+                planItems = Object.values(planData)
                     .filter(item => {
                         // 过滤掉 null 和 undefined
                         if (!item) return false;
-                        // 如果是对象，检查是否有 _deleted 标记（如果有且为 true，则过滤掉）
-                        if (typeof item === 'object' && item !== null) {
-                            // 如果 _deleted 为 true，过滤掉
-                            if (item._deleted === true) return false;
-                            // 如果有 _text 字段，确保不为空
-                            if (item._text !== undefined && item._text !== null) {
-                                if (String(item._text).trim().length === 0) return false;
-                            } else {
-                                // 如果没有 _text 字段，也保留（可能是旧格式）
-                                return true;
-                            }
-                            return true;
+                        // 检查是否有 _deleted 标记
+                        if (item._deleted === true) return false;
+                        // 如果有 _text 字段，确保不为空
+                        if (item._text !== undefined && item._text !== null) {
+                            if (String(item._text).trim().length === 0) return false;
                         }
-                        // 如果是字符串，确保不为空
-                        if (typeof item === 'string') {
-                            return item.trim().length > 0;
-                        }
-                        return false;
+                        return true;
+                    })
+                    .sort((a, b) => {
+                        // 按时间戳排序（旧的在前），与 LikeHandler 中的排序逻辑保持一致
+                        const timeA = (a && typeof a === 'object' && a._timestamp) ? a._timestamp : 0;
+                        const timeB = (b && typeof b === 'object' && b._timestamp) ? b._timestamp : 0;
+                        return timeA - timeB;
                     });
+            } else if (Array.isArray(planData)) {
+                planItems = planData.filter(item => {
+                    // 过滤掉 null 和 undefined
+                    if (!item) return false;
+                    // 如果是对象，检查是否有 _deleted 标记
+                    if (typeof item === 'object' && item !== null) {
+                        if (item._deleted === true) return false;
+                        if (item._text !== undefined && item._text !== null) {
+                            if (String(item._text).trim().length === 0) return false;
+                        }
+                        return true;
+                    }
+                    // 如果是字符串，确保不为空
+                    if (typeof item === 'string') {
+                        return item.trim().length > 0;
+                    }
+                    return false;
+                });
             } else if (typeof planData === 'string') {
                 planItems = planData.trim().length > 0 ? [planData] : [];
             }
@@ -793,7 +838,20 @@ class CardSlider {
                         }
                         const planHash = (planItem && typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
                         // 使用原始数组中的索引（不是过滤后的索引）
-                        const originalPlanItems = Array.isArray(cardData.plan) ? cardData.plan : (cardData.plan ? [cardData.plan] : []);
+                        // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
+                        let originalPlanItems = [];
+                        if (Array.isArray(cardData.plan)) {
+                            originalPlanItems = cardData.plan;
+                        } else if (cardData.plan && typeof cardData.plan === 'object' && cardData.plan !== null) {
+                            // 对象结构：转换为数组并按时间戳排序（与渲染逻辑保持一致）
+                            originalPlanItems = Object.values(cardData.plan).sort((a, b) => {
+                                const timeA = (a && typeof a === 'object' && a._timestamp) ? a._timestamp : 0;
+                                const timeB = (b && typeof b === 'object' && b._timestamp) ? b._timestamp : 0;
+                                return timeA - timeB;
+                            });
+                        } else if (cardData.plan) {
+                            originalPlanItems = [cardData.plan];
+                        }
                         const originalIndex = originalPlanItems.findIndex(p => {
                             // 安全检查：过滤掉 null 和 undefined
                             if (!p || !planItem) {
@@ -2165,7 +2223,16 @@ class CardSlider {
                                 if (unifiedData) {
                                     const day = tripDataStructure.getDayData(unifiedData, this.dayId);
                                     if (day && day.items) {
-                                        this.cards = day.items;
+                                        // 如果 items 是对象结构，转换为数组
+                                        let itemsArray = day.items;
+                                        if (itemsArray && typeof itemsArray === 'object' && !Array.isArray(itemsArray)) {
+                                            itemsArray = Object.values(itemsArray).sort((a, b) => {
+                                                const orderA = a.order !== undefined ? a.order : 999999;
+                                                const orderB = b.order !== undefined ? b.order : 999999;
+                                                return orderA - orderB;
+                                            });
+                                        }
+                                        this.cards = itemsArray;
                                         this.renderCards();
                                         this.attachCardEventsForAll();
                                     }
@@ -2252,7 +2319,16 @@ class CardSlider {
                                 if (unifiedData) {
                                     const day = tripDataStructure.getDayData(unifiedData, this.dayId);
                                     if (day && day.items) {
-                                        this.cards = day.items;
+                                        // 如果 items 是对象结构，转换为数组
+                                        let itemsArray = day.items;
+                                        if (itemsArray && typeof itemsArray === 'object' && !Array.isArray(itemsArray)) {
+                                            itemsArray = Object.values(itemsArray).sort((a, b) => {
+                                                const orderA = a.order !== undefined ? a.order : 999999;
+                                                const orderB = b.order !== undefined ? b.order : 999999;
+                                                return orderA - orderB;
+                                            });
+                                        }
+                                        this.cards = itemsArray;
                                         this.renderCards();
                                         this.attachCardEventsForAll();
                                     }
@@ -2452,66 +2528,102 @@ class CardSlider {
         }
         
         const card = this.cards[cardIndex];
-        console.log('card对象:', card, 'card.id:', card?.id);
         if (!card) {
-            console.warn('card不存在');
+            console.warn('addSpendItem: card 不存在', cardIndex);
+            return;
+        }
+        
+        const itemId = card.id;
+        if (!itemId) {
+            console.warn('addSpendItem: itemId 不存在', card);
             return;
         }
         
         const newSpendItem = {
             item: itemName,
-            amount: parseFloat(amount),
+            amount: parseFloat(amount) || 0,
             payer: payer || ''
         };
         
-        // 获取当前消费表
-        let spendItems = card.spend || [];
-        if (!Array.isArray(spendItems)) {
-            spendItems = [];
-        }
-        spendItems.push(newSpendItem);
-        card.spend = spendItems;
-        
-        // 保存到统一结构
-        const itemId = card.id;
-        if (itemId && typeof tripDataStructure !== 'undefined') {
+        // 关键修复：从统一结构获取最新的 spend 数据，而不是从 card.spend 获取
+        let spendItems = [];
+        if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
                 const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                console.log('找到的item:', item ? '存在' : '不存在', itemId);
                 if (item) {
-                    console.log('更新item.spend，旧spend长度:', item.spend?.length || 0, '新spend长度:', spendItems.length);
+                    // 确保 spend 是数组
+                    if (Array.isArray(item.spend)) {
+                        spendItems = [...item.spend]; // 创建副本
+                    } else if (item.spend) {
+                        spendItems = [item.spend];
+                    } else {
+                        spendItems = [];
+                    }
+                } else {
+                    console.warn('addSpendItem: 未找到 item', { itemId, dayId: this.dayId });
+                    // 如果找不到 item，使用 card.spend 作为回退
+                    spendItems = Array.isArray(card.spend) ? [...card.spend] : (card.spend ? [card.spend] : []);
+                }
+            } else {
+                console.warn('addSpendItem: 统一数据不存在');
+                // 如果统一数据不存在，使用 card.spend 作为回退
+                spendItems = Array.isArray(card.spend) ? [...card.spend] : (card.spend ? [card.spend] : []);
+            }
+        } else {
+            // 如果 tripDataStructure 不存在，使用 card.spend
+            spendItems = Array.isArray(card.spend) ? [...card.spend] : (card.spend ? [card.spend] : []);
+        }
+        
+        // 添加新的消费项
+        spendItems.push(newSpendItem);
+        
+        // 保存到统一结构
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
                     item.spend = spendItems;
                     item._updatedAt = new Date().toISOString();
                     const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
-                    console.log('保存结果:', saveSuccess);
+                    
+                    // 更新内存中的 card 对象，保持同步
+                    card.spend = spendItems;
                     
                     if (saveSuccess !== false) {
-                        triggerImmediateUpload();
+                        // 只上传这个 item，不进行全量上传
+                        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
+                            dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
+                                console.error('上传 item 失败:', error);
+                            });
+                        } else {
+                            // 如果没有部分上传方法，使用全量上传
+                            if (typeof triggerImmediateUpload === 'function') {
+                                triggerImmediateUpload();
+                            }
+                        }
                         
                         // 重新渲染卡片以显示新添加的消费项
                         this.renderCards();
-                        console.log('重新渲染完成');
-                        // 重新绑定事件
                         this.attachCardEventsForAll();
                         return;
                     } else {
-                        console.warn('保存失败');
+                        console.warn('addSpendItem: 保存失败');
                     }
                 } else {
-                    console.warn('未找到item:', itemId);
+                    console.warn('addSpendItem: 更新时未找到 item', { itemId, dayId: this.dayId });
                 }
             } else {
-                console.warn('统一数据不存在');
+                console.warn('addSpendItem: 更新时统一数据不存在');
             }
         } else {
-            console.warn('itemId不存在或tripDataStructure未定义', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+            console.warn('addSpendItem: tripDataStructure 未定义');
         }
         
-        // 如果保存失败，也重新渲染（至少显示在内存中）
-        console.log('回退：重新渲染卡片');
+        // 如果保存失败，也更新 card 对象并重新渲染（至少显示在内存中）
+        card.spend = spendItems;
         this.renderCards();
-                // 重新绑定事件
         this.attachCardEventsForAll();
     }
     
@@ -2521,27 +2633,68 @@ class CardSlider {
         if (!checkWritePermission()) return;
         
         const card = this.cards[cardIndex];
-        if (!card) return;
-        
-        let spendItems = card.spend || [];
-        if (!Array.isArray(spendItems) || spendIndex < 0 || spendIndex >= spendItems.length) {
+        if (!card) {
+            console.warn('deleteSpendItem: card 不存在', cardIndex);
             return;
         }
         
-        // 从数组中删除
-        spendItems.splice(spendIndex, 1);
-        card.spend = spendItems;
-        
-        // 保存到统一结构
         const itemId = card.id;
-        if (itemId && typeof tripDataStructure !== 'undefined') {
+        if (!itemId) {
+            console.warn('deleteSpendItem: itemId 不存在', card);
+            return;
+        }
+        
+        // 关键修复：从统一结构获取最新的 spend 数据，而不是从 card.spend 获取
+        let spendItems = [];
+        if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
                 const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
                 if (item) {
-                    item.spend = spendItems;
+                    // 确保 spend 是数组
+                    if (Array.isArray(item.spend)) {
+                        spendItems = [...item.spend]; // 创建副本，避免直接修改原数组
+                    } else if (item.spend) {
+                        spendItems = [item.spend];
+                    } else {
+                        spendItems = [];
+                    }
+                } else {
+                    console.warn('deleteSpendItem: 未找到 item', { itemId, dayId: this.dayId });
+                    return;
+                }
+            } else {
+                console.warn('deleteSpendItem: 统一数据不存在');
+                return;
+            }
+        } else {
+            // 如果 tripDataStructure 不存在，尝试从 card.spend 获取
+            spendItems = Array.isArray(card.spend) ? [...card.spend] : (card.spend ? [card.spend] : []);
+        }
+        
+        // 验证索引有效性
+        if (spendIndex < 0 || spendIndex >= spendItems.length) {
+            console.warn('deleteSpendItem: 索引无效', { spendIndex, spendItemsLength: spendItems.length });
+            return;
+        }
+        
+        // 从数组中删除指定项
+        spendItems.splice(spendIndex, 1);
+        
+        // 更新统一结构
+        if (typeof tripDataStructure !== 'undefined') {
+            const unifiedData = tripDataStructure.loadUnifiedData();
+            if (unifiedData) {
+                const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
+                if (item) {
+                    // 如果数组为空，设置为 null；否则设置为数组
+                    item.spend = spendItems.length > 0 ? spendItems : null;
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
+                    
+                    // 更新内存中的 card 对象，保持同步
+                    card.spend = item.spend;
+                    
                     // 只上传这个 item，不进行全量上传
                     if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
                         dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
@@ -2553,20 +2706,24 @@ class CardSlider {
                             triggerImmediateUpload();
                         }
                     }
+                    
+                    // 重新渲染卡片
+                    this.renderCards();
+                    this.attachCardEventsForAll();
                     return;
                 } else {
-                    console.warn('未找到item:', itemId);
+                    console.warn('deleteSpendItem: 更新时未找到 item', { itemId, dayId: this.dayId });
                 }
             } else {
-                console.warn('统一数据不存在');
+                console.warn('deleteSpendItem: 更新时统一数据不存在');
             }
         } else {
-            console.warn('itemId不存在或tripDataStructure未定义', { itemId, hasTripDataStructure: typeof tripDataStructure !== 'undefined' });
+            console.warn('deleteSpendItem: tripDataStructure 未定义');
         }
         
-        // 如果保存失败，也重新渲染（至少显示在内存中）
+        // 如果保存失败，也更新 card 对象并重新渲染（至少显示在内存中）
+        card.spend = spendItems.length > 0 ? spendItems : null;
         this.renderCards();
-                // 重新绑定事件
         this.attachCardEventsForAll();
     }
     
@@ -2592,43 +2749,31 @@ class CardSlider {
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
-                // 初始化备份对象（如果不存在）
-                if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
-                    unifiedData._backup = {};
+                // 使用统一的备份方法
+                const backupResult = tripDataStructure.createBackupEntry(unifiedData, 'comment', deletedComment, {
+                    dayId: dayId,
+                    itemId: itemId,
+                    hash: commentHash,
+                    index: commentIndex
+                });
+                
+                if (!backupResult.success) {
+                    console.error('创建备份失败，取消删除操作');
+                    return;
                 }
                 
-                // 生成唯一的时间戳作为 key（确保唯一性）
-                // Firebase 不允许 key 中包含 ".", "#", "$", "/", "[", "]" 等字符
-                // 使用纯数字时间戳 + 随机字符串，避免特殊字符
-                const timestamp = new Date().toISOString();
-                const timestampKey = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                
-                // 将删除的 comment 添加到备份中
-                const backupEntry = {
-                    _type: 'comment', // 标记这是 comment 的备份
-                    _comment: deletedComment, // 被删除的 comment 内容
-                    _itemId: itemId, // 所属的 item ID
-                    _dayId: dayId, // 所属的 day ID
-                    _commentIndex: commentIndex, // 原始索引位置
-                    _commentHash: commentHash, // comment 的哈希值
-                    _deletedAt: timestamp, // 删除时间
-                    _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
-                    _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
-                };
-                
-                // 使用时间戳作为 key 添加到备份对象
-                unifiedData._backup[timestampKey] = backupEntry;
-                const backupCount = Object.keys(unifiedData._backup).length;
-                console.log('已将被删除的 comment 添加到备份，当前备份数量:', backupCount, '备份 key:', timestampKey);
-                
-                // 先保存包含备份的完整数据
-                tripDataStructure.saveUnifiedData(unifiedData);
+                const timestampKey = backupResult.timestampKey;
+                const backupEntry = backupResult.backupEntry;
                 
                 const item = tripDataStructure.getItemData(unifiedData, dayId, itemId);
                 if (item) {
-                    // 从数组中删除
-                    comments.splice(commentIndex, 1);
-                    item.comments = comments;
+                    // 关键修复：comments 现在是对象结构 {hash: comment}，需要使用 hash 删除
+                    if (!item.comments || typeof item.comments !== 'object' || Array.isArray(item.comments)) {
+                        // 如果 comments 不存在或不是对象结构，初始化为对象
+                        item.comments = {};
+                    }
+                    // 从对象中删除指定的 comment（使用 hash 作为 key）
+                    delete item.comments[commentHash];
                     item._updatedAt = new Date().toISOString();
                     tripDataStructure.saveUnifiedData(unifiedData);
                     
@@ -2684,13 +2829,28 @@ class CardSlider {
             return [];
         }
         
-        // 确保返回的是数组
+        // 关键修复：comments 现在是对象结构 {hash: comment}，需要转换为数组并按时间排序
         const comments = item.comments;
         if (Array.isArray(comments)) {
-            return comments;
-        } else if (comments) {
-            // 如果不是数组但有值，转换为数组
-            return [comments];
+            // 数组结构（向后兼容）
+            return comments
+                .filter(c => c && !c._deleted)
+                .sort((a, b) => {
+                    // 按时间戳排序（旧的在前）
+                    const timeA = a.timestamp || 0;
+                    const timeB = b.timestamp || 0;
+                    return timeA - timeB;
+                });
+        } else if (comments && typeof comments === 'object' && comments !== null) {
+            // 对象结构：转换为数组并按时间排序
+            return Object.values(comments)
+                .filter(c => c && !c._deleted)
+                .sort((a, b) => {
+                    // 按时间戳排序（旧的在前）
+                    const timeA = a.timestamp || 0;
+                    const timeB = b.timestamp || 0;
+                    return timeA - timeB;
+                });
         } else {
             return [];
         }
@@ -2711,7 +2871,7 @@ class CardSlider {
             return;
         }
         
-        const comments = this.getComments(dayId, itemIndex, itemId);
+        // const comments = this.getComments(dayId, itemIndex, itemId);
         
         // 生成时间戳
         const timestamp = Date.now();
@@ -2719,23 +2879,6 @@ class CardSlider {
         // 生成哈希值
         const currentUser = getCurrentUser();
         const hash = await generateContentHash(message, currentUser, timestamp);
-        
-        // 检查是否已存在相同哈希的留言（防止重复）
-        const existingComment = comments.find(c => c && c._hash === hash);
-        if (existingComment) {
-            // 如果已存在，不重复添加
-            console.log('留言已存在，跳过添加');
-            return;
-        }
-        
-        // 添加新留言，包含哈希值
-        const newComment = {
-            user: currentUser,
-            message: message,
-            timestamp: timestamp,
-            _hash: hash // 添加哈希值用于去重
-        };
-        comments.push(newComment);
         
         // 只保存到统一结构
         if (typeof tripDataStructure === 'undefined') {
@@ -2755,13 +2898,21 @@ class CardSlider {
             // 尝试列出所有 items 来调试
             const day = tripDataStructure.getDayData(unifiedData, dayId);
             if (day && day.items) {
-                console.log('当前 day 的 items:', day.items.map(i => ({ id: i.id, category: i.category })));
+                // 关键修复：day.items 现在是对象结构，需要适配
+                let itemsArray = [];
+                if (Array.isArray(day.items)) {
+                    itemsArray = day.items;
+                } else if (typeof day.items === 'object' && day.items !== null) {
+                    itemsArray = Object.values(day.items);
+                }
+                
+                console.log('当前 day 的 items:', itemsArray.map(i => ({ id: i.id, category: i.category })));
                 // 检查 itemId 是否匹配
-                const foundItem = day.items.find(i => {
-                    const match = i.id === itemId;
+                const foundItem = itemsArray.find(i => {
+                    const match = i && i.id === itemId;
                     if (!match) {
                         // 检查类型是否不同
-                        if (String(i.id) === String(itemId)) {
+                        if (i && String(i.id) === String(itemId)) {
                             console.warn(`itemId 类型不匹配: 存储的是 ${typeof i.id} "${i.id}", 查找的是 ${typeof itemId} "${itemId}"`);
                         }
                     }
@@ -2769,18 +2920,34 @@ class CardSlider {
                 });
                 if (!foundItem) {
                     console.error('itemId 在所有 items 中都找不到:', itemId);
-                    console.log('所有 itemIds:', day.items.map(i => ({ id: i.id, idType: typeof i.id })));
+                    console.log('所有 itemIds:', itemsArray.map(i => ({ id: i.id, idType: typeof i.id })));
                 }
             }
             return;
         }
         
-        // 确保 comments 是数组
-        if (!Array.isArray(item.comments)) {
-            item.comments = [];
+        // 关键修复：comments 现在是对象结构 {hash: comment}，需要适配
+        // 确保 comments 是对象结构
+        if (!item.comments || typeof item.comments !== 'object' || Array.isArray(item.comments)) {
+            // 如果 comments 不存在或不是对象结构，初始化为对象
+            item.comments = {};
         }
         
-        item.comments = comments;
+        // 检查是否已存在相同哈希的留言（防止重复）
+        if (item.comments[hash]) {
+            // 如果已存在，不重复添加
+            console.log('留言已存在，跳过添加');
+            return;
+        }
+        
+        // 添加新留言到对象结构中（使用 hash 作为 key）
+        const newComment = {
+            user: currentUser,
+            message: message,
+            timestamp: timestamp,
+            _hash: hash // 添加哈希值用于去重
+        };
+        item.comments[hash] = newComment;
         item._updatedAt = new Date().toISOString();
         tripDataStructure.saveUnifiedData(unifiedData);
         
@@ -2792,12 +2959,29 @@ class CardSlider {
             });
         }
         
-        // 使用增量更新，只上传这个 item
-        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
-            dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
-                console.error('上传 item 失败:', error);
+        // 使用增量更新，只更新新添加的这个 comment（对象结构）
+        // 关键：使用 Firebase 的 update 方法，直接更新 comments/{hash} 路径
+        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.update && itemId) {
+            // 使用 update 方法直接更新特定路径
+            const updates = {};
+            // 路径格式：trip_unified_data/days/{dayId}/items/{itemId}/comments/{hash}
+            updates[`trip_unified_data/days/${dayId}/items/${itemId}/comments/${hash}`] = newComment;
+            updates['_lastSync'] = new Date().toISOString();
+            updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+            
+            dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                console.log(`添加 comment 后已增量更新，comment hash: ${hash}`);
+            }).catch(error => {
+                console.error('增量更新 comment 出错，回退到上传整个 item:', error);
+                // 回退：上传整个 item
+                if (dataSyncFirebase.uploadItem) {
+                    dataSyncFirebase.uploadItem(dayId, itemId).catch(uploadError => {
+                        console.error('回退上传 item 也失败:', uploadError);
+                    });
+                }
             });
         } else {
+            // 如果没有增量更新方法，使用全量上传
             if (typeof window.triggerImmediateUpload === 'function') {
                 window.triggerImmediateUpload();
             }
@@ -3052,79 +3236,78 @@ class CardSlider {
         
         const trimmedItem = newItem.trim();
         
-        // 更新plan数组
-        if (!card.plan) {
-            card.plan = [];
-        }
-        const planItems = Array.isArray(card.plan) ? card.plan : [card.plan];
-        
+        // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
         // 生成时间戳和哈希值
         const currentUser = getCurrentUser();
         const timestamp = Date.now();
         const hash = await generateContentHash(trimmedItem, currentUser, timestamp);
         
-        // 检查是否已存在相同哈希的计划项（防止重复）
-        const existingItem = planItems.find(item => {
-            if (typeof item === 'string') {
-                // 如果是字符串，需要检查是否有对应的哈希值存储
-                return false; // 旧数据没有哈希，允许添加
-            } else if (typeof item === 'object') {
-                // 如果是对象，检查哈希值
-                // 已删除的项已被过滤，这里不再需要检查
-                return item._hash === hash;
-            }
-            return false;
-        });
-        
-        if (existingItem) {
-            // 如果已存在，不重复添加
-            return;
-        }
-        
-        // 添加新计划项，包含哈希值
-        const newPlanItem = {
-            _text: trimmedItem,
-            _hash: hash,
-            _timestamp: timestamp,
-            _user: currentUser
-        };
-        planItems.push(newPlanItem);
-        card.plan = planItems;
-        
         // 优先保存到统一结构
         const itemId = card.id;
-        console.log('准备保存到统一结构:', { itemId, dayId: this.dayId, planItemsCount: planItems.length });
         if (itemId && typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
-            console.log('统一数据:', unifiedData ? '存在' : '不存在');
             if (unifiedData) {
                 const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
-                console.log('找到的item:', item ? '存在' : '不存在', itemId);
                 if (item) {
-                    console.log('更新item.plan，旧plan长度:', item.plan?.length || 0, '新plan长度:', planItems.length);
-                    item.plan = planItems;
+                    // 确保 plan 是对象结构
+                    if (!item.plan || typeof item.plan !== 'object' || Array.isArray(item.plan)) {
+                        item.plan = {};
+                    }
+                    
+                    // 检查是否已存在相同哈希的计划项（防止重复）
+                    if (item.plan[hash]) {
+                        console.log('plan item 已存在，跳过添加');
+                        return;
+                    }
+                    
+                    // 添加新计划项到对象结构中（使用 hash 作为 key）
+                    const newPlanItem = {
+                        _text: trimmedItem,
+                        _hash: hash,
+                        _timestamp: timestamp,
+                        _user: currentUser
+                    };
+                    item.plan[hash] = newPlanItem;
                     item._updatedAt = new Date().toISOString();
+                    
+                    // 更新 card.plan（用于渲染）
+                    card.plan = item.plan;
+        
                     const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
                     console.log('保存结果:', saveSuccess);
                     
                     if (saveSuccess !== false) {
-                        // 更新this.cards数组中的card对象，保持同步
-                        card.plan = planItems;
-                        console.log('card.plan已更新，准备重新渲染');
-                        
                         // 重新渲染
                         this.renderCards();
                         console.log('重新渲染完成');
                         // 重新绑定事件
                         this.attachCardEventsForAll();
                         
-                        // 使用增量更新，只上传这个 item
-                        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.uploadItem && itemId) {
-                            dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
-                                console.error('上传 item 失败:', error);
+                        // 使用增量更新，只更新新添加的这个 plan item（对象结构）
+                        if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.update && itemId) {
+                            // 使用 update 方法直接更新特定路径
+                            const updates = {};
+                            // 路径格式：trip_unified_data/days/{dayId}/items/{itemId}/plan/{hash}
+                            updates[`trip_unified_data/days/${this.dayId}/items/${itemId}/plan/${hash}`] = newPlanItem;
+                            updates['_lastSync'] = new Date().toISOString();
+                            updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                            
+                            dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                                console.log(`添加 plan item 后已增量更新，plan hash: ${hash}`);
+                            }).catch(error => {
+                                console.error('增量更新 plan item 出错，回退到上传整个 item:', error);
+                                // 回退：上传整个 item
+                                if (dataSyncFirebase.uploadItem) {
+                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(uploadError => {
+                                        console.error('回退上传 item 也失败:', uploadError);
+                                    });
+                                }
                             });
                         } else {
-                            triggerImmediateUpload();
+                            // 如果没有增量更新方法，使用全量上传
+                            if (typeof window.triggerImmediateUpload === 'function') {
+                                window.triggerImmediateUpload();
+                            }
                         }
                         return;
                     } else {
@@ -3167,34 +3350,48 @@ class CardSlider {
             if (unifiedData) {
                 const item = tripDataStructure.getItemData(unifiedData, this.dayId, itemId);
                 if (item) {
-                    let planItems = Array.isArray(item.plan) ? [...item.plan] : (item.plan ? [item.plan] : []);
-                    console.log('当前 plan 项数量:', planItems.length, 'plan 项:', planItems);
+                    // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
+                    // 确保 plan 是对象结构
+                    if (!item.plan || typeof item.plan !== 'object' || Array.isArray(item.plan)) {
+                        // 如果是数组，转换为对象
+                        if (Array.isArray(item.plan)) {
+                            const planObj = {};
+                            item.plan.forEach((p, idx) => {
+                                if (p && typeof p === 'object' && p._hash) {
+                                    planObj[p._hash] = p;
+                                } else if (p) {
+                                    const key = Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 9);
+                                    planObj[key] = typeof p === 'string' ? { _text: p, _hash: key, _timestamp: Date.now() } : { ...p, _hash: key };
+                                }
+                            });
+                            item.plan = planObj;
+                        } else {
+                            item.plan = {};
+                        }
+                    }
                     
                     // 优先使用哈希值查找（最可靠）
-                    let targetIndex = -1;
+                    let targetHash = null;
                     if (planHash && planHash.trim() !== '') {
-                        console.log('使用哈希查找:', planHash);
-                        targetIndex = planItems.findIndex(p => {
-                            if (typeof p === 'object' && p._hash === planHash) {
-                                return true;
-                            }
-                            return false;
+                        targetHash = planHash;
+                    } else {
+                        // 如果没有哈希，使用索引查找（需要转换为数组）
+                        const planArray = Object.values(item.plan).sort((a, b) => {
+                            const timeA = (a && typeof a === 'object' && a._timestamp) ? a._timestamp : 0;
+                            const timeB = (b && typeof b === 'object' && b._timestamp) ? b._timestamp : 0;
+                            return timeA - timeB;
                         });
-                        console.log('哈希查找结果:', targetIndex);
+                        if (planIndex >= 0 && planIndex < planArray.length) {
+                            const planItem = planArray[planIndex];
+                            targetHash = (planItem && typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
+                        }
                     }
                     
-                    // 如果哈希找不到，使用索引
-                    if (targetIndex === -1) {
-                        console.log('哈希找不到，使用索引:', planIndex);
-                        targetIndex = planIndex;
-                    }
-                    
-                    // 检查索引是否有效
-                    console.log('目标索引:', targetIndex, 'plan 项长度:', planItems.length);
-                    if (targetIndex >= 0 && targetIndex < planItems.length) {
+                    // 检查哈希是否有效
+                    if (targetHash && item.plan[targetHash]) {
                         // 获取要删除的 plan item（深拷贝，避免引用问题）
-                        const deletedPlanItem = JSON.parse(JSON.stringify(planItems[targetIndex]));
-                        console.log('准备删除索引', targetIndex, '的 plan 项:', deletedPlanItem);
+                        const deletedPlanItem = JSON.parse(JSON.stringify(item.plan[targetHash]));
+                        console.log('准备删除 plan item，hash:', targetHash, 'plan item:', deletedPlanItem);
                         
                         // 初始化备份对象（如果不存在）
                         if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
@@ -3213,8 +3410,7 @@ class CardSlider {
                             _planItem: deletedPlanItem, // 被删除的 plan item 内容
                             _itemId: itemId, // 所属的 item ID
                             _dayId: this.dayId, // 所属的 day ID
-                            _planIndex: targetIndex, // 原始索引位置
-                            _planHash: planHash || null, // plan item 的哈希值（如果有）
+                            _planHash: targetHash, // plan item 的哈希值
                             _deletedAt: timestamp, // 删除时间
                             _deletedBy: typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null, // 删除用户
                             _originalItemId: itemId // 用于恢复时定位（与 item 备份保持一致）
@@ -3225,91 +3421,53 @@ class CardSlider {
                         const backupCount = Object.keys(unifiedData._backup).length;
                         console.log('已将被删除的 plan item 添加到备份，当前备份数量:', backupCount, '备份 key:', timestampKey);
                         
-                        // 真正从数组中删除
-                        planItems.splice(targetIndex, 1);
-                        console.log('删除后 plan 项数量:', planItems.length);
-                        
-                        // 确保 plan 是数组格式
-                        if (!Array.isArray(planItems)) {
-                            planItems = planItems.length > 0 ? [planItems] : [];
-                        }
+                        // 真正从对象中删除（使用 delete 操作符）
+                        delete item.plan[targetHash];
+                        console.log('删除后 plan 项数量:', Object.keys(item.plan).length);
                         
                         // 先保存包含备份的完整数据
                         tripDataStructure.saveUnifiedData(unifiedData);
                         
-                        // 使用 updateItemData 更新统一数据结构
-                        const updateSuccess = tripDataStructure.updateItemData(unifiedData, this.dayId, itemId, { plan: planItems });
+                        // 更新 item._updatedAt
+                        item._updatedAt = new Date().toISOString();
+                        const updateSuccess = tripDataStructure.saveUnifiedData(unifiedData);
                         console.log('更新统一数据结构结果:', updateSuccess);
                         
                         if (updateSuccess) {
                             // 更新本地 card 数据
-                            card.plan = planItems;
+                            card.plan = item.plan;
                             
                             // 保存当前滚动位置
                             const pageScrollTop = window.pageYOffset || document.documentElement.scrollTop;
                             const cardElement = this.container.querySelector(`.card[data-index="${cardIndex}"]`);
                             const cardScrollTop = cardElement ? cardElement.scrollTop : 0;
                             
-                            // 同步到 Firebase：先更新 _backup 字段，再更新 plan 数组
+                            // 同步到 Firebase：先更新 _backup 字段，再删除 plan 对象中的项
                             if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.update) {
                                 // 只上传新添加的那一条备份项，使用时间戳作为 key
                                 const updates = {};
                                 updates[`_backup/${timestampKey}`] = backupEntry;
+                                // 删除 plan 对象中的项（设置为 null）
+                                updates[`trip_unified_data/days/${this.dayId}/items/${itemId}/plan/${targetHash}`] = null;
                                 updates['_lastSync'] = new Date().toISOString();
                                 updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
                                 
                                 dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
-                                    console.log('plan item 备份已同步到云端，备份 key:', timestampKey);
-                                        
-                                        // 备份同步成功，再同步 plan 数组
-                                        if (dataSyncFirebase.updateArrayField) {
-                                            dataSyncFirebase.updateArrayField(this.dayId, itemId, 'plan', planItems).then(planResult => {
-                                                if (planResult.success) {
-                                                    console.log('plan 项删除已同步到云端（完整数组）:', planResult.message);
-                                                } else {
-                                                    console.warn('plan 项删除同步失败，回退到 uploadItem:', planResult.message);
-                                                    // 如果 updateArrayField 失败，回退到 uploadItem
-                                                    if (dataSyncFirebase.uploadItem) {
-                                                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(error => {
-                                                            console.error('plan 项删除同步出错:', error);
-                                                        });
-                                                    }
-                                                }
-                                            }).catch(error => {
-                                                console.error('plan 项删除同步出错:', error);
-                                                // 回退到 uploadItem
-                                                if (dataSyncFirebase.uploadItem) {
-                                                    dataSyncFirebase.uploadItem(this.dayId, itemId).catch(err => {
-                                                        console.error('回退上传也失败:', err);
-                                                    });
-                                                }
-                                            });
-                                        } else if (dataSyncFirebase.uploadItem) {
-                                            // 如果 updateArrayField 不可用，使用 uploadItem
-                                            dataSyncFirebase.uploadItem(this.dayId, itemId).then(result => {
-                                                if (result.success) {
-                                                    console.log('plan 项删除已同步到云端:', result.message);
-                                                } else {
-                                                    console.warn('plan 项删除同步失败:', result.message);
-                                                }
-                                            }).catch(error => {
-                                                console.error('plan 项删除同步出错:', error);
-                                            });
-                                        }
-                                }).catch(backupError => {
-                                    console.error('plan item 备份同步出错:', backupError);
-                                    // 如果备份同步失败，回退到全量上传
-                                    if (dataSyncFirebase.upload) {
-                                        dataSyncFirebase.upload(true).catch(error => {
-                                            console.error('回退全量上传也失败:', error);
+                                    console.log('plan item 删除已同步到云端，plan hash:', targetHash, '备份 key:', timestampKey);
+                                }).catch(error => {
+                                    console.error('plan item 删除同步失败，回退到 uploadItem:', error);
+                                    // 如果增量更新失败，回退到 uploadItem
+                                    if (dataSyncFirebase.uploadItem) {
+                                        dataSyncFirebase.uploadItem(this.dayId, itemId).catch(uploadError => {
+                                            console.error('回退上传也失败:', uploadError);
                                         });
                                     }
                                 });
-                            } else if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.upload) {
-                                // 如果增量更新不可用，使用全量上传
-                                dataSyncFirebase.upload(true).catch(error => {
-                                    console.error('plan 项删除全量上传出错:', error);
-                                });
+                            } else {
+                                // 如果没有 update 方法，使用全量上传
+                                if (typeof window.triggerImmediateUpload === 'function') {
+                                    window.triggerImmediateUpload();
+                                }
                             }
                             
                             // 重新渲染
@@ -3332,8 +3490,8 @@ class CardSlider {
                             alert('删除失败，请重试');
                         }
                     } else {
-                        console.error('索引无效:', targetIndex, 'plan 项长度:', planItems.length);
-                        alert('删除失败：索引无效');
+                        console.error('plan item 哈希无效或不存在:', targetHash);
+                        alert('删除失败：找不到要删除的计划项');
                     }
                 } else {
                     console.error('删除 plan 项失败：找不到 item，itemId:', itemId);
@@ -3617,10 +3775,20 @@ class CardSlider {
                 const day = tripDataStructure.getDayData(unifiedData, this.dayId);
                 if (day) {
                     // 更新每个 item 的 order 字段
+                    // 关键修复：day.items 现在是对象结构，不能使用 find 方法
                     orderInfo.forEach((orderItem, idx) => {
-                        const item = day.items?.find(i => i.id === orderItem.id);
-                        if (item) {
-                            item.order = idx;
+                        if (day.items && typeof day.items === 'object' && !Array.isArray(day.items)) {
+                            // 对象结构：直接使用 itemId 作为 key
+                            const item = day.items[orderItem.id];
+                            if (item) {
+                                item.order = idx;
+                            }
+                        } else if (Array.isArray(day.items)) {
+                            // 数组结构（向后兼容）
+                            const item = day.items.find(i => i && i.id === orderItem.id);
+                            if (item) {
+                                item.order = idx;
+                            }
                         }
                     });
                     tripDataStructure.saveUnifiedData(unifiedData);
@@ -3881,23 +4049,32 @@ function toggleSortMode() {
     
     // 如果currentSlider不存在或日期不匹配，重新创建
     if (!currentSlider || currentSlider.dayId !== actualDayId) {
-        const tripData = loadTripData();
-        const day = tripData.days.find(d => d.id === actualDayId);
-        if (!day) {
-            console.warn(`无法找到 dayId=${actualDayId} 的数据，无法进入排序模式`);
-            return;
-        }
-        
-        // 从统一结构加载数据
-        let dayItems = day.items || [];
+        // 直接从统一结构加载数据（days 现在是对象结构）
+        let dayItems = [];
         if (typeof tripDataStructure !== 'undefined') {
             const unifiedData = tripDataStructure.loadUnifiedData();
             if (unifiedData) {
                 const unifiedDay = tripDataStructure.getDayData(unifiedData, actualDayId);
                 if (unifiedDay && unifiedDay.items) {
-                    dayItems = unifiedDay.items;
+                    // items 现在是对象结构，需要转换为数组
+                    if (Array.isArray(unifiedDay.items)) {
+                        dayItems = unifiedDay.items;
+                    } else if (typeof unifiedDay.items === 'object' && unifiedDay.items !== null) {
+                        dayItems = Object.values(unifiedDay.items)
+                            .filter(item => item !== null && item !== undefined)
+                            .sort((a, b) => {
+                                const orderA = a.order !== undefined ? a.order : 999999;
+                                const orderB = b.order !== undefined ? b.order : 999999;
+                                return orderA - orderB;
+                            });
+                    }
                 }
             }
+        }
+        
+        if (!dayItems || dayItems.length === 0) {
+            console.warn(`无法找到 dayId=${actualDayId} 的数据，无法进入排序模式`);
+            return;
         }
         
         // 统一数据结构中不再区分自定义项，所有项都在统一结构中

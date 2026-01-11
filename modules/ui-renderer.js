@@ -144,7 +144,20 @@
         
         if (!tripData) return;
         
-        const days = tripData.days || [];
+        // days 现在是对象结构，需要转换为数组
+        let daysArray = [];
+        if (Array.isArray(tripData.days)) {
+            daysArray = tripData.days;
+        } else if (tripData.days && typeof tripData.days === 'object' && tripData.days !== null) {
+            // 对象结构：转换为数组并按 order 排序
+            daysArray = Object.values(tripData.days)
+                .filter(day => day !== null && day !== undefined)
+                .sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+        }
         
         // HTML 转义函数
         function escapeHtml(text) {
@@ -154,16 +167,17 @@
         }
         
         let html = '<h2>行程总览</h2><ul class="nav-list">';
-        days.forEach((day, index) => {
+        daysArray.forEach((day, index) => {
+            if (!day) return;
             const dayId = day.id || `day${index + 1}`;
             const dayTitle = day.title || `Day ${index + 1}`;
-        html += `
-            <li class="nav-item">
-                <a href="#" class="nav-link" data-day="${dayId}">${escapeHtml(dayTitle)}</a>
-            </li>
-        `;
-    });
-    html += '</ul>';
+            html += `
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-day="${dayId}">${escapeHtml(dayTitle)}</a>
+                </li>
+            `;
+        });
+        html += '</ul>';
     navContainer.innerHTML = html;
     
     // 添加导航点击事件
@@ -194,8 +208,21 @@
             console.error('renderDayInternal: 错误！传入的是 tripId 而不是 dayId', { tripId: dayIdStr });
             if (tripDataStructure) {
                 const unifiedData = tripDataStructure.loadUnifiedData();
-                if (unifiedData && unifiedData.days && unifiedData.days.length > 0) {
-                    dayIdStr = unifiedData.days[0].id || 'day1';
+                if (unifiedData && unifiedData.days) {
+                    // days 现在是对象结构，获取第一个 dayId
+                    let firstDayId = 'day1';
+                    if (typeof unifiedData.days === 'object' && !Array.isArray(unifiedData.days)) {
+                        const dayIds = Object.keys(unifiedData.days).filter(id => id);
+                        if (dayIds.length > 0) {
+                            // 按 order 排序，获取第一个
+                            const sortedDays = Object.values(unifiedData.days)
+                                .sort((a, b) => (a.order || 0) - (b.order || 0));
+                            firstDayId = sortedDays[0]?.id || dayIds[0] || 'day1';
+                        }
+                    } else if (Array.isArray(unifiedData.days) && unifiedData.days.length > 0) {
+                        firstDayId = unifiedData.days[0]?.id || 'day1';
+                    }
+                    dayIdStr = firstDayId;
                 } else {
                     dayIdStr = 'day1';
                 }
@@ -223,7 +250,22 @@
         
         try {
             // 获取 items 并应用排序
-            let allItems = day.items || [];
+            // 关键修复：day.items 现在是对象结构，需要先转换为数组
+            let allItems = [];
+            if (day.items) {
+                if (Array.isArray(day.items)) {
+                    allItems = day.items;
+                } else if (typeof day.items === 'object' && day.items !== null) {
+                    // 对象结构：转换为数组（按 order 排序）
+                    allItems = Object.values(day.items)
+                        .filter(item => item !== null && item !== undefined)
+                        .sort((a, b) => {
+                            const orderA = a.order !== undefined ? a.order : 999999;
+                            const orderB = b.order !== undefined ? b.order : 999999;
+                            return orderA - orderB;
+                        });
+                }
+            }
             
             // 应用排序（使用 applyCardOrder）
             if (window.applyCardOrder) {
@@ -476,11 +518,28 @@
                             // 更新 State Manager
                             if (stateManager) {
                                 const tripData = stateManager.getState('tripData');
-                                if (tripData) {
-                                    const dayIndex = tripData.days.findIndex(d => d.id === dayId);
-                                    if (dayIndex > -1) {
-                                        tripData.days[dayIndex].title = newTitle;
-                                        stateManager.setState({ tripData: { ...tripData } });
+                                if (tripData && tripData.days) {
+                                    // days 现在是对象结构，直接使用 dayId 更新
+                                    if (typeof tripData.days === 'object' && !Array.isArray(tripData.days)) {
+                                        if (tripData.days[dayId]) {
+                                            tripData.days[dayId].title = newTitle;
+                                            stateManager.setState({ tripData: { ...tripData } });
+                                        }
+                                    } else if (Array.isArray(tripData.days)) {
+                                    // days 现在是对象结构，直接使用 dayId 更新
+                                    if (typeof tripData.days === 'object' && !Array.isArray(tripData.days)) {
+                                        if (tripData.days[dayId]) {
+                                            tripData.days[dayId].title = newTitle;
+                                            stateManager.setState({ tripData: { ...tripData } });
+                                        }
+                                    } else if (Array.isArray(tripData.days)) {
+                                        // 兼容旧数组格式
+                                        const dayIndex = tripData.days.findIndex(d => d && d.id === dayId);
+                                        if (dayIndex > -1) {
+                                            tripData.days[dayIndex].title = newTitle;
+                                            stateManager.setState({ tripData: { ...tripData } });
+                                        }
+                                    }
                                     }
                                 }
                             }
