@@ -924,112 +924,112 @@ if (document.readyState === 'loading') {
     initImageViewer();
 }
 
-// PWA安装提示和处理逻辑
-let deferredPrompt;
+// // PWA安装提示和处理逻辑
+// let deferredPrompt;
 
-// 注册Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js')
-      .then((registration) => {
-        console.log('Service Worker 注册成功:', registration.scope);
-      })
-      .catch((error) => {
-        console.log('Service Worker 注册失败:', error);
-      });
-  });
-}
+// // 注册Service Worker
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('./service-worker.js')
+//       .then((registration) => {
+//         console.log('Service Worker 注册成功:', registration.scope);
+//       })
+//       .catch((error) => {
+//         console.log('Service Worker 注册失败:', error);
+//       });
+//   });
+// }
 
-// 监听beforeinstallprompt事件
-window.addEventListener('beforeinstallprompt', (e) => {
-  // 阻止Chrome 67及更早版本自动显示安装提示
-  e.preventDefault();
-  // 存储事件，以便稍后触发
-  deferredPrompt = e;
+// // 监听beforeinstallprompt事件
+// window.addEventListener('beforeinstallprompt', (e) => {
+//   // 阻止Chrome 67及更早版本自动显示安装提示
+//   e.preventDefault();
+//   // 存储事件，以便稍后触发
+//   deferredPrompt = e;
   
-  // 创建安装按钮（如果不存在）
-  createInstallButton();
-});
+//   // 创建安装按钮（如果不存在）
+//   createInstallButton();
+// });
 
-// 创建安装按钮
-function createInstallButton() {
-  // 检查是否已有安装按钮
-  if (document.getElementById('install-pwa-btn')) {
-    return;
-  }
+// // 创建安装按钮
+// function createInstallButton() {
+//   // 检查是否已有安装按钮
+//   if (document.getElementById('install-pwa-btn')) {
+//     return;
+//   }
   
-  // 创建安装按钮
-  const installBtn = document.createElement('button');
-  installBtn.id = 'install-pwa-btn';
-  installBtn.textContent = '安装到手机';
-  installBtn.className = 'btn btn-login btn-install-pwa';
-  installBtn.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1000;
-    padding: 12px 24px;
-    background-color: #4a90e2;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    transition: transform 0.3s ease;
-  `;
+//   // 创建安装按钮
+//   const installBtn = document.createElement('button');
+//   installBtn.id = 'install-pwa-btn';
+//   installBtn.textContent = '安装到手机';
+//   installBtn.className = 'btn btn-login btn-install-pwa';
+//   installBtn.style.cssText = `
+//     position: fixed;
+//     bottom: 20px;
+//     right: 20px;
+//     z-index: 1000;
+//     padding: 12px 24px;
+//     background-color: #4a90e2;
+//     color: white;
+//     border: none;
+//     border-radius: 8px;
+//     font-size: 16px;
+//     cursor: pointer;
+//     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+//     transition: transform 0.3s ease;
+//   `;
   
-  // 添加点击事件
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) {
-      return;
-    }
+//   // 添加点击事件
+//   installBtn.addEventListener('click', async () => {
+//     if (!deferredPrompt) {
+//       return;
+//     }
     
-    // 显示安装提示
-    deferredPrompt.prompt();
+//     // 显示安装提示
+//     deferredPrompt.prompt();
     
-    // 等待用户响应
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`用户选择: ${outcome}`);
+//     // 等待用户响应
+//     const { outcome } = await deferredPrompt.userChoice;
+//     console.log(`用户选择: ${outcome}`);
     
-    // 重置deferredPrompt
-    deferredPrompt = null;
+//     // 重置deferredPrompt
+//     deferredPrompt = null;
     
-    // 隐藏安装按钮
-    installBtn.style.display = 'none';
-  });
+//     // 隐藏安装按钮
+//     installBtn.style.display = 'none';
+//   });
   
-  // 添加到页面
-  document.body.appendChild(installBtn);
-}
+//   // 添加到页面
+//   document.body.appendChild(installBtn);
+// }
 
-// 监听appinstalled事件
-window.addEventListener('appinstalled', () => {
-  console.log('PWA已成功安装');
+// // 监听appinstalled事件
+// window.addEventListener('appinstalled', () => {
+//   console.log('PWA已成功安装');
   
-  // 隐藏安装按钮
-  const installBtn = document.getElementById('install-pwa-btn');
-  if (installBtn) {
-    installBtn.style.display = 'none';
-  }
+//   // 隐藏安装按钮
+//   const installBtn = document.getElementById('install-pwa-btn');
+//   if (installBtn) {
+//     installBtn.style.display = 'none';
+//   }
   
-  // 重置deferredPrompt
-  deferredPrompt = null;
-});
+//   // 重置deferredPrompt
+//   deferredPrompt = null;
+// });
 
-// 检测是否在已安装的PWA中运行
-function isPWA() {
-  return window.matchMedia('(display-mode: standalone)').matches || 
-         window.navigator.standalone === true;
-}
+// // 检测是否在已安装的PWA中运行
+// function isPWA() {
+//   return window.matchMedia('(display-mode: standalone)').matches || 
+//          window.navigator.standalone === true;
+// }
 
-// 如果是已安装的PWA，隐藏安装按钮
-if (isPWA()) {
-  window.addEventListener('DOMContentLoaded', () => {
-    const installBtn = document.getElementById('install-pwa-btn');
-    if (installBtn) {
-      installBtn.style.display = 'none';
-    }
-  });
-}
+// // 如果是已安装的PWA，隐藏安装按钮
+// if (isPWA()) {
+//   window.addEventListener('DOMContentLoaded', () => {
+//     const installBtn = document.getElementById('install-pwa-btn');
+//     if (installBtn) {
+//       installBtn.style.display = 'none';
+//     }
+//   });
+// }
 

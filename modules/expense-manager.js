@@ -52,7 +52,8 @@
                                         : (Array.isArray(item.plan) ? item.plan[0] : ''),
                                     spendItem: spendItem.item || '',
                                     amount: parseFloat(spendItem.amount) || 0,
-                                    payer: spendItem.payer || ''
+                                    payer: spendItem.payer || '',
+                                    participants: spendItem.participants || []
                                 });
                             });
                         }
@@ -287,31 +288,75 @@
             return;
         }
         
-        // 计算每个人的实际支出
-        const userExpenses = {
-            'mrb': 0,
-            'djy': 0
-        };
+        // 收集所有唯一的参与人
+        const allParticipants = new Set();
+        validExpenses.forEach(expense => {
+            const participants = expense.participants || [];
+            participants.forEach(participant => {
+                allParticipants.add(participant);
+            });
+        });
         
+        // 如果没有参与人，使用默认的两个人
+        if (allParticipants.size === 0) {
+            allParticipants.add('mrb');
+            allParticipants.add('djy');
+        }
+        
+        // 计算每个人的实际支出
+        const userExpenses = {};
+        
+        // 初始化用户支出为0
+        allParticipants.forEach(user => {
+            userExpenses[user] = 0;
+        });
+        
+        // 计算每个人实际支付的金额
         validExpenses.forEach(expense => {
             const payer = expense.payer || '';
             const amount = expense.amount || 0;
-            if (payer === 'mrb' || payer === 'djy') {
+            if (userExpenses.hasOwnProperty(payer)) {
                 userExpenses[payer] = (userExpenses[payer] || 0) + amount;
             }
         });
         
-        // 计算总支出（不包括"共同"）
-        const totalExpense = validExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+        // 计算每个人应该支付的金额（根据参与人数量平摊）
+        const userShouldPay = {};
         
-        // 平均每人应该支付
-        const averagePerPerson = totalExpense / 2;
+        // 初始化每个人应该支付的金额为0
+        allParticipants.forEach(user => {
+            userShouldPay[user] = 0;
+        });
+        
+        // 计算总支出
+        let totalExpense = 0;
+        
+        // 计算每个人应该支付的金额
+        validExpenses.forEach(expense => {
+            const amount = expense.amount || 0;
+            const participants = expense.participants || [];
+            
+            // 如果没有参与人，默认平摊给所有人
+            const splitParticipants = participants.length > 0 ? participants : Array.from(allParticipants);
+            const splitAmount = amount / splitParticipants.length;
+            
+            // 累加每个人应该支付的金额
+            splitParticipants.forEach(participant => {
+                if (userShouldPay.hasOwnProperty(participant)) {
+                    userShouldPay[participant] = (userShouldPay[participant] || 0) + splitAmount;
+                }
+            });
+            
+            totalExpense += amount;
+        });
         
         // 计算每个人的差额
-        const mrbActual = userExpenses['mrb'] || 0;
-        const djyActual = userExpenses['djy'] || 0;
-        const mrbDifference = averagePerPerson - mrbActual;
-        const djyDifference = averagePerPerson - djyActual;
+        const userDifferences = {};
+        allParticipants.forEach(user => {
+            const actual = userExpenses[user] || 0;
+            const shouldPay = userShouldPay[user] || 0;
+            userDifferences[user] = shouldPay - actual;
+        });
         
         // 生成分账结果HTML
         let html = '<div class="expense-split-container">';
@@ -323,14 +368,10 @@
                     <span class="split-label">总支出（不含共同）：</span>
                     <span class="split-value">¥${totalExpense.toFixed(2)}</span>
                 </div>
-                <div class="split-summary-item">
-                    <span class="split-label">平均每人应支付：</span>
-                    <span class="split-value">¥${averagePerPerson.toFixed(2)}</span>
-                </div>
             </div>
         `;
         
-        // 每个人的实际支出和差额
+        // 每个人的实际支出、应支付和差额
         html += `
             <table class="expense-split-table">
                 <thead>
@@ -342,22 +383,29 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td><strong>mrb</strong></td>
-                        <td class="expense-amount">¥${mrbActual.toFixed(2)}</td>
-                        <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
-                        <td class="${mrbDifference >= 0 ? 'split-owe' : 'split-receive'}">
-                            ${mrbDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(mrbDifference).toFixed(2)}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>djy</strong></td>
-                        <td class="expense-amount">¥${djyActual.toFixed(2)}</td>
-                        <td class="expense-amount">¥${averagePerPerson.toFixed(2)}</td>
-                        <td class="${djyDifference >= 0 ? 'split-owe' : 'split-receive'}">
-                            ${djyDifference >= 0 ? '需支付' : '应收'} ¥${Math.abs(djyDifference).toFixed(2)}
-                        </td>
-                    </tr>
+        `;
+        
+        // 按用户排序
+        const sortedUsers = Array.from(allParticipants).sort();
+        
+        sortedUsers.forEach(user => {
+            const actual = userExpenses[user] || 0;
+            const shouldPay = userShouldPay[user] || 0;
+            const difference = userDifferences[user] || 0;
+            
+            html += `
+                <tr>
+                    <td><strong>${user}</strong></td>
+                    <td class="expense-amount">¥${actual.toFixed(2)}</td>
+                    <td class="expense-amount">¥${shouldPay.toFixed(2)}</td>
+                    <td class="${difference >= 0 ? 'split-owe' : 'split-receive'}">
+                        ${difference >= 0 ? '需支付' : '应收'} ¥${Math.abs(difference).toFixed(2)}
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
                 </tbody>
             </table>
         `;
@@ -368,38 +416,54 @@
                 <p><strong>分账说明：</strong></p>
                 <ul>
                     <li>总支出不包括"共同"支出的部分（因为每个人独立出了自己的部分）</li>
-                    <li>平均每人应支付 = 总支出 ÷ 人数</li>
-                    <li>差额 = 平均每人应支付 - 实际支出</li>
+                    <li>每个消费项根据参与分账人数量平摊</li>
+                    <li>应支付 = 所有参与的消费项金额 ÷ 参与人数 的总和</li>
+                    <li>差额 = 应支付 - 实际支出</li>
                     <li>差额为正表示需要支付给其他人，差额为负表示应该收到其他人的支付</li>
                 </ul>
             </div>
         `;
         
-        // 如果差额不为0，显示转账建议
-        if (Math.abs(mrbDifference) > 0.01 || Math.abs(djyDifference) > 0.01) {
-            html += `
-                <div class="expense-split-action">
-                    <p><strong>转账建议：</strong></p>
-            `;
-            
-            if (mrbDifference > 0 && djyDifference < 0) {
-                // mrb需要支付给djy
-                html += `<p class="split-action-text">mrb 需要支付给 djy：<strong>¥${Math.abs(mrbDifference).toFixed(2)}</strong></p>`;
-            } else if (mrbDifference < 0 && djyDifference > 0) {
-                // djy需要支付给mrb
-                html += `<p class="split-action-text">djy 需要支付给 mrb：<strong>¥${Math.abs(djyDifference).toFixed(2)}</strong></p>`;
-            } else if (Math.abs(mrbDifference) < 0.01 && Math.abs(djyDifference) < 0.01) {
-                html += `<p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>`;
+        // 转账建议
+        html += `
+            <div class="expense-split-action">
+                <p><strong>转账建议：</strong></p>
+        `;
+        
+        // 找出需要支付和需要收款的人
+        const oweMoney = [];
+        const receiveMoney = [];
+        
+        sortedUsers.forEach(user => {
+            const difference = userDifferences[user] || 0;
+            if (difference > 0.01) {
+                oweMoney.push({ user, amount: difference });
+            } else if (difference < -0.01) {
+                receiveMoney.push({ user, amount: Math.abs(difference) });
             }
-            
-            html += `</div>`;
+        });
+        
+        // 如果所有人都平衡
+        if (oweMoney.length === 0 && receiveMoney.length === 0) {
+            html += `<p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>`;
         } else {
-            html += `
-                <div class="expense-split-action">
-                    <p class="split-action-text" style="color: #56ab2f;">✅ 分账平衡，无需转账</p>
-                </div>
-            `;
+            // 简化的转账建议（只是展示，实际应用中可能需要更复杂的算法）
+            html += `<ul class="split-action-list">`;
+            
+            // 先处理需要支付的人
+            oweMoney.forEach(ower => {
+                html += `<li class="split-action-item">${ower.user} 需要支付：<strong>¥${ower.amount.toFixed(2)}</strong></li>`;
+            });
+            
+            // 再处理需要收款的人
+            receiveMoney.forEach(receiver => {
+                html += `<li class="split-action-item">${receiver.user} 应该收到：<strong>¥${receiver.amount.toFixed(2)}</strong></li>`;
+            });
+            
+            html += `</ul>`;
         }
+        
+        html += `</div>`;
         
         html += '</div>';
         

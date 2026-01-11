@@ -309,6 +309,11 @@
                             window.stateManager.setState({ tripData: existingData, unifiedData: existingData });
                         }
                     }
+                    
+                    // 更新所有现有花销，添加默认参与人信息
+                    if (window.tripDataStructure && window.tripDataStructure.updateExistingExpensesWithParticipants) {
+                        window.tripDataStructure.updateExistingExpensesWithParticipants();
+                    }
                 } catch (error) {
                     console.error('初始化数据结构失败:', error);
                 }

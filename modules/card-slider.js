@@ -350,550 +350,6 @@ class CardSlider {
             this.attachCardEvents(card, cardIndex);
         });
     }
-
-    // createCard(cardData, index) {
-    //     const card = document.createElement('div');
-    //     card.className = 'card';
-    //     card.dataset.index = index;
-    //     card.dataset.dayId = this.dayId;
-    //     card.dataset.itemIndex = index;
-    //     // 保存itemId以便后续使用统一结构
-    //     if (cardData.id) {
-    //         card.dataset.itemId = cardData.id;
-    //     }
-        
-    //     // 获取留言数据、图片和消费表（优先从统一结构读取）
-    //     const itemId = cardData.id || null;
-    //     let comments = [];
-    //     let images = [];
-    //     let spendItems = [];
-    //     if (itemId && typeof tripDataStructure !== 'undefined') {
-    //         // 【关键修复】每次都获取最新的 unifiedData，确保数据是最新的
-    //         const unifiedData = tripDataStructure.loadUnifiedData();
-    //         if (unifiedData) {
-    //             // 关键修复：days 现在是对象结构 {dayId: dayData}，不再是数组
-    //             // 验证 unifiedData 的结构
-    //             if (!unifiedData.days) {
-    //                 console.warn('createCard: unifiedData 缺少 days', { unifiedData });
-    //             } else {
-    //                 // 【实时容错】确保 dayId 安全：如果实例内的脏了，用全局的
-    //                 let safeDayId = this.dayId;
-    //                 if (!safeDayId || String(safeDayId).startsWith('trip_')) {
-    //                     // this.dayId 无效，使用全局 currentDayId
-    //                     if (window.stateManager) {
-    //                         safeDayId = window.stateManager.getState('currentDayId') || 'day1';
-    //                     } else {
-    //                         safeDayId = 'day1';
-    //                     }
-    //                 }
-    //                 // 确保是字符串
-    //                 safeDayId = String(safeDayId);
-                    
-    //                 // 【验证】确保 unifiedData 是有效的对象
-    //                 if (!unifiedData || typeof unifiedData !== 'object' || !unifiedData.days) {
-    //                     console.error('createCard: unifiedData 无效，无法获取 item', {
-    //                         unifiedData,
-    //                         unifiedDataType: typeof unifiedData,
-    //                         hasDays: !!unifiedData.days
-    //                     });
-    //                 } else {
-    //                     const item = tripDataStructure.getItemData(unifiedData, safeDayId, itemId);
-    //                     if (item) {
-    //                         // comments 现在是对象结构 {hash: comment}，转换为数组并按时间排序
-    //                         if (item.comments && typeof item.comments === 'object' && !Array.isArray(item.comments)) {
-    //                             comments = Object.values(item.comments)
-    //                                 .filter(c => c && !c._deleted)
-    //                                 .sort((a, b) => {
-    //                                     // 按时间戳排序（旧的在前）
-    //                                     const timeA = a.timestamp || 0;
-    //                                     const timeB = b.timestamp || 0;
-    //                                     return timeA - timeB;
-    //                                 });
-    //                         } else {
-    //                             comments = Array.isArray(item.comments) 
-    //                                 ? item.comments.filter(c => c && !c._deleted).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-    //                                 : (item.comments ? [item.comments] : []);
-    //                         }
-                            
-    //                         // images 现在是对象结构 {key: imageData}，转换为数组
-    //                         if (item.images && typeof item.images === 'object' && !Array.isArray(item.images)) {
-    //                             images = Object.values(item.images).map(img => {
-    //                                 // 如果 image 是对象，提取 url；如果是字符串，直接使用
-    //                                 return typeof img === 'object' && img !== null ? (img.url || img) : img;
-    //                             });
-    //                         } else {
-    //                             images = Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []);
-    //                         }
-                            
-    //                         // spend 可能是数组或 null
-    //                         spendItems = Array.isArray(item.spend) ? item.spend : (item.spend ? [item.spend] : []);
-    //                     } else {
-    //                         // 找不到 item，可能是数据未加载完成
-    //                     }
-    //                 }
-    //             }
-    //         } else {
-    //             console.warn('createCard: 无法加载统一数据', { dayId: this.dayId, itemId });
-    //         }
-    //     }
-    //     // 确保都是数组类型
-    //     if (!Array.isArray(comments)) comments = [];
-    //     if (!Array.isArray(images)) images = [];
-    //     if (!Array.isArray(spendItems)) spendItems = [];
-        
-    //     // 调试：检查 comments 是否正确加载
-    //     if (comments.length > 0) {
-    //     } else if (itemId) {
-    //         // 如果没有 comments，检查一下数据是否正确加载
-    //         const unifiedData = tripDataStructure.loadUnifiedData();
-    //         if (unifiedData) {
-    //             // 确保 dayId 安全
-    //             let safeDayId = this.dayId;
-    //             if (!safeDayId || String(safeDayId).startsWith('trip_')) {
-    //                 if (window.stateManager) {
-    //                     safeDayId = window.stateManager.getState('currentDayId') || 'day1';
-    //                 } else {
-    //                     safeDayId = 'day1';
-    //                 }
-    //             }
-    //             // 确保是字符串
-    //             safeDayId = String(safeDayId);
-                
-    //             const item = tripDataStructure.getItemData(unifiedData, safeDayId, itemId);
-    //             if (item) {
-    //             }
-    //         }
-    //     }
-    //     // 如果没有从统一结构获取到spend，使用cardData中的spend
-    //     if (spendItems.length === 0 && cardData.spend) {
-    //         spendItems = Array.isArray(cardData.spend) ? cardData.spend : [];
-    //     }
-    //     // 使用LikeHandler获取item点赞（返回格式：{ section: ['user1', 'user2'] }）
-    //     const itemLikes = typeof window.LikeHandler !== 'undefined' && window.LikeHandler ? 
-    //         window.LikeHandler.getLikes(this.dayId, itemId, 'item') : {};
-        
-    //     // 获取标签：使用tag字段，如果没有则使用category
-    //     let cardTag = cardData.tag || cardData.category || '其他';
-    //     // 使用 itemId 获取展开状态
-    //     const isExpanded = this.getCardExpanded(itemId);
-    //     let html = `
-    //         <div class="card-header">
-    //             <div class="card-header-main">
-    //                 <div class="card-sort-buttons">
-    //                     <button class="card-sort-btn card-sort-up" data-index="${index}" title="上移">▲</button>
-    //                     <button class="card-sort-btn card-sort-down" data-index="${index}" title="下移">▼</button>
-    //                 </div>
-    //                 <div class="card-header-content">
-    //                     <div class="card-category-container" data-card-index="${index}">
-    //                         <span class="card-category-display">${window.escapeHtml ? window.escapeHtml(cardData.category) : cardData.category}</span>
-    //                         <input type="text" class="card-category-input" value="${window.escapeHtml ? window.escapeHtml(cardData.category) : cardData.category}" style="display: none;" />
-    //                     </div>
-    //                     <div class="card-time-container" data-card-index="${index}">
-    //                         ${cardData.time ? `
-    //                             <span class="card-time-display">${window.escapeHtml ? window.escapeHtml(cardData.time) : cardData.time}</span>
-    //                             <input type="time" class="card-time-input" value="${window.formatTimeForInput ? window.formatTimeForInput(cardData.time) : cardData.time}" style="display: none;" />
-    //                         ` : `
-    //                             <span class="card-time-display" style="display: inline-block; color: #999; cursor: pointer;" title="点击添加时间">+ 添加时间</span>
-    //                             <input type="time" class="card-time-input" value="" style="display: none;" />
-    //                         `}
-    //                     </div>
-    //                     <div class="card-tag tag-${cardTag}" data-card-index="${index}" data-current-tag="${cardTag}">${this.getTagLabel(cardTag)}</div>
-    //                 </div>
-    //                 <div class="card-header-actions">
-    //                     <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项" ${this.sortMode ? 'style="display: none;"' : ''}>×</button>
-    //                 </div>
-    //             </div>
-    //         </div>
-    //         <div class="card-content ${isExpanded ? 'expanded' : 'collapsed'}">
-    //     `;
-        
-    //     // 添加图片/地图区域
-    //     html += `
-    //         <div class="card-section image-section">
-    //             <div class="image-upload-controls">
-    //                 <label class="image-upload-btn" title="上传图片" style="cursor: pointer; display: inline-block;">
-    //                     📷 上传图片
-    //                     <input type="file" class="image-upload-input" accept="image/*" multiple style="display: none;" />
-    //                 </label>
-    //             </div>
-    //             <div class="image-container">
-    //                 ${images.length > 0 ? `
-    //                     <div class="image-carousel">
-    //                         <button class="carousel-btn carousel-prev" title="上一张">‹</button>
-    //                         <div class="carousel-wrapper">
-    //                             <div class="carousel-track" style="transform: translateX(0);">
-    //                                 ${images.map((img, imgIndex) => `
-    //                                     <div class="carousel-slide">
-    //                                         <img src="${window.escapeHtml ? window.escapeHtml(img) : img}" alt="图片 ${imgIndex + 1}" class="card-image" data-image-url="${window.escapeHtml ? window.escapeHtml(img) : img}" data-image-index="${imgIndex}" style="cursor: pointer;" title="点击查看大图" />
-    //                                         <button class="image-remove-btn" data-image-index="${imgIndex}" title="删除图片">×</button>
-    //                                     </div>
-    //                                 `).join('')}
-    //                             </div>
-    //                         </div>
-    //                         <button class="carousel-btn carousel-next" title="下一张">›</button>
-    //                         <div class="carousel-indicators">
-    //                             ${images.map((img, imgIndex) => `
-    //                                 <span class="carousel-dot ${imgIndex === 0 ? 'active' : ''}" data-index="${imgIndex}"></span>
-    //                             `).join('')}
-    //                         </div>
-    //                     </div>
-    //                 ` : `
-    //                     <div class="image-placeholder">
-    //                         <div class="image-placeholder-text">暂无图片</div>
-    //                     </div>
-    //                 `}
-    //             </div>
-    //         </div>
-    //     `;
-        
-    //     // 读取计划项（优先从localStorage读取修改后的数据）
-    //     // 优先从统一结构读取plan数据
-    //     let planData = null;
-    //     if (itemId && typeof tripDataStructure !== 'undefined') {
-    //         const unifiedData = tripDataStructure.loadUnifiedData();
-    //         if (unifiedData) {
-    //             // 确保 dayId 安全
-    //             let safeDayId = this.dayId;
-    //             if (!safeDayId || String(safeDayId).startsWith('trip_')) {
-    //                 if (window.stateManager) {
-    //                     safeDayId = window.stateManager.getState('currentDayId') || 'day1';
-    //                 } else {
-    //                     safeDayId = 'day1';
-    //                 }
-    //             }
-    //             // 确保是字符串
-    //             safeDayId = String(safeDayId);
-                
-    //             const item = tripDataStructure.getItemData(unifiedData, safeDayId, itemId);
-    //             if (item && item.plan) {
-    //                 planData = item.plan;
-    //             }
-    //         }
-    //     }
-        
-    //     // 如果统一结构没有plan数据，使用cardData.plan
-    //     if (!planData) {
-    //         planData = cardData.plan;
-    //     }
-        
-    //     // 如果还是没有，尝试从旧的存储方式读取（兼容旧数据）
-    //     if (!planData) {
-    //         const planKey = `trip_plan_${this.dayId}_${index}`;
-    //         const savedPlan = localStorage.getItem(planKey);
-    //         if (savedPlan) {
-    //             try {
-    //                 planData = JSON.parse(savedPlan);
-    //             } catch (e) {
-    //                 // 如果解析失败，使用原始数据
-    //             }
-    //         }
-    //     }
-        
-    //     // 总是显示计划区域，即使没有计划项也可以添加
-    //     // plan 现在是对象结构 {hash: planItem}，转换为数组
-    //     // 处理plan数据，支持对象、数组或字符串格式，过滤已删除的项
-    //     let planItems = [];
-    //     if (planData) {
-    //         // 如果 planData 是对象结构（不是数组），转换为数组
-    //         if (typeof planData === 'object' && !Array.isArray(planData) && planData !== null) {
-    //             planItems = Object.values(planData)
-    //                 .filter(item => {
-    //                     // 过滤掉 null 和 undefined
-    //                     if (!item) return false;
-    //                     // 检查是否有 _deleted 标记
-    //                     if (item._deleted === true) return false;
-    //                     // 如果有 _text 字段，确保不为空
-    //                     if (item._text !== undefined && item._text !== null) {
-    //                         if (String(item._text).trim().length === 0) return false;
-    //                     }
-    //                     return true;
-    //                 })
-    //                 .sort((a, b) => {
-    //                     // 按时间戳排序（旧的在前），与 LikeHandler 中的排序逻辑保持一致
-    //                     const timeA = (a && typeof a === 'object' && a._timestamp) ? a._timestamp : 0;
-    //                     const timeB = (b && typeof b === 'object' && b._timestamp) ? b._timestamp : 0;
-    //                     return timeA - timeB;
-    //                 });
-    //         } else if (Array.isArray(planData)) {
-    //             planItems = planData.filter(item => {
-    //                 // 过滤掉 null 和 undefined
-    //                 if (!item) return false;
-    //                 // 如果是对象，检查是否有 _deleted 标记
-    //                 if (typeof item === 'object' && item !== null) {
-    //                     if (item._deleted === true) return false;
-    //                     if (item._text !== undefined && item._text !== null) {
-    //                         if (String(item._text).trim().length === 0) return false;
-    //                     }
-    //                     return true;
-    //                 }
-    //                 // 如果是字符串，确保不为空
-    //                 if (typeof item === 'string') {
-    //                     return item.trim().length > 0;
-    //                 }
-    //                 return false;
-    //             });
-    //         } else if (typeof planData === 'string') {
-    //             planItems = planData.trim().length > 0 ? [planData] : [];
-    //         }
-    //     }
-        
-    //     html += `
-    //         <div class="card-section">
-    //             <div class="card-section-header">
-    //                 <div class="card-section-title plan">计划</div>
-    //             </div>
-    //             <ul class="plan-list">
-    //                 ${planItems.length > 0 ? planItems
-    //                     .filter(planItem => {
-    //                         // 过滤掉 null 和 undefined
-    //                         return planItem !== null && planItem !== undefined;
-    //                     })
-    //                     .map((planItem, filteredIndex) => {
-    //                     // 安全检查：如果 planItem 为 null 或 undefined，跳过
-    //                     if (!planItem) {
-    //                         return '';
-    //                     }
-    //                     // 支持新旧两种格式：字符串或对象
-    //                     let planItemText = '';
-    //                     if (typeof planItem === 'string') {
-    //                         planItemText = planItem;
-    //                     } else if (planItem && typeof planItem === 'object' && planItem._text) {
-    //                         planItemText = planItem._text;
-    //                     } else if (planItem != null) {
-    //                         // 如果既不是字符串也不是对象，转换为字符串
-    //                         planItemText = String(planItem);
-    //                     }
-    //                     const planHash = (planItem && typeof planItem === 'object' && planItem._hash) ? planItem._hash : null;
-    //                     // 使用原始数组中的索引（不是过滤后的索引）
-    //                     // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
-    //                     let originalPlanItems = [];
-    //                     if (Array.isArray(cardData.plan)) {
-    //                         originalPlanItems = cardData.plan;
-    //                     } else if (cardData.plan && typeof cardData.plan === 'object' && cardData.plan !== null) {
-    //                         // 对象结构：转换为数组并按时间戳排序（与渲染逻辑保持一致）
-    //                         originalPlanItems = Object.values(cardData.plan).sort((a, b) => {
-    //                             const timeA = (a && typeof a === 'object' && a._timestamp) ? a._timestamp : 0;
-    //                             const timeB = (b && typeof b === 'object' && b._timestamp) ? b._timestamp : 0;
-    //                             return timeA - timeB;
-    //                         });
-    //                     } else if (cardData.plan) {
-    //                         originalPlanItems = [cardData.plan];
-    //                     }
-    //                     const originalIndex = originalPlanItems.findIndex(p => {
-    //                         // 安全检查：过滤掉 null 和 undefined
-    //                         if (!p || !planItem) {
-    //                             return false;
-    //                         }
-    //                         if (typeof p === 'string' && typeof planItem === 'string') {
-    //                             return p === planItem;
-    //                         } else if (typeof p === 'object' && typeof planItem === 'object' && p !== null && planItem !== null) {
-    //                             return p._hash === planItem._hash || (p._text === planItem._text && !p._hash && !planItem._hash);
-    //                         }
-    //                         return false;
-    //                     });
-    //                     const planIndex = originalIndex !== -1 ? originalIndex : filteredIndex;
-    //                     const planItemLikes = typeof window.LikeHandler !== 'undefined' && window.LikeHandler ? 
-    //                         window.LikeHandler.getLikes(this.dayId, itemId, 'plan', planIndex) : [];
-    //                     // 新格式：planItemLikes 是数组 ['mrb', 'djy']
-    //                     const planItemLikeCount = Array.isArray(planItemLikes) ? planItemLikes.length : 0;
-    //                     const currentUser = getCurrentUser();
-    //                     const isLiked = Array.isArray(planItemLikes) && currentUser && planItemLikes.includes(currentUser);
-    //                 return `
-    //                     <li class="plan-item">
-    //                         <span class="plan-item-text">${window.escapeHtmlKeepBr ? window.escapeHtmlKeepBr(planItemText) : planItemText}</span>
-    //                         <div class="plan-item-actions">
-    //                             <button class="plan-item-like-btn ${isLiked ? 'liked' : ''}" 
-    //                                     data-plan-index="${planIndex}" 
-    //                                     data-plan-hash="${planHash || ''}"
-    //                                     data-item-id="${itemId || ''}"
-    //                                     title="点赞">
-    //                                 <span class="like-icon">${isLiked ? '♥' : '♥'}</span>
-    //                                 ${planItemLikeCount > 0 ? `<span class="like-count">${planItemLikeCount}</span>` : ''}
-    //                             </button>
-    //                             <button class="plan-item-delete-btn" 
-    //                                     data-card-index="${index}"
-    //                                     data-plan-index="${planIndex}"
-    //                                     data-plan-hash="${planHash || ''}"
-    //                                     data-item-id="${itemId || ''}"
-    //                                     title="删除此项">×</button>
-    //                         </div>
-    //                     </li>
-    //                 `;
-    //                 }).join('') : ''}
-    //                 <li class="plan-item plan-add-item">
-    //                     <button class="plan-add-btn" data-card-index="${index}" title="添加计划项">+ 添加计划项</button>
-    //                     <div class="plan-input-container" style="display: none;">
-    //                         <input type="text" class="plan-input" placeholder="输入计划项..." />
-    //                         <div class="plan-input-actions">
-    //                             <button class="plan-input-confirm">✓</button>
-    //                             <button class="plan-input-cancel">✕</button>
-    //                         </div>
-    //                     </div>
-    //                 </li>
-    //             </ul>
-    //         </div>
-    //     `;
-        
-    //     // 备注区域（总是显示，即使没有内容）
-    //     html += `
-    //         <div class="card-section">
-    //             <div class="card-section-header">
-    //                 <div class="card-section-title note">备注</div>
-    //             </div>
-    //             <div class="card-section-content note-content-container" data-card-index="${index}">
-    //                 <div class="note-content-display markdown-content">${window.markdownToHtml ? window.markdownToHtml(cardData.note || '') : (cardData.note || '')}</div>
-    //                 <textarea class="note-content-input" style="display: none;" placeholder="输入备注（支持 Markdown 格式）...">${window.escapeHtml ? window.escapeHtml(cardData.note || '') : (cardData.note || '')}</textarea>
-    //             </div>
-    //         </div>
-    //     `;
-        
-    //     // 添加消费表区域（在备注和留言之间）
-    //     html += `
-    //         <div class="card-section">
-    //             <div class="card-section-header">
-    //                 <div class="card-section-title spend">💰 消费表</div>
-    //             </div>
-    //             <div class="card-section-content spend-content">
-    //                 <table class="spend-table">
-    //                     <thead>
-    //                         <tr>
-    //                             <th>项目</th>
-    //                             <th>金额</th>
-    //                             <th>支出人</th>
-    //                             <th></th>
-    //                         </tr>
-    //                     </thead>
-    //                     <tbody class="spend-tbody">
-    //                         ${spendItems.length > 0 ? spendItems.map((spendItem, spendIndex) => {
-    //                             const itemName = spendItem.item || '';
-    //                             const amount = spendItem.amount || 0;
-    //                             const payer = spendItem.payer || '';
-    //                             return `
-    //                             <tr class="spend-row" data-spend-index="${spendIndex}">
-    //                                 <td class="spend-item-name">${window.escapeHtml ? window.escapeHtml(itemName) : itemName}</td>
-    //                                 <td class="spend-item-amount">¥${parseFloat(amount).toFixed(2)}</td>
-    //                                 <td class="spend-item-payer">${window.escapeHtml ? window.escapeHtml(payer) : payer}</td>
-    //                                 <td class="spend-item-action">
-    //                                     <button class="spend-delete-btn" data-spend-index="${spendIndex}" title="删除">×</button>
-    //                                 </td>
-    //                             </tr>
-    //                             `;
-    //                         }).join('') : '<tr><td colspan="4" class="spend-empty">暂无消费记录</td></tr>'}
-    //                     </tbody>
-    //                     <tfoot>
-    //                         <tr class="spend-total-row">
-    //                             <td colspan="3" class="spend-total-label">总计：</td>
-    //                             <td class="spend-total-amount">¥${spendItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0).toFixed(2)}</td>
-    //                         </tr>
-    //                     </tfoot>
-    //                 </table>
-    //                 <div class="spend-add-container">
-    //                     <button class="spend-add-btn" data-card-index="${index}" title="添加消费项">+ 添加消费项</button>
-    //                     <div class="spend-input-container" style="display: none;">
-    //                         <input type="text" class="spend-item-input" placeholder="项目名称..." />
-    //                         <input type="number" class="spend-amount-input" placeholder="金额" step="0.01" min="0" />
-    //                         <select class="spend-payer-input">
-    //                             <option value="">请选择支出人</option>
-    //                             <option value="mrb">mrb</option>
-    //                             <option value="djy">djy</option>
-    //                             <option value="共同">共同</option>
-    //                         </select>
-    //                         <div class="spend-input-actions">
-    //                             <button class="spend-input-confirm">✓</button>
-    //                             <button class="spend-input-cancel">✕</button>
-    //                         </div>
-    //                     </div>
-    //                 </div>
-    //             </div>
-    //         </div>
-    //     `;
-        
-    //     // 添加留言区域（移到备注下面）- 总是显示，允许添加新留言
-    //     html += `
-    //         <div class="card-section">
-    //             <div class="card-section-title comment"> 留言</div>
-    //             <div class="comments-container">
-    //                 ${comments.length > 0 ? comments
-    //                     .map((comment, originalIndex) => {
-    //                     // 跳过无效的 comments，但不改变索引
-    //                     if (!comment || !comment.message || !comment.user || !comment.timestamp) {
-    //                         console.warn('跳过无效的 comment:', comment);
-    //                         return '';
-    //                     }
-                        
-    //                     try {
-    //                         // 使用原始索引来获取点赞数据（因为 LikeHandler 使用的是统一结构中的索引）
-    //                         const commentLikes = typeof window.LikeHandler !== 'undefined' && window.LikeHandler ? 
-    //                             window.LikeHandler.getLikes(this.dayId, itemId, 'comment', originalIndex) : [];
-    //                         // 新格式：commentLikes 是数组 ['mrb', 'djy']
-    //                         const commentLikeCount = Array.isArray(commentLikes) ? commentLikes.length : 0;
-    //                         const currentUser = (typeof window.AuthManager !== 'undefined' && window.AuthManager.getCurrentUser) 
-    //                                            ? window.AuthManager.getCurrentUser() 
-    //                                            : (typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null);
-    //                         const isLiked = Array.isArray(commentLikes) && commentLikes.includes(currentUser);
-                            
-    //                         // 安全获取字段值
-    //                         const commentUser = comment.user || 'unknown';
-    //                         const commentMessage = String(comment.message || '');
-    //                         const commentHash = comment._hash || '';
-    //                         const commentTimestamp = comment.timestamp || Date.now();
-    //                         const formattedTime = window.formatTime ? window.formatTime(commentTimestamp) : '';
-                            
-    //                         return `
-    //                         <div class="comment-item ${commentUser === 'mrb' ? 'user-a' : 'user-b'}" data-comment-hash="${commentHash}">
-    //                             <div class="comment-header">
-    //                                 <span class="comment-user">${commentUser === 'mrb' ? '👤 mrb' : '👤 djy'}</span>
-    //                                 <span class="comment-time">${formattedTime}</span>
-    //                                 <button class="comment-delete-btn" data-comment-hash="${commentHash}" title="删除留言">×</button>
-    //                             </div>
-    //                             <div class="comment-content">${window.escapeHtml ? window.escapeHtml(commentMessage) : commentMessage}</div>
-    //                             <button class="comment-like-btn ${isLiked ? 'liked' : ''}" 
-    //                                     data-comment-index="${originalIndex}" title="点赞">
-    //                                 <span class="like-icon">${isLiked ? '♥' : '♥'}</span>
-    //                                 ${commentLikeCount > 0 ? `<span class="like-count">${commentLikeCount}</span>` : ''}
-    //                             </button>
-    //                         </div>
-    //                     `;
-    //                     } catch (error) {
-    //                         console.error('渲染 comment 失败:', error, comment);
-    //                         return ''; // 如果渲染失败，返回空字符串
-    //                     }
-    //                 })
-    //                 .filter(html => html !== '') // 过滤掉空字符串
-    //                 .join('') : '<div class="no-comments">暂无留言</div>'}
-    //             </div>
-    //             <div class="comment-input-container">
-    //                 <textarea class="comment-input" placeholder="输入留言..." rows="2"></textarea>
-    //                 <button class="comment-submit">发送</button>
-    //             </div>
-    //         </div>
-    //     `;
-        
-    //     // 关闭card-content
-    //     html += '</div>';
-        
-    //     // 在卡片最下方添加折叠展开按钮（在card-content外面）
-    //     html += `
-    //         <div class="card-footer">
-    //             <button class="card-expand-btn" data-expanded="${isExpanded}" title="${isExpanded ? '收起' : '展开'}" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'};">
-    //                 ▼
-    //             </button>
-    //         </div>
-    //     `;
-        
-    //     // 关闭整个card
-    //     html += '</div>';
-    //     card.innerHTML = html;
-        
-    //     // 添加事件监听器
-    //     this.attachCardEvents(card, index);
-        
-    //     return card;
-    // }
-    // /**
-    //  * 主入口：创建卡片 DOM
-    //  * * 重构后：只负责调度，逻辑清晰，易于维护
-    //  */
     createCard(cardData, index) {
         const card = document.createElement('div');
         card.className = 'card';
@@ -1199,15 +655,21 @@ class CardSlider {
     }
 
     _renderSpendSection(spendItems, index) {
-        const rows = spendItems.length > 0 ? spendItems.map((item, i) => `
+        const rows = spendItems.length > 0 ? spendItems.map((item, i) => {
+            // 处理参与人信息，默认显示所有参与人
+            const participants = item.participants || [];
+            const participantsText = participants.length > 0 ? participants.join(', ') : '未指定';
+            return `
             <tr class="spend-row" data-spend-index="${i}">
                 <td class="spend-item-name">${this._escape(item.item)}</td>
                 <td class="spend-item-amount">¥${parseFloat(item.amount).toFixed(2)}</td>
                 <td class="spend-item-payer">${this._escape(item.payer)}</td>
+                <td class="spend-item-participants">${this._escape(participantsText)}</td>
                 <td class="spend-item-action">
                     <button class="spend-delete-btn" data-spend-index="${i}" title="删除">×</button>
                 </td>
-            </tr>`).join('') : '<tr><td colspan="4" class="spend-empty">暂无消费记录</td></tr>';
+            </tr>`;
+        }).join('') : '<tr><td colspan="5" class="spend-empty">暂无消费记录</td></tr>';
 
         const total = spendItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
@@ -1216,11 +678,11 @@ class CardSlider {
                 <div class="card-section-header"><div class="card-section-title spend">💰 消费表</div></div>
                 <div class="card-section-content spend-content">
                     <table class="spend-table">
-                        <thead><tr><th>项目</th><th>金额</th><th>支出人</th><th></th></tr></thead>
+                        <thead><tr><th>项目</th><th>金额</th><th>支出人</th><th>参与人</th><th></th></tr></thead>
                         <tbody class="spend-tbody">${rows}</tbody>
                         <tfoot>
                             <tr class="spend-total-row">
-                                <td colspan="3" class="spend-total-label">总计：</td>
+                                <td colspan="4" class="spend-total-label">总计：</td>
                                 <td class="spend-total-amount">¥${total.toFixed(2)}</td>
                             </tr>
                         </tfoot>
@@ -1228,16 +690,26 @@ class CardSlider {
                     <div class="spend-add-container">
                         <button class="spend-add-btn" data-card-index="${index}" title="添加消费项">+ 添加消费项</button>
                         <div class="spend-input-container" style="display: none;">
-                            <input type="text" class="spend-item-input" placeholder="项目名称..." />
-                            <input type="number" class="spend-amount-input" placeholder="金额" step="0.01" min="0" />
-                            <select class="spend-payer-input">
-                                <option value="">请选择支出人</option>
-                                <option value="mrb">mrb</option>
-                                <option value="djy">djy</option>
-                                <option value="共同">共同</option>
-                            </select>
-                            <div class="spend-input-actions">
-                                <button class="spend-input-confirm">✓</button>
+                        <input type="text" class="spend-item-input" placeholder="项目名称..." />
+                        <input type="number" class="spend-amount-input" placeholder="金额" step="0.01" min="0" />
+                        <select class="spend-payer-input">
+                            <option value="">请选择支出人</option>
+                            <option value="mrb">mrb</option>
+                            <option value="djy">djy</option>
+                            <option value="共同">共同</option>
+                        </select>
+                        <div class="spend-participants">
+                            <div class="participant-option">
+                                <input type="checkbox" id="participant-mrb-${index}" value="mrb" class="participant-checkbox" checked>
+                                <label for="participant-mrb-${index}">mrb</label>
+                            </div>
+                            <div class="participant-option">
+                                <input type="checkbox" id="participant-djy-${index}" value="djy" class="participant-checkbox" checked>
+                                <label for="participant-djy-${index}">djy</label>
+                            </div>
+                        </div>
+                        <div class="spend-input-actions">
+                            <button class="spend-input-confirm">✓</button>
                                 <button class="spend-input-cancel">✕</button>
                             </div>
                         </div>
@@ -2676,8 +2148,14 @@ class CardSlider {
                     const amount = parseFloat(spendAmountInput.value);
                     const payer = spendPayerInput.value || '';
                     
+                    // 获取选中的参与人
+                    const participantCheckboxes = card.querySelectorAll('.participant-checkbox');
+                    const participants = Array.from(participantCheckboxes)
+                        .filter(checkbox => checkbox.checked)
+                        .map(checkbox => checkbox.value);
+                    
                     if (itemName && !isNaN(amount) && amount > 0) {
-                        await this.addSpendItem(index, itemName, amount, payer);
+                        await this.addSpendItem(index, itemName, amount, payer, participants);
                         // 重置输入框和UI状态
                         spendItemInput.value = '';
                         spendAmountInput.value = '';
@@ -2749,8 +2227,8 @@ class CardSlider {
     }
     
     // 添加消费项
-    async addSpendItem(cardIndex, itemName, amount, payer = '') {
-        console.log('addSpendItem 被调用:', { cardIndex, itemName, amount, payer, dayId: this.dayId });
+    async addSpendItem(cardIndex, itemName, amount, payer = '', participants = []) {
+        console.log('addSpendItem 被调用:', { cardIndex, itemName, amount, payer, participants, dayId: this.dayId });
         // 检查写权限
         if (!checkWritePermission()) {
             console.warn('没有写权限');
@@ -2772,7 +2250,8 @@ class CardSlider {
         const newSpendItem = {
             item: itemName,
             amount: parseFloat(amount) || 0,
-            payer: payer || ''
+            payer: payer || '',
+            participants: participants || []
         };
         
         // 关键修复：从统一结构获取最新的 spend 数据，而不是从 card.spend 获取

@@ -482,6 +482,47 @@ function saveUnifiedData(data) {
     }
 }
 
+// 更新所有现有花销，添加参与人信息（默认mrb和djy共同支付）
+function updateExistingExpensesWithParticipants() {
+    const unifiedData = loadUnifiedData();
+    if (!unifiedData || !unifiedData.days) {
+        return;
+    }
+    
+    let updated = false;
+    
+    // 遍历所有天
+    const daysArray = objectToArray(unifiedData.days);
+    daysArray.forEach(day => {
+        if (!day || !day.items) {
+            return;
+        }
+        
+        // 遍历所有项目
+        const itemsArray = objectToArray(day.items);
+        itemsArray.forEach(item => {
+            if (!item || !item.spend || !Array.isArray(item.spend)) {
+                return;
+            }
+            
+            // 遍历所有消费项
+            item.spend.forEach(spendItem => {
+                if (spendItem && !spendItem.participants) {
+                    // 为没有参与人信息的消费项添加默认参与人
+                    spendItem.participants = ['mrb', 'djy'];
+                    updated = true;
+                }
+            });
+        });
+    });
+    
+    // 如果有更新，保存数据
+    if (updated) {
+        saveUnifiedData(unifiedData);
+        console.log('已更新所有现有花销，添加了默认参与人信息');
+    }
+}
+
 // 加载统一数据
 function loadUnifiedData() {
     const data = localStorage.getItem('trip_unified_data');
@@ -1282,6 +1323,7 @@ window.tripDataStructure = {
     normalizePlan,
     getUnifiedDataSize,
     createBackupEntry,
+    updateExistingExpensesWithParticipants,
     DATA_STRUCTURE_VERSION
 };
 
