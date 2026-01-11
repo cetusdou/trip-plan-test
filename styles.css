@@ -1229,6 +1229,11 @@ body {
     text-align: center;
 }
 
+.spend-item-participants {
+    color: #666;
+    text-align: center;
+}
+
 .spend-empty {
     text-align: right;
     color: #999;
@@ -1941,7 +1946,9 @@ body {
 .card-section-title.comment::before {
     content: "💬";
 }
-
+.card-section-title.comment{
+    padding-bottom: 6px;
+}
 .comments-container {
     /* margin-bottom: 1px; */
     max-height: 300px;
@@ -3209,3 +3216,100 @@ body {
         padding: 4px 8px;
     }
 }
+
+/* 开始：参与分账人选择样式 */
+.spend-participants {
+    margin: 0px 0;
+    padding: 0px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.participants-title {
+    font-size: 14px;
+    font-weight: 100;
+    color: #495057;
+    margin-bottom: 8px;
+    text-align: left;
+}
+
+.participants-options {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.participant-option {
+    display: flex;
+    align-items: center;
+}
+
+.participant-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    align-items: center;
+}
+
+.participant-checkbox + label {
+    display: flex;
+    /* align-items: center; */
+    gap: 6px;
+    padding: 4px 4px;
+    width: 40px;
+    background-color: #ffffff;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    text-align: center;
+    color: #495057;
+}
+
+.participant-checkbox + label:hover {
+    border-color: #e2a2b3;
+    background-color: rgba(226, 162, 179, 0.4);
+}
+
+.participant-checkbox:checked + label {
+    background-color: rgba(226, 162, 179, 0.8);
+    border-color: #e2a2b3;
+    color: #ffffff;
+}
+
+.participant-avatar {
+    font-size: 16px;
+}
+
+.participant-name {
+    font-weight: 500;
+}
+
+/* 移动端优化：参与分账人选择样式 */
+@media (max-width: 480px) {
+    .spend-participants {
+        padding: 8px;
+        margin: 8px 0;
+    }
+    
+    .participants-title {
+        font-size: 13px;
+    }
+    
+    .participants-options {
+        gap: 10px;
+    }
+    
+    .participant-checkbox + label {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+    
+    .participant-avatar {
+        font-size: 14px;
+    }
+}
+/* 结束：参与分账人选择样式 */

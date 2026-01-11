@@ -699,13 +699,20 @@ class CardSlider {
                             <option value="共同">共同</option>
                         </select>
                         <div class="spend-participants">
-                            <div class="participant-option">
-                                <input type="checkbox" id="participant-mrb-${index}" value="mrb" class="participant-checkbox" checked>
-                                <label for="participant-mrb-${index}">mrb</label>
-                            </div>
-                            <div class="participant-option">
-                                <input type="checkbox" id="participant-djy-${index}" value="djy" class="participant-checkbox" checked>
-                                <label for="participant-djy-${index}">djy</label>
+                            <div class="participants-title">参与分账人</div>
+                            <div class="participants-options">
+                                <div class="participant-option">
+                                    <input type="checkbox" id="participant-mrb-${index}" value="mrb" class="participant-checkbox" checked>
+                                    <label for="participant-mrb-${index}">
+                                        <span class="participant-name">mrb</span>
+                                    </label>
+                                </div>
+                                <div class="participant-option">
+                                    <input type="checkbox" id="participant-djy-${index}" value="djy" class="participant-checkbox" checked>
+                                    <label for="participant-djy-${index}">
+                                        <span class="participant-name">djy</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div class="spend-input-actions">
