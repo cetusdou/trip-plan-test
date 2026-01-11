@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>行程计划</title>
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- PWA相关meta标签 -->
+    <meta name="description" content="一个方便的行程计划管理工具">
+    <meta name="theme-color" content="#4a90e2">
+    
+    <!-- Apple iOS相关标签 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="行程计划">
+    
+    <!-- PWA manifest引用 -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- 图标 -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%234a90e2' d='M448 32H64C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64zM128 384c0 17.7-14.3 32-32 32s-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32v160zm128-32c0 17.7-14.3 32-32 32s-32-14.3-32-32V192c0-17.7 14.3-32 32-32s32 14.3 32 32v160zm128 32c-17.7 0-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32v160z'/%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%234a90e2' d='M448 32H64C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64zM128 384c0 17.7-14.3 32-32 32s-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32v160zm128-32c0 17.7-14.3 32-32 32s-32-14.3-32-32V192c0-17.7 14.3-32 32-32s32 14.3 32 32v160zm128 32c-17.7 0-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32v160z'/%3E%3C/svg%3E">
 </head>
 <body>
     <!-- 登录弹窗（必须在 main-content 外面） -->
