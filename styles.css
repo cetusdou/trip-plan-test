@@ -9,8 +9,8 @@
 /* 页面基础样式 */
 /* 396185-517194-6981a3-93b1d1-a8c9e8-ded4ee-ffc8dd-f1b5c8-e2a2b3-db8c9f-cb7892 */
 html {
-    background: linear-gradient(135deg, #396185 0%, #517194 10%, #6981a3 20%, #93b1d1 30%, #a8c9e8 40%, #ded4ee 50%, #ffc8dd 60%, #f1b5c8 70%, #e2a2b3 80%, #db8c9f 90%, #cb7892 100%);
-    background-attachment: fixed; 
+    /* background: linear-gradient(135deg, #396185 0%, #517194 10%, #6981a3 20%, #93b1d1 30%, #a8c9e8 40%, #ded4ee 50%, #ffc8dd 60%, #f1b5c8 70%, #e2a2b3 80%, #db8c9f 90%, #cb7892 100%); */
+    /* background-attachment: scroll;  */
     min-height: 100%;
 }
 
@@ -27,24 +27,12 @@ body {
 
 /* 主容器 */
 .main-container {
-    max-width: 100%;
+    max-width: 600px;
     margin: 0 auto;
 }
 
 /* 用户登录界面（已改为弹窗，保留样式用于兼容） */
-.user-login-container {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-}
 
-.user-login-box h3 {
-    margin-bottom: 20px;
-    color: #2c3e50;
-    text-align: center;
-}
 
 .login-form {
     display: flex;
@@ -118,7 +106,32 @@ body {
 /* 396185-517194-6981a3-93b1d1-a8c9e8-ded4ee-ffc8dd-f1b5c8-e2a2b3-db8c9f-cb7892 */
 .btn-login:active {
     transform: translateY(0);
-    background: linear-gradient(135dag, #396185 0%, #517194 100%);
+    background: linear-gradient(135deg, #396185 0%, #517194 100%);
+}
+
+/* 记住我样式 */
+.remember-me {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    margin-top: -10px;
+}
+
+.remember-me label {
+    font-size: 14px;
+    font-weight: normal;
+    color: #555;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.remember-me input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #396185;
 }
 
 .btn-link {
@@ -1319,7 +1332,7 @@ body {
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    /* background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E"); */
     background-repeat: no-repeat;
     background-position: right 8px center;
     padding-right: 32px;
@@ -1643,7 +1656,8 @@ body {
     border-radius: 12px;
     overflow: hidden;
     background: transparent;
-    border: 2px dashed #ddd;
+    border: none;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1770,6 +1784,8 @@ body {
 .image-placeholder {
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(80px);
+    border: 2px dashed #ddd;
+    border-radius: 12px;
     -webkit-backdrop-filter: blur(80px);
     width: 100%;
     height: 200px;
@@ -1783,8 +1799,8 @@ body {
 }
 
 .image-placeholder:hover {
-    background: #e8f4fd;
-    border-color: #56ab2f;
+    background: rgba(226, 162, 179, 0.1);
+    border-color: #e2a2b3;
     color: #444444;
 }
 
@@ -1954,8 +1970,8 @@ body {
 }
 
 .comments-container {
-    margin-bottom: 12px;
-    max-height: 200px;
+    /* margin-bottom: 1px; */
+    max-height: 300px;
     overflow-y: auto;
     background: rgba(255, 255, 255, 0.4);
     backdrop-filter: blur(80px);
@@ -1965,8 +1981,10 @@ body {
 
 .comment-item {
     position: relative;
-    margin-bottom: 10px;
-    padding: 10px;
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+    padding-top: 10px;
+    padding-left: 10px;
     padding-right: 50px;
     /* border-radius: 8px; */
     /* border-left: 3px solid; */
@@ -1981,6 +1999,7 @@ body {
 .comment-item.user-b {
     margin-top:15px;
     border-top:1px solid rgba(105, 129, 163, 0.2);
+    /* border-bottom: 1px solid rgba(105, 129, 163, 0.2); */
 }
 
 .comment-header {
@@ -1989,10 +2008,12 @@ body {
     align-items: center;
     margin-bottom: 6px;
     font-size: 12px;
+    margin-left: 10px;
+    margin-right: 10px;
     position: relative;
 }
 
-.comment-delete-btn {
+/* .comment-delete-btn {
     background: #7f8c8d;
     border: none;
     border-radius: 50%;
@@ -2000,7 +2021,34 @@ body {
     font-weight: bold;
     color: white;
     cursor: pointer;
-    padding: 4px 8px;
+    padding: left 4px right 2px top 4px bottom 4px;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s ease;
+    opacity: 0.8;
+    margin-left: 0px;
+} */
+
+.comment-delete-btn {
+    position: absolute;    /* 脱离文档流 */
+    top: 12px;            /* 距离顶部 10px（与 padding-top 一致） */
+    right: 19px;           /* 距离右侧 8px（与 Like 按钮一致！） */
+    
+    /* 移除之前的 flex 相关属性影响 */
+    margin-left: 0;
+    margin-top: 0;
+    
+    /* 保持原有的外观样式 */
+    background: #7f8c8d;
+    border: none;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    cursor: pointer;
     width: 16px;
     height: 16px;
     display: flex;
@@ -2009,7 +2057,7 @@ body {
     line-height: 1;
     transition: all 0.2s ease;
     opacity: 0.8;
-    margin-left: 8px;
+    z-index: 10; /* 确保在最上层 */
 }
 
 .comment-delete-btn:hover {
@@ -2019,7 +2067,7 @@ body {
 }
 
 .comment-user {
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .comment-time {
@@ -2030,17 +2078,25 @@ body {
 .comment-content {
     font-size: 14px;
     line-height: 1.6;
+    padding-left: 28px;
+    padding-top: 6px;
     color: #333;
     white-space: pre-wrap;
     word-wrap: break-word;
-    margin-bottom: 6px;
+    margin-bottom: 0px;
 }
+
+
+
+
+
+
 
 .comment-like-btn {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
-    padding: 2px 8px;
+    bottom: -8px;
+    right: 5px;
+    padding: bottom 0px top 4px left 4px right 2px;
     min-width: 44px; /* 确保移动端触摸区域足够大 */
     flex-shrink: 0; /* 防止按钮被压缩 */
 }
@@ -2543,9 +2599,9 @@ body {
         width: 100%;
     }
 
-    .image-container {
+    /* .image-container {
         min-height: 150px;
-    }
+    } */
 
     .image-placeholder {
         height: 150px;

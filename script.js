@@ -2,7 +2,7 @@
 // 用户认证已移至 modules/auth-manager.js
 
 // 当前日期管理（已移至 State Manager，这里保留变量供过渡期使用）
-let currentDayId = 'day1';
+// let currentDayId = 'day1';
 
 // 工具函数已移至 modules/utils.js
 
@@ -146,25 +146,12 @@ function updateSyncStatus(message, type = 'info') {
 // 将 CardSlider 暴露到全局，供其他模块使用
 
 
-// // 将 CardSlider 暴露到全局，供其他模块使用
-// if (typeof window !== 'undefined') {
-//     window.CardSlider = CardSlider;
-// }
 
 // 页面初始化（使用 AppInitializer）
 document.addEventListener('DOMContentLoaded', async () => {
     // 使用新的应用初始化器（定义严格的生命周期）
     if (typeof window.appInitializer !== 'undefined') {
-        try {
-            await window.appInitializer.initialize();
-        } catch (error) {
-            console.error('应用初始化失败，使用降级模式:', error);
-            // 降级模式：使用旧的初始化方式
-            await fallbackInitialization();
-        }
-    } else {
-        console.warn('AppInitializer 未加载，使用降级模式');
-        await fallbackInitialization();
+        await window.appInitializer.initialize();
     }
     
     // 添加登录按钮事件监听器（支持移动端）
@@ -225,42 +212,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-/**
- * 降级初始化（当 AppInitializer 不可用时）
- */
-async function fallbackInitialization() {
-    console.log('使用降级初始化模式...');
+// /**
+//  * 降级初始化（当 AppInitializer 不可用时）
+//  */
+// async function fallbackInitialization() {
+//     console.log('使用降级初始化模式...');
     
-    // 数据迁移功能已停用（不再从分散存储合并数据）
-    // 如果已有统一结构数据，直接使用；如果没有，初始化新结构
-    if (typeof tripDataStructure !== 'undefined' && typeof tripData !== 'undefined') {
-        try {
-            const existingData = tripDataStructure.loadUnifiedData();
-            if (!existingData) {
-                console.log('初始化统一数据结构...');
-                const newData = tripDataStructure.initializeTripDataStructure(tripData);
-                tripDataStructure.saveUnifiedData(newData);
-                console.log('统一数据结构初始化完成');
-            }
-        } catch (error) {
-            console.error('初始化数据结构失败:', error);
-        }
-    }
+//     // 数据迁移功能已停用（不再从分散存储合并数据）
+//     // 如果已有统一结构数据，直接使用；如果没有，初始化新结构
+//     if (typeof tripDataStructure !== 'undefined' && typeof tripData !== 'undefined') {
+//         try {
+//             const existingData = tripDataStructure.loadUnifiedData();
+//             if (!existingData) {
+//                 console.log('初始化统一数据结构...');
+//                 const newData = tripDataStructure.initializeTripDataStructure(tripData);
+//                 tripDataStructure.saveUnifiedData(newData);
+//                 console.log('统一数据结构初始化完成');
+//             }
+//         } catch (error) {
+//             console.error('初始化数据结构失败:', error);
+//         }
+//     }
     
-    // 检查登录状态（等待Firebase初始化后）
-    setTimeout(() => {
-        if (typeof window.AuthManager !== 'undefined' && window.AuthManager.checkLoginStatus) {
-            window.AuthManager.checkLoginStatus();
-        } else if (typeof window.checkLoginStatus === 'function') {
-            window.checkLoginStatus();
-        } else {
-            // 显示登录界面
-            if (typeof window.AuthManager !== 'undefined' && window.AuthManager.showLoginUI) {
-                window.AuthManager.showLoginUI();
-            }
-        }
-    }, 1000);
-}
+//     // 检查登录状态（等待Firebase初始化后）
+//     setTimeout(() => {
+//         if (typeof window.AuthManager !== 'undefined' && window.AuthManager.checkLoginStatus) {
+//             window.AuthManager.checkLoginStatus();
+//         } else if (typeof window.checkLoginStatus === 'function') {
+//             window.checkLoginStatus();
+//         } else {
+//             // 显示登录界面
+//             if (typeof window.AuthManager !== 'undefined' && window.AuthManager.showLoginUI) {
+//                 window.AuthManager.showLoginUI();
+//             }
+//         }
+//     }, 1000);
+// }
 
 // 初始化用户选择器
 function initUserSelector() {
@@ -302,7 +289,7 @@ function showDay(dayId) {
 // applyCardOrder 已移至 modules/data-manager.js
 
 // 应用筛选（支持 State Manager）
-let currentFilter = null; // 向后兼容
+// let currentFilter = null; // 向后兼容
 function applyFilter(items, dayId) {
     // 优先使用 State Manager
     if (window.stateManager) {
@@ -316,7 +303,7 @@ function applyFilter(items, dayId) {
     }
     
     // 降级方案：使用旧变量
-    if (!currentFilter) return items;
+    // if (!currentFilter) return items;
     
     return items.filter(item => {
         const tag = item.tag || item.category || '其他';
@@ -340,10 +327,10 @@ function setFilter(tag) {
     }
     
     // 向后兼容：更新旧变量
-    currentFilter = tag;
+    // currentFilter = tag;
     
     // 重新渲染当前日期
-    const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : currentDayId;
+    const dayId = window.stateManager.getState('currentDayId')
     if (dayId) {
         showDay(dayId);
     }
@@ -366,9 +353,7 @@ function toggleSortMode() {
     if (!cardsContainer) return;
     
     // 从 stateManager 获取当前的 currentDayId，而不是使用默认值
-    const actualDayId = (window.stateManager && window.stateManager.getState) 
-        ? window.stateManager.getState('currentDayId') 
-        : currentDayId || 'day1';
+    const actualDayId = window.stateManager.getState('currentDayId') || 'day1';
     
     // 如果currentSlider不存在或日期不匹配，重新创建
     if (!currentSlider || currentSlider.dayId !== actualDayId) {
@@ -419,7 +404,7 @@ function toggleSortMode() {
             window.stateManager.setState({ currentSlider: currentSlider });
         }
         // 同时更新全局变量（向后兼容）
-        window.currentSlider = currentSlider;
+        // window.currentSlider = currentSlider;
     }
     
     // 切换排序模式
@@ -576,15 +561,7 @@ function syncDownload() {
                         window.UIRenderer.renderNavigation();
                         const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
                         window.UIRenderer.renderDay(dayId || 'day1');
-                    } else {
-                        // 降级方案：直接调用全局函数
-                        renderOverview();
-                        renderNavigation();
-                        const currentDayId = window.stateManager ? window.stateManager.getState('currentDayId') : null;
-                        if (currentDayId && typeof showDay === 'function') {
-                            showDay(currentDayId);
-                        }
-                    }
+                    } 
                 }, 100); // 给状态更新一点时间
             } else {
                 updateSyncStatus('下载失败: ' + (result.message || '未知错误'), 'error');
@@ -609,7 +586,7 @@ function syncDownload() {
     }
 }
 
-// getAllEditedData 已移至 modules/data-manager.js
+
 
 // 返回顶部功能
 function initBackToTop() {
@@ -642,7 +619,6 @@ function toggleSyncPanel() {
     }
 }
 
-// 开支相关功能已移至 modules/expense-manager.js
 
 // ==================== 事件总线集成 ====================
 // 初始化事件监听器，实现模块间解耦

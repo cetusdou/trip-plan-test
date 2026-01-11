@@ -1263,9 +1263,9 @@ class CardSlider {
                     <div class="comment-header">
                         <span class="comment-user">${user === 'mrb' ? '👤 mrb' : '👤 djy'}</span>
                         <span class="comment-time">${formattedTime}</span>
-                        <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>
                     </div>
                     <div class="comment-content">${this._escape(msg)}</div>
+                    <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>
                     <button class="comment-like-btn ${isLiked ? 'liked' : ''}" 
                             data-comment-index="${i}" title="点赞">
                         <span class="like-icon">♥</span>

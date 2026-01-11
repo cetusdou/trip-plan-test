@@ -8,7 +8,7 @@
 </head>
 <body>
     <!-- 登录弹窗（必须在 main-content 外面） -->
-    <div id="login-modal" class="modal" style="display: flex;">
+    <div id="login-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>用户登录</h3>
@@ -22,6 +22,12 @@
                     <div class="form-group">
                         <label for="login-password">密码：</label>
                         <input type="password" id="login-password" class="form-input" placeholder="请输入密码" autocomplete="current-password">
+                    </div>
+                    <div class="form-group remember-me">
+                        <label for="login-remember-me">
+                            <input type="checkbox" id="login-remember-me" checked>
+                            记住我
+                        </label>
                     </div>
                     <button class="btn-login" id="login-btn" type="button">登录</button>
                 </div>

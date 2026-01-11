@@ -28,6 +28,7 @@
 
             try {
                 // 阶段 1: 初始化 EventBus
+                
                 await this.initEventBus();
                 
                 // 阶段 2: 初始化 State Manager
@@ -35,15 +36,15 @@
                 
                 // 阶段 3: 初始化数据管理（绑定数据监听）
                 await this.initDataManager();
-                
+                await this.initFirebaseSync();
                 // 阶段 4: 初始化 UI 渲染器（订阅状态变化）
                 await this.initUIRenderer();
                 
                 // 阶段 5: 初始化认证管理器（检查登录状态）
                 await this.initAuthManager();
                 
-                // 阶段 6: 初始化 Firebase 同步
-                await this.initFirebaseSync();
+
+
                 
                 // 阶段 7: 初始化其他模块
                 await this.initOtherModules();
@@ -160,17 +161,15 @@
             }
             
             // 关键修复：检查登录状态（如果 localStorage 中有缓存，自动恢复登录）
-            if (window.AuthManager && window.AuthManager.checkLoginStatus) {
-                console.log('📝 检查登录状态...');
-                // checkLoginStatus 会检查 localStorage 中的登录信息，如果存在则验证并恢复登录状态
-                // 等待登录状态检查完成（它会返回 Promise）
-                try {
-                    await window.AuthManager.checkLoginStatus();
-                } catch (error) {
-                    console.error('检查登录状态时出错:', error);
-                }
+            if (window.AuthManager && window.AuthManager.init) {
+                console.log('🚀 启动 AuthManager 生命周期...');
+                window.AuthManager.init();
             } else {
-                console.warn('⚠️ AuthManager.checkLoginStatus 未找到');
+                console.error('❌ AuthManager 未加载或缺少 init 方法 (请检查 AuthManager.js 是否已更新)');
+                // 兼容旧版本：如果还没更新 AuthManager，尝试调用 checkLoginStatus
+                if (window.AuthManager && window.AuthManager.checkLoginStatus) {
+                    await window.AuthManager.checkLoginStatus();
+                }
             }
             
             this.recordStep('AuthManager');

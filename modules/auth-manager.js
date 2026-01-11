@@ -1,18 +1,24 @@
+
 /**
- * 用户认证管理模块
- * 负责用户登录、登出、密码验证和UI状态管理
+ * 用户认证管理模块 (极速版)
+ * 策略：优先信任本地缓存，直接进入系统，后台静默验证
  */
 
 (function() {
     'use strict';
 
-    // 私有状态
+    // 状态与常量
     let currentUser = null;
     let isLoggedIn = false;
+    const STORAGE_KEYS = {
+        USER: 'trip_current_user',
+        PASS_HASH: 'trip_password_hash',
+        REMEMBER: 'trip_remember_me'
+    };
 
-    /**
-     * 检查Firebase是否可用
-     */
+    // ==========================================
+    // 1. 基础 UI 和 状态函数 (保持不变)
+    // ==========================================
     function checkFirebaseAvailable() {
         return typeof window.firebaseDatabase !== 'undefined';
     }
@@ -53,11 +59,8 @@
         
         return passwords;
     }
-
-    /**
-     * 显示登录界面（导出供外部调用）
-     */
     function showLoginUI() {
+        // ... (保持你原有的逻辑: 显示登录框，隐藏主内容) ...
         const loginModal = document.getElementById('login-modal');
         const loggedInContainer = document.getElementById('user-logged-in');
         const mainContent = document.getElementById('main-content');
@@ -68,52 +71,121 @@
         
         isLoggedIn = false;
         currentUser = null;
-        
-        // 更新 stateManager 的状态（如果存在）
-        if (window.stateManager) {
-            window.stateManager.setState({ isLoggedIn: false, currentUser: null });
-        }
-        
-        // 清空输入框
-        const usernameInput = document.getElementById('login-username');
-        const passwordInput = document.getElementById('login-password');
-        if (usernameInput) usernameInput.value = '';
-        if (passwordInput) passwordInput.value = '';
+        updateStateManager(false, null);
     }
 
-    /**
-     * 显示已登录界面
-     */
     function showLoggedInUI(user) {
+        // ... (保持你原有的逻辑: 隐藏登录框，显示主内容) ...
         const loginModal = document.getElementById('login-modal');
         const loggedInContainer = document.getElementById('user-logged-in');
         const mainContent = document.getElementById('main-content');
         const userNameSpan = document.getElementById('logged-in-user-name');
         
-        // 确保登录弹窗关闭
-        if (loginModal) {
-            loginModal.style.setProperty('display', 'none', 'important');
-        }
+        // 关键：强制隐藏登录框
+        if (loginModal) loginModal.style.setProperty('display', 'none', 'important');
         if (loggedInContainer) loggedInContainer.style.display = 'flex';
         if (mainContent) mainContent.style.display = 'block';
         if (userNameSpan) userNameSpan.textContent = user === 'mrb' ? '👤 mrb' : '👤 djy';
         
         isLoggedIn = true;
         currentUser = user;
+        window.currentUser = user; // 兼容全局
         localStorage.setItem('trip_current_user', user);
-        
-        // 更新全局状态
-        window.currentUser = user;
-        
-        // 更新 stateManager 的状态（如果存在）
+        updateStateManager(true, user);
+    }
+
+    function updateStateManager(status, user) {
         if (window.stateManager) {
-            window.stateManager.setState({ isLoggedIn: true, currentUser: user });
+            window.stateManager.setState({ isLoggedIn: status, currentUser: user });
+        }
+    }
+
+    function notifyStatus(msg, type = 'info') {
+        if (typeof window.updateSyncStatus === 'function') {
+            window.updateSyncStatus(msg, type);
+        }
+    }
+
+    // ==========================================
+    // 2. 核心逻辑修改：验证流程
+    // ==========================================
+
+    /**
+     * 等待 Firebase 就绪 (用于后台验证)
+     */
+    function waitForFirebase() {
+        return new Promise((resolve) => {
+            if (window.firebaseDatabase) return resolve(window.firebaseDatabase);
+            // 监听事件
+            window.addEventListener('firebaseReady', () => resolve(window.firebaseDatabase), { once: true });
+            // 超时兜底 (5秒后如果还没连上，就不验证了，默认相信本地)
+            setTimeout(() => resolve(null), 10000); 
+        });
+    }
+
+    /**
+     * 后台静默验证 (不阻塞 UI)
+     */
+    async function backgroundVerify(user, localPass) {
+        console.log('正在后台静默验证密码...');
+        const db = await waitForFirebase();
+        
+        if (!db) {
+            console.log('Firebase 连接超时，保持离线登录状态');
+            return;
+        }
+
+        try {
+            const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+            const snapshot = await get(ref(db, 'user_passwords'));
+            const data = snapshot.val();
+            const passwords = data?.user_passwords || data?.['"user_passwords"'] || data;
+
+            if (passwords && passwords[user]) {
+                const cloudPass = passwords[user];
+                if (cloudPass !== localPass) {
+                    // 😱 发现密码不对！(可能在别处修改了密码)
+                    console.warn('后台验证失败：密码已变更，强制登出');
+                    alert('您的登录凭证已过期（密码可能已修改），请重新登录');
+                    handleLogout();
+                } else {
+                    console.log('✅ 后台验证通过');
+                }
+            }
+        } catch (e) {
+            console.warn('后台验证出错(可能是网络问题)，忽略:', e);
         }
     }
 
     /**
-     * 处理登录
+     * 🔥 启动检查 (你的需求：有缓存直接进)
      */
+    function initAutoLogin() {
+        const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
+        const savedPass = localStorage.getItem(STORAGE_KEYS.PASS_HASH);
+        
+        if (savedUser && savedPass) {
+            // 1. ⚡️ 只要本地有值，直接进系统！完全不等待 Firebase
+            console.log('发现本地缓存，立即登录:', savedUser);
+            showLoggedInUI(savedUser);
+            
+            // 触发数据加载 (如果你的数据加载函数需要联网，它自己会去等 Firebase)
+            if (typeof window.onLoginSuccess === 'function') {
+                window.onLoginSuccess();
+            }
+
+            // 2. 🕵️ 在后台悄悄检查一下密码对不对 (安全兜底)
+            backgroundVerify(savedUser, savedPass);
+        } else {
+            // 本地没数据，才显示登录框
+            showLoginUI();
+        }
+    }
+
+    // ==========================================
+    // 3. 用户交互操作 (保持原有逻辑框架)
+    // ==========================================
+    
     async function handleLogin() {
         const usernameEl = document.getElementById('login-username');
         const passwordEl = document.getElementById('login-password');
@@ -198,9 +270,31 @@
         }
     }
 
-    /**
-     * 验证存储的密码（用于页面刷新后保持登录状态）
-     */
+    function handleLogout() {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        localStorage.removeItem(STORAGE_KEYS.PASS_HASH);
+        // 重载页面以清空内存状态
+        location.reload();
+    }
+
+    async function checkLoginStatus() {
+        const savedUser = localStorage.getItem('trip_current_user');
+        const savedPasswordHash = localStorage.getItem('trip_password_hash');
+        if (savedUser && savedPasswordHash) {
+            // 验证保存的密码hash是否有效（需要从Firebase验证）
+            return await verifyStoredPassword(savedUser, savedPasswordHash);
+        } else {
+            showLoginUI();
+            
+            // 更新 stateManager 的状态（如果存在）
+            if (window.stateManager) {
+                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+            }
+            
+            return false;
+        }
+    }
+
     async function verifyStoredPassword(user, storedPassword) {
         try {
             if (!checkFirebaseAvailable()) {
@@ -258,44 +352,6 @@
             return false;
         }
     }
-
-    /**
-     * 检查登录状态（返回 Promise，表示检查是否完成）
-     */
-    async function checkLoginStatus() {
-        const savedUser = localStorage.getItem('trip_current_user');
-        const savedPasswordHash = localStorage.getItem('trip_password_hash');
-        if (savedUser && savedPasswordHash) {
-            // 验证保存的密码hash是否有效（需要从Firebase验证）
-            return await verifyStoredPassword(savedUser, savedPasswordHash);
-        } else {
-            showLoginUI();
-            
-            // 更新 stateManager 的状态（如果存在）
-            if (window.stateManager) {
-                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
-            }
-            
-            return false;
-        }
-    }
-
-    /**
-     * 退出登录
-     */
-    function handleLogout() {
-        localStorage.removeItem('trip_password_hash');
-        localStorage.removeItem('trip_current_user');
-        showLoginUI();
-        
-        if (typeof window.updateSyncStatus === 'function') {
-            window.updateSyncStatus('已退出登录', 'info');
-        }
-    }
-
-    /**
-     * 检查写权限（只有登录后才能写入）
-     */
     function checkWritePermission() {
         if (!isLoggedIn || !currentUser) {
             if (typeof window.updateSyncStatus === 'function') {
@@ -418,7 +474,27 @@
         return isLoggedIn;
     }
 
-    // 导出到全局
+
+    // ==========================================
+    // 导出与执行
+    // ==========================================
+    function init() {
+        console.log('🔔 [AuthManager] 被 AppInitializer 唤醒，开始初始化...');
+        
+        // 1. 绑定按钮事件 (防止点击无反应)
+        const loginBtn = document.getElementById('login-btn');
+        if (loginBtn) {
+            // 先移除旧的以防万一
+            loginBtn.removeEventListener('click', handleLogin);
+            loginBtn.addEventListener('click', handleLogin);
+            console.log('✅ [AuthManager] 登录按钮事件已绑定');
+        } else {
+            console.warn('⚠️ [AuthManager] 未找到 #login-btn，无法绑定点击事件');
+        }
+
+        // 2. 执行自动登录逻辑
+        initAutoLogin();
+    }
     window.AuthManager = {
         checkLoginStatus,
         handleLogin,
@@ -429,8 +505,19 @@
         initPasswords,
         getCurrentUser,
         getLoginStatus,
-        showLoginUI  // 添加 showLoginUI 到 AuthManager 对象
+        showLoginUI, // 添加 showLoginUI 到 AuthManager 对象
+        init // 添加 init 到 AuthManager 对象
     };
+
+    // 
+
+    // // 🚀 页面加载即运行
+    // if (document.readyState === 'loading') {
+    //     document.addEventListener('DOMContentLoaded', initAutoLogin);
+    // } else {
+    //     initAutoLogin();
+    // }
+
 
     // 为了向后兼容，也导出到原来的全局函数名
     window.checkLoginStatus = checkLoginStatus;
