@@ -27,7 +27,6 @@ body {
 
 /* 主容器 */
 .main-container {
-    width:100%;
     max-width: 600px;
     margin: 0 auto;
 }
@@ -164,25 +163,20 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 5px;
-    flex-wrap: nowrap !important;
+    gap: 10px;
+    flex-wrap: wrap;
     width: 100%;
 }
 
 .user-info {
     display: flex;
-    flex:1;
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
 }
 
 .user-info .sync-status {
-    margin-left: 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
+    margin-left: 20px;
     color: #ffffff;
 }
 
