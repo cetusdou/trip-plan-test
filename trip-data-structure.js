@@ -1088,9 +1088,16 @@ function addItemData(unifiedData, dayId, itemData) {
  * @returns {Object} { success: boolean, timestampKey?: string, backupEntry?: Object }
  */
 function createBackupEntry(unifiedData, type, deletedData, metadata) {
+    // 【修复】确保 unifiedData 是有效的
+    if (!unifiedData || typeof unifiedData !== 'object') {
+        console.error('createBackupEntry: unifiedData 无效');
+        return { success: false };
+    }
+    
     // 初始化备份对象（如果不存在）
     if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
         unifiedData._backup = {};
+        console.log('createBackupEntry: 初始化 _backup 对象');
     }
     
     // 生成唯一的时间戳作为 key（确保唯一性）
@@ -1147,19 +1154,53 @@ function createBackupEntry(unifiedData, type, deletedData, metadata) {
     // 使用时间戳作为 key 添加到备份对象
     unifiedData._backup[timestampKey] = backupEntry;
     
-    // 保存备份数据
-    saveUnifiedData(unifiedData);
+    // 保存备份数据到本地 localStorage
+    console.log('createBackupEntry: 保存数据到 localStorage...');
+    const saveResult = saveUnifiedData(unifiedData);
+    console.log('createBackupEntry: 保存结果:', saveResult);
     
-    // 验证备份是否已保存
-    const savedData = loadUnifiedData();
-    if (savedData && savedData._backup && typeof savedData._backup === 'object' && savedData._backup[timestampKey]) {
-        const backupCount = Object.keys(savedData._backup).length;
-        console.log(`已创建备份条目（类型: ${type}），当前备份数量: ${backupCount}，备份 key: ${timestampKey}`);
-        return { success: true, timestampKey, backupEntry };
-    } else {
-        console.warn(`警告：备份条目（类型: ${type}）可能未正确保存`);
-        return { success: false };
+    // 如果保存成功，同步备份数据到云端作为独立字段
+    if (saveResult) {
+        // 同步备份数据到云端（只上传新添加的那一条备份项）
+        if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase.update) {
+            try {
+                // 只上传新添加的那一条备份项，使用时间戳作为 key
+                const updates = {};
+                updates[`_backup/${timestampKey}`] = backupEntry;
+                updates['_lastSync'] = new Date().toISOString();
+                updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                
+                window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
+                    console.log(`已增量更新云端备份字段，备份 key: ${timestampKey}`);
+                }).catch(backupError => {
+                    console.error('增量更新云端备份字段出错:', backupError);
+                    // 如果备份同步失败，不影响本地操作
+                });
+            } catch (e) {
+                console.error('同步备份到云端时出错:', e);
+                // 同步失败不影响本地操作
+            }
+        }
+        
+        // 验证备份是否已保存到本地
+        try {
+            const localStorageData = localStorage.getItem('trip_unified_data');
+            if (localStorageData) {
+                const parsedData = JSON.parse(localStorageData);
+                if (parsedData && parsedData._backup && typeof parsedData._backup === 'object' && parsedData._backup[timestampKey]) {
+                    const backupCount = Object.keys(parsedData._backup).length;
+                    console.log(`✅ 已创建备份条目（类型: ${type}），当前备份数量: ${backupCount}，备份 key: ${timestampKey}`);
+                    return { success: true, timestampKey, backupEntry };
+                } else {
+                    console.warn(`⚠️  警告：备份条目（类型: ${type}）可能未正确保存到 localStorage`);
+                }
+            }
+        } catch (e) {
+            console.error('验证备份时解析 localStorage 数据失败:', e);
+        }
     }
+    
+    return { success: saveResult, timestampKey, backupEntry };
 }
 
 function deleteItemData(unifiedData, dayId, itemId) {
@@ -1276,7 +1317,39 @@ function restoreItemFromBackup(unifiedData, backupKey, targetDayId = null) {
     // 这里选择移除，如果需要保留历史，可以改为标记
     delete unifiedData._backup[backupKey];
     
-    saveUnifiedData(unifiedData);
+    // 保存更新后的数据到本地 localStorage
+    const saveResult = saveUnifiedData(unifiedData);
+    
+    // 如果保存成功，同步这些更改到云端
+    if (saveResult) {
+        // 同步恢复操作到云端
+        if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase.update) {
+            try {
+                const updates = {};
+                
+                // 1. 从云端 _backup 字段中删除恢复的条目
+                updates[`_backup/${backupKey}`] = null; // 使用 null 表示删除
+                
+                // 2. 更新云端 trip_unified_data 中的数据
+                updates[`trip_unified_data/days/${dayId}/items/${restoredItemId}`] = restoredItem;
+                
+                // 3. 更新元数据
+                updates['_lastSync'] = new Date().toISOString();
+                updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                
+                window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
+                    console.log(`已从云端恢复备份项并同步更改，备份 key: ${backupKey}`);
+                }).catch(error => {
+                    console.error('同步恢复操作到云端时出错:', error);
+                    // 如果同步失败，不影响本地恢复
+                });
+            } catch (e) {
+                console.error('准备同步恢复操作到云端时出错:', e);
+                // 同步失败不影响本地恢复
+            }
+        }
+    }
+    
     return true;
 }
 
@@ -1293,9 +1366,41 @@ function clearBackupData(unifiedData) {
     if (!unifiedData) {
         return false;
     }
+    
+    // 清空本地备份数据
     unifiedData._backup = {};
-    saveUnifiedData(unifiedData);
-    return true;
+    
+    // 保存更新后的数据到本地 localStorage
+    const saveResult = saveUnifiedData(unifiedData);
+    
+    // 如果保存成功，同步清空操作到云端
+    if (saveResult) {
+        // 同步清空备份操作到云端
+        if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase.update) {
+            try {
+                const updates = {};
+                
+                // 清空云端 _backup 字段
+                updates['_backup'] = {};
+                
+                // 更新元数据
+                updates['_lastSync'] = new Date().toISOString();
+                updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
+                
+                window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
+                    console.log('已清空云端备份数据');
+                }).catch(error => {
+                    console.error('同步清空备份数据到云端时出错:', error);
+                    // 如果同步失败，不影响本地操作
+                });
+            } catch (e) {
+                console.error('准备清空云端备份数据时出错:', e);
+                // 同步失败不影响本地操作
+            }
+        }
+    }
+    
+    return saveResult;
 }
 
 // 导出供全局使用
