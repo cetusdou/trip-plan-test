@@ -22,6 +22,24 @@
     function checkFirebaseAvailable() {
         return typeof window.firebaseDatabase !== 'undefined';
     }
+    
+    /**
+     * 从数据库读取邀请码（不初始化，直接读取）
+     */
+    async function getInviteCodesFromDatabase() {
+        try {
+            if (!checkFirebaseAvailable()) {
+                return null;
+            }
+            
+            const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+            const inviteCodesRef = ref(window.firebaseDatabase, 'invite_codes');
+            const snapshot = await get(inviteCodesRef);
+            return snapshot.val();
+        } catch (error) {
+            return null;
+        }
+    }
 
     /**
      * 从Firebase读取密码配置
@@ -85,7 +103,7 @@
         if (loginModal) loginModal.style.setProperty('display', 'none', 'important');
         if (loggedInContainer) loggedInContainer.style.display = 'flex';
         if (mainContent) mainContent.style.display = 'block';
-        if (userNameSpan) userNameSpan.textContent = user === 'mrb' ? '👤 mrb' : '👤 djy';
+        if (userNameSpan) userNameSpan.textContent = `👤 ${user}`;
         
         isLoggedIn = true;
         currentUser = user;
@@ -127,11 +145,9 @@
      * 后台静默验证 (不阻塞 UI)
      */
     async function backgroundVerify(user, localPass) {
-        console.log('正在后台静默验证密码...');
         const db = await waitForFirebase();
         
         if (!db) {
-            console.log('Firebase 连接超时，保持离线登录状态');
             return;
         }
 
@@ -144,40 +160,31 @@
             if (passwords && passwords[user]) {
                 const cloudPass = passwords[user];
                 if (cloudPass !== localPass) {
-                    // 😱 发现密码不对！(可能在别处修改了密码)
-                    console.warn('后台验证失败：密码已变更，强制登出');
                     alert('您的登录凭证已过期（密码可能已修改），请重新登录');
                     handleLogout();
-                } else {
-                    console.log('✅ 后台验证通过');
                 }
             }
         } catch (e) {
-            console.warn('后台验证出错(可能是网络问题)，忽略:', e);
+            // 静默忽略错误
         }
     }
 
     /**
-     * 🔥 启动检查 (你的需求：有缓存直接进)
+     * 自动登录检查
      */
     function initAutoLogin() {
         const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
         const savedPass = localStorage.getItem(STORAGE_KEYS.PASS_HASH);
         
         if (savedUser && savedPass) {
-            // 1. ⚡️ 只要本地有值，直接进系统！完全不等待 Firebase
-            console.log('发现本地缓存，立即登录:', savedUser);
             showLoggedInUI(savedUser);
             
-            // 触发数据加载 (如果你的数据加载函数需要联网，它自己会去等 Firebase)
             if (typeof window.onLoginSuccess === 'function') {
                 window.onLoginSuccess();
             }
 
-            // 2. 🕵️ 在后台悄悄检查一下密码对不对 (安全兜底)
             backgroundVerify(savedUser, savedPass);
         } else {
-            // 本地没数据，才显示登录框
             showLoginUI();
         }
     }
@@ -198,10 +205,13 @@
         const username = usernameEl.value.trim().toLowerCase();
         const password = passwordEl.value;
         
-        // 验证用户名
-        if (!username || (username !== 'mrb' && username !== 'djy')) {
+        // 验证用户名 - 支持 root（调试账户）和自定义账户
+        // root 账户始终有效，其他账户需要先注册
+        const isRootUser = username === 'root';
+        
+        if (!username) {
             if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('用户名不存在', 'error');
+                window.updateSyncStatus('请输入用户名', 'error');
             }
             return;
         }
@@ -235,11 +245,18 @@
                 return;
             }
             
-            const storedPassword = passwords[username];
+            // root账户特殊处理：如果密码未设置，允许直接登录
+            let storedPassword = passwords[username];
             
-            if (!storedPassword) {
+            if (isRootUser && !storedPassword) {
+                storedPassword = 'root123';
+                const { ref, update } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+                const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
+                await update(passwordsRef, { root: storedPassword });
+            } else if (!storedPassword) {
+                // 其他账户需要先注册
                 if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('该用户密码未初始化，请先初始化密码', 'error');
+                    window.updateSyncStatus('该用户未注册，请先注册账户', 'error');
                 }
                 return;
             }
@@ -341,10 +358,8 @@
                 return false;
             }
         } catch (error) {
-            console.error('验证存储密码时出错:', error);
             showLoginUI();
             
-            // 更新 stateManager 的状态（如果存在）
             if (window.stateManager) {
                 window.stateManager.setState({ isLoggedIn: false, currentUser: null });
             }
@@ -363,63 +378,124 @@
     }
 
     /**
-     * 显示初始化密码模态框
+     * 显示注册账户模态框
      */
-    function showInitPasswordModal() {
-        const modal = document.getElementById('init-password-modal');
+    function showRegisterModal() {
+        const modal = document.getElementById('register-modal');
         if (modal) {
             modal.style.display = 'flex';
         } else {
-            alert('找不到初始化密码模态框，请检查页面是否完整加载');
+            alert('找不到注册账户模态框，请检查页面是否完整加载');
         }
     }
 
     /**
-     * 关闭初始化密码模态框
+     * 关闭注册账户模态框
      */
-    function closeInitPasswordModal() {
-        const modal = document.getElementById('init-password-modal');
+    function closeRegisterModal() {
+        const modal = document.getElementById('register-modal');
         if (modal) {
             modal.style.display = 'none';
-            // 清空输入
-            const mrbInput = document.getElementById('init-mrb-password');
-            const djyInput = document.getElementById('init-djy-password');
-            if (mrbInput) mrbInput.value = '';
-            if (djyInput) djyInput.value = '';
+            const usernameInput = document.getElementById('register-username');
+            const passwordInput = document.getElementById('register-password');
+            const confirmInput = document.getElementById('register-confirm');
+            if (usernameInput) usernameInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            if (confirmInput) confirmInput.value = '';
         }
     }
 
     /**
-     * 初始化密码
+     * 注册新账户
      */
-    async function initPasswords() {
-        const mrbPasswordEl = document.getElementById('init-mrb-password');
-        const djyPasswordEl = document.getElementById('init-djy-password');
+    async function registerUser() {
+        const usernameEl = document.getElementById('register-username');
+        const passwordEl = document.getElementById('register-password');
+        const confirmEl = document.getElementById('register-confirm');
+        const inviteCodeEl = document.getElementById('register-invite-code');
         
-        if (!mrbPasswordEl || !djyPasswordEl) {
-            alert('找不到密码输入框，请检查页面是否完整加载');
+        if (!usernameEl || !passwordEl || !confirmEl || !inviteCodeEl) {
+            alert('找不到注册表单元素，请检查页面是否完整加载');
             return;
         }
         
-        const mrbPassword = mrbPasswordEl.value;
-        const djyPassword = djyPasswordEl.value;
+        const username = usernameEl.value.trim().toLowerCase();
+        const password = passwordEl.value;
+        const confirm = confirmEl.value;
+        const inviteCode = inviteCodeEl.value.trim();
         
-        if (!mrbPassword || !djyPassword) {
+        // 验证用户名格式
+        const usernameRegex = /^[a-zA-Z0-9_]+$/;
+        if (!username || !usernameRegex.test(username)) {
             if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('请为两个用户都设置密码', 'error');
+                window.updateSyncStatus('用户名只能包含字母、数字和下划线', 'error');
             }
             return;
         }
         
-        if (mrbPassword.length < 4 || djyPassword.length < 4) {
+        // 验证密码长度
+        if (!password || password.length < 4) {
             if (typeof window.updateSyncStatus === 'function') {
                 window.updateSyncStatus('密码长度至少为4位', 'error');
             }
             return;
         }
         
+        // 验证密码确认
+        if (password !== confirm) {
+            if (typeof window.updateSyncStatus === 'function') {
+                window.updateSyncStatus('两次输入的密码不一致', 'error');
+            }
+            return;
+        }
+        
+        // 验证邀请码（从数据库验证）
+        if (!inviteCode) {
+            if (typeof window.updateSyncStatus === 'function') {
+                window.updateSyncStatus('请输入邀请码', 'error');
+            }
+            return;
+        }
+        
+        // 从 Firebase 数据库验证邀请码
+        try {
+            const { ref, get, update } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+            const inviteCodesRef = ref(window.firebaseDatabase, 'invite_codes');
+            const snapshot = await get(inviteCodesRef);
+            const inviteCodesData = snapshot.val();
+            
+            if (!inviteCodesData || !inviteCodesData[inviteCode]) {
+                if (typeof window.updateSyncStatus === 'function') {
+                    window.updateSyncStatus('邀请码无效，请输入正确的邀请码', 'error');
+                }
+                return;
+            }
+            
+            // 检查邀请码是否已被使用
+            if (inviteCodesData[inviteCode].used) {
+                if (typeof window.updateSyncStatus === 'function') {
+                    window.updateSyncStatus('该邀请码已被使用，请使用其他邀请码', 'error');
+                }
+                return;
+            }
+            
+            // 标记邀请码为已使用
+            await update(inviteCodesRef, { 
+                [inviteCode]: { 
+                    used: true,
+                    used_by: username,
+                    used_at: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            if (typeof window.updateSyncStatus === 'function') {
+                window.updateSyncStatus(`验证邀请码失败: ${error.message}`, 'error');
+            }
+            return;
+        }
+        
         if (typeof window.updateSyncStatus === 'function') {
-            window.updateSyncStatus('正在初始化密码...', 'info');
+            window.updateSyncStatus('正在注册账户...', 'info');
         }
         
         try {
@@ -431,31 +507,41 @@
                 return;
             }
             
-            const { ref, set, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
+            const { ref, update, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
             const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
             
-            await set(passwordsRef, {
-                mrb: mrbPassword,
-                djy: djyPassword
-            });
+            // 检查用户名是否已存在
+            const existingSnapshot = await get(passwordsRef);
+            const existingData = existingSnapshot.val() || {};
+            
+            if (existingData[username]) {
+                if (typeof window.updateSyncStatus === 'function') {
+                    window.updateSyncStatus('该用户名已存在，请选择其他用户名', 'error');
+                }
+                return;
+            }
+            
+            // 使用 update 而不是 set，只添加新用户，不覆盖现有用户
+            await update(passwordsRef, { [username]: password });
             
             // 验证保存是否成功
             const verifySnapshot = await get(passwordsRef);
             const verifyData = verifySnapshot.val();
             
-            if (verifyData && verifyData.mrb && verifyData.djy) {
+            if (verifyData && verifyData[username]) {
                 if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('密码初始化成功！现在可以登录了', 'success');
+                    window.updateSyncStatus('账户注册成功！现在可以登录了', 'success');
                 }
-                closeInitPasswordModal();
+                // 显示明显的注册成功提示
+                alert('🎉 账户注册成功！\n\n您现在可以使用注册的用户名和密码登录系统。');
+                closeRegisterModal();
             } else {
-                throw new Error('保存后验证失败，数据可能未正确写入');
+                throw new Error('注册后验证失败，数据可能未正确写入');
             }
         } catch (error) {
-            console.error('初始化密码时出错:', error);
-            alert(`初始化失败: ${error.message}\n请查看控制台获取详细信息`);
+            alert(`注册失败: ${error.message}\n请查看控制台获取详细信息`);
             if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus(`初始化失败: ${error.message}`, 'error');
+                window.updateSyncStatus(`注册失败: ${error.message}`, 'error');
             }
         }
     }
@@ -479,20 +565,29 @@
     // 导出与执行
     // ==========================================
     function init() {
-        console.log('🔔 [AuthManager] 被 AppInitializer 唤醒，开始初始化...');
-        
-        // 1. 绑定按钮事件 (防止点击无反应)
+        // 绑定按钮事件
         const loginBtn = document.getElementById('login-btn');
         if (loginBtn) {
-            // 先移除旧的以防万一
             loginBtn.removeEventListener('click', handleLogin);
             loginBtn.addEventListener('click', handleLogin);
-            console.log('✅ [AuthManager] 登录按钮事件已绑定');
-        } else {
-            console.warn('⚠️ [AuthManager] 未找到 #login-btn，无法绑定点击事件');
         }
+        
+        // 绑定注册按钮事件
+        const registerBtn = document.getElementById('register-btn');
+        if (registerBtn) {
+            registerBtn.removeEventListener('click', showRegisterModal);
+            registerBtn.addEventListener('click', showRegisterModal);
+        }
+        
+        // 确保全局函数可用
+        window.showRegisterModal = showRegisterModal;
+        window.closeRegisterModal = closeRegisterModal;
+        window.registerUser = registerUser;
 
-        // 2. 执行自动登录逻辑
+        // 预加载邀请码（后台静默执行，仅读取不初始化）
+        getInviteCodesFromDatabase().catch(() => {});
+
+        // 执行自动登录逻辑
         initAutoLogin();
     }
     window.AuthManager = {
@@ -500,9 +595,9 @@
         handleLogin,
         handleLogout,
         checkWritePermission,
-        showInitPasswordModal,
-        closeInitPasswordModal,
-        initPasswords,
+        showRegisterModal,
+        closeRegisterModal,
+        registerUser,
         getCurrentUser,
         getLoginStatus,
         showLoginUI, // 添加 showLoginUI 到 AuthManager 对象
@@ -524,9 +619,9 @@
     window.handleLogin = handleLogin;
     window.handleLogout = handleLogout;
     window.checkWritePermission = checkWritePermission;
-    window.showInitPasswordModal = showInitPasswordModal;
-    window.closeInitPasswordModal = closeInitPasswordModal;
-    window.initPasswords = initPasswords;
+    window.showRegisterModal = showRegisterModal;
+    window.closeRegisterModal = closeRegisterModal;
+    window.registerUser = registerUser;
     window.showLoginUI = showLoginUI;
 
 })();

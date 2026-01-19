@@ -23,24 +23,26 @@ window.onLoginSuccess = function() {
                 if (window.stateManager && window.tripDataStructure) {
                     const unifiedData = window.tripDataStructure.loadUnifiedData();
                     if (unifiedData) {
-                        // 确保 _backup 字段存在（向后兼容）
-                        if (!unifiedData._backup || !Array.isArray(unifiedData._backup)) {
-                            unifiedData._backup = [];
+                        // 【重要修改】trip_unified_data 下不应该有 _backup 字段
+                        // _backup 应该是独立的顶级字段，和 trip_unified_data 同级
+                        if (unifiedData._backup) {
+                            // 从 trip_unified_data 中移除 _backup
+                            delete unifiedData._backup;
                             tripDataStructure.saveUnifiedData(unifiedData);
-                            console.log('登录后检测到 _backup 字段缺失，已初始化为空数组');
-                            
-                            // 如果 Firebase 已配置，自动上传一次，确保 _backup 字段被上传到 Firebase
+                            // 如果 Firebase 已配置，自动上传一次，使用增量更新，不覆盖 _backup
                             if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
                                 setTimeout(() => {
-                                    dataSyncFirebase.upload(true).then(uploadResult => {
-                                        if (uploadResult.success) {
-                                            console.log('✅ 已自动上传 _backup 字段到 Firebase');
-                                        } else {
-                                            console.warn('自动上传 _backup 字段失败:', uploadResult.message);
-                                        }
-                                    }).catch(error => {
-                                        console.error('自动上传 _backup 字段出错:', error);
-                                    });
+                                    const data = dataSyncFirebase.getAllLocalData();
+                                    if (data['trip_unified_data']) {
+                                        const updates = {
+                                            'trip_unified_data': data['trip_unified_data'],
+                                            '_lastSync': new Date().toISOString(),
+                                            '_syncUser': localStorage.getItem('trip_current_user') || 'unknown'
+                                        };
+                                        dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                                        }).catch(() => {
+                                        });
+                                    }
                                 }, 500); // 延迟500ms，确保数据已保存
                             }
                         }
@@ -59,7 +61,7 @@ window.onLoginSuccess = function() {
                         window.UIRenderer.renderOverview();
                         window.UIRenderer.renderNavigation();
                         const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-                        window.UIRenderer.renderDay(dayId || 'day1');
+                        window.UIRenderer.renderDay(dayId);
                     }
                 }, 100); // 给状态更新一点时间
             } else {
@@ -83,11 +85,10 @@ window.onLoginSuccess = function() {
                     window.UIRenderer.renderOverview();
                     window.UIRenderer.renderNavigation();
                     const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-                    window.UIRenderer.renderDay(dayId || 'day1');
+                    window.UIRenderer.renderDay(dayId);
                 }
             }
         }).catch(error => {
-            console.error('下载失败:', error);
             if (typeof window.updateSyncStatus === 'function') {
                 window.updateSyncStatus('下载失败，使用本地数据', 'error');
             }
@@ -108,7 +109,7 @@ window.onLoginSuccess = function() {
                 window.UIRenderer.renderOverview();
                 window.UIRenderer.renderNavigation();
                 const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-                window.UIRenderer.renderDay(dayId || 'day1');
+                window.UIRenderer.renderDay(dayId);
             }
         });
     } else {
@@ -120,7 +121,7 @@ window.onLoginSuccess = function() {
             window.UIRenderer.renderOverview();
             window.UIRenderer.renderNavigation();
             const dayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-            window.UIRenderer.renderDay(dayId || 'day1');
+            window.UIRenderer.renderDay(dayId);
         }
     }
 };
@@ -176,6 +177,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.handleLogin();
             } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.handleLogin) {
                 window.AuthManager.handleLogin();
+            }
+        });
+    }
+    
+    // 添加注册按钮事件监听器（支持移动端）
+    const registerBtn = document.getElementById('register-btn');
+    if (registerBtn) {
+        // 点击事件
+        registerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.showRegisterModal === 'function') {
+                window.showRegisterModal();
+            } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.showRegisterModal) {
+                window.AuthManager.showRegisterModal();
+            }
+        });
+        
+        // 触摸事件（移动端）
+        registerBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.showRegisterModal === 'function') {
+                window.showRegisterModal();
+            } else if (typeof window.AuthManager !== 'undefined' && window.AuthManager.showRegisterModal) {
+                window.AuthManager.showRegisterModal();
             }
         });
     }
@@ -267,7 +294,6 @@ function renderOverview() {
     if (window.UIRenderer && window.UIRenderer.renderOverview) {
         return window.UIRenderer.renderOverview();
     }
-    console.error('UIRenderer 未加载，无法渲染总览');
 }
 
 // 渲染导航（使用 UIRenderer 模块）
@@ -275,7 +301,6 @@ function renderNavigation() {
     if (window.UIRenderer && window.UIRenderer.renderNavigation) {
         return window.UIRenderer.renderNavigation();
     }
-    console.error('UIRenderer 未加载，无法渲染导航');
 }
 
 // 显示指定日期的行程（使用 UIRenderer 模块）
@@ -283,7 +308,6 @@ function showDay(dayId) {
     if (window.UIRenderer && window.UIRenderer.renderDay) {
         return window.UIRenderer.renderDay(dayId);
     }
-    console.error('UIRenderer 未加载，无法渲染日期');
 }
 
 // applyCardOrder 已移至 modules/data-manager.js
@@ -353,7 +377,7 @@ function toggleSortMode() {
     if (!cardsContainer) return;
     
     // 从 stateManager 获取当前的 currentDayId，而不是使用默认值
-    const actualDayId = window.stateManager.getState('currentDayId') || 'day1';
+    const actualDayId = window.stateManager.getState('currentDayId');
     
     // 如果currentSlider不存在或日期不匹配，重新创建
     if (!currentSlider || currentSlider.dayId !== actualDayId) {
@@ -381,7 +405,6 @@ function toggleSortMode() {
         }
         
         if (!dayItems || dayItems.length === 0) {
-            console.warn(`无法找到 dayId=${actualDayId} 的数据，无法进入排序模式`);
             return;
         }
         
@@ -404,7 +427,7 @@ function toggleSortMode() {
             window.stateManager.setState({ currentSlider: currentSlider });
         }
         // 同时更新全局变量（向后兼容）
-        // window.currentSlider = currentSlider;
+        window.currentSlider = currentSlider;
     }
     
     // 切换排序模式
@@ -442,20 +465,17 @@ function closeAddItemModal() {
 function saveNewItem() {
     // 检查写权限
     if (!checkWritePermission()) {
-        console.error('保存失败：没有写权限');
         return;
     }
     
     const modal = document.getElementById('add-item-modal');
     if (!modal) {
-        console.error('保存失败：找不到模态框');
         alert('保存失败：找不到表单');
         return;
     }
     
     const dayId = modal.dataset.dayId;
     if (!dayId) {
-        console.error('保存失败：dayId为空');
         alert('保存失败：日期ID无效');
         return;
     }
@@ -479,31 +499,38 @@ function saveNewItem() {
         addItem(dayId, itemData);
         closeAddItemModal();
     } catch (error) {
-        console.error('保存行程项时出错:', error);
         alert('保存失败：' + error.message);
     }
 }
 
 // 自动同步功能（仅使用Firebase）
 let syncTimeout = null;
-// 立即触发上传（不防抖）
+// 立即触发上传（不防抖）- 使用增量更新，不覆盖 _backup
 function triggerImmediateUpload() {
     // 只使用Firebase同步
     if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
-        return dataSyncFirebase.upload(true).then(result => {
-            if (result.success) {
-                updateSyncStatus('已上传到云端', 'success');
+        return new Promise((resolve) => {
+            const data = dataSyncFirebase.getAllLocalData();
+            if (data['trip_unified_data']) {
+                const updates = {
+                    'trip_unified_data': data['trip_unified_data'],
+                    '_lastSync': new Date().toISOString(),
+                    '_syncUser': localStorage.getItem('trip_current_user') || 'unknown'
+                };
+                
+                dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                    updateSyncStatus('已上传到云端', 'success');
+                    resolve({ success: true, message: '已上传到云端' });
+                }).catch(error => {
+                    updateSyncStatus('上传失败: ' + error.message, 'error');
+                    resolve({ success: false, message: error.message });
+                });
             } else {
-                updateSyncStatus('上传失败: ' + (result.message || '未知错误'), 'error');
+                updateSyncStatus('没有数据需要上传', 'info');
+                resolve({ success: false, message: '没有数据需要上传' });
             }
-            return result;
-        }).catch(error => {
-            console.error('上传失败:', error);
-            updateSyncStatus('上传失败: ' + error.message, 'error');
-            return { success: false, message: error.message };
         });
     } else {
-        console.log('Firebase未配置，跳过上传');
         return Promise.resolve({ success: false, message: 'Firebase未配置' });
     }
 }
@@ -517,20 +544,54 @@ function autoSync() {
     syncTimeout = setTimeout(() => {
         // 只使用Firebase同步
         if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
-            dataSyncFirebase.upload().then(result => {
-                if (result.success) {
+            // 使用增量更新，只更新 trip_unified_data，不覆盖 _backup
+            const data = dataSyncFirebase.getAllLocalData();
+            if (data['trip_unified_data']) {
+                // 只上传 trip_unified_data，不包含 _backup
+                const updates = {
+                    'trip_unified_data': data['trip_unified_data'],
+                    '_lastSync': new Date().toISOString(),
+                    '_syncUser': localStorage.getItem('trip_current_user') || 'unknown'
+                };
+                
+                dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
                     updateSyncStatus('已自动同步', 'success');
-                }
-            }).catch(() => {
-                // 静默处理错误
-            });
+                }).catch(() => {
+                    // 静默处理错误
+                });
+            }
         }
     }, 2000); // 2秒后同步
 }
 
-// 手动上传函数（供按钮调用）
+// 手动上传函数（供按钮调用）- 使用增量更新，不覆盖 _backup
 function syncUpload() {
-    triggerImmediateUpload();
+    // 只使用Firebase同步
+    if (typeof dataSyncFirebase !== 'undefined' && dataSyncFirebase.isConfigured()) {
+        updateSyncStatus('正在上传...', 'info');
+        
+        // 使用增量更新，只更新 trip_unified_data，不覆盖 _backup
+        const data = dataSyncFirebase.getAllLocalData();
+        if (data['trip_unified_data']) {
+            // 只上传 trip_unified_data，不包含 _backup
+            const updates = {
+                'trip_unified_data': data['trip_unified_data'],
+                '_lastSync': new Date().toISOString(),
+                '_syncUser': localStorage.getItem('trip_current_user') || 'unknown'
+            };
+            
+            dataSyncFirebase.update(dataSyncFirebase.databaseRef, updates).then(() => {
+                updateSyncStatus('已上传到云端', 'success');
+            }).catch(error => {
+                updateSyncStatus('上传失败: ' + error.message, 'error');
+            });
+        } else {
+            // 没有统一数据，使用全量上传
+            triggerImmediateUpload();
+        }
+    } else {
+        updateSyncStatus('Firebase未配置', 'error');
+    }
 }
 
 // 手动下载函数（供按钮调用）
@@ -567,7 +628,6 @@ function syncDownload() {
                 updateSyncStatus('下载失败: ' + (result.message || '未知错误'), 'error');
             }
         }).catch(error => {
-            console.error('下载失败:', error);
             // 安全处理错误信息
             let errorMessage = '下载失败: 未知错误';
             if (error) {
@@ -626,111 +686,196 @@ function toggleSyncPanel() {
 // 等待事件总线加载完成
 function initEventBusListeners() {
     if (typeof window.eventBus === 'undefined' || typeof window.EventTypes === 'undefined') {
-        console.warn('事件总线未加载，延迟初始化事件监听器');
         setTimeout(initEventBusListeners, 100);
         return;
     }
+    
+    // 【关键修复】防止重复绑定监听器
+    if (window.eventBusListenersInitialized) {
+        return;
+    }
+    window.eventBusListenersInitialized = true; 
     
     const { eventBus, EventTypes } = window;
     
     // 1. UI刷新请求事件 - CardSlider响应
     eventBus.on(EventTypes.UI_REFRESH_REQUESTED, (data) => {
-        const { dayId, itemId, preserveInputs = true } = data;
-        
-        // 如果当前有CardSlider实例且是同一个day，直接更新它
-        if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
-            // 如果有 itemId，只更新该卡片，否则更新所有卡片
-            if (itemId) {
-                // 增量更新：只更新指定的卡片
-                const cardIndex = window.currentSlider.cards.findIndex(c => c.id === itemId);
-                if (cardIndex !== -1) {
-                    // 保存当前卡片的展开状态
-                    const currentCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
-                    if (currentCard) {
-                        const cardContent = currentCard.querySelector('.card-content');
-                        const isExpanded = cardContent && cardContent.classList.contains('expanded');
-                        window.currentSlider.setCardExpanded(itemId, isExpanded);
-                    }
-                    // 重新加载数据
-                    const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
-                    window.currentSlider.cards = items;
-                    // 只重新渲染这个卡片
-                    const newCard = window.currentSlider.createCard(items[cardIndex], cardIndex);
-                    const oldCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
-                    if (oldCard && newCard) {
-                        oldCard.replaceWith(newCard);
-                        window.currentSlider.attachCardEvents(newCard, cardIndex);
-                        
-                        // 恢复展开状态
-                        const savedExpanded = window.currentSlider.getCardExpanded(itemId);
-                        if (savedExpanded) {
-                            const cardContent = newCard.querySelector('.card-content');
-                            const expandBtn = newCard.querySelector('.card-expand-btn');
-                            if (cardContent && expandBtn) {
-                                cardContent.classList.remove('collapsed');
-                                cardContent.classList.add('expanded');
-                                expandBtn.style.transform = 'rotate(180deg)';
-                                expandBtn.setAttribute('data-expanded', 'true');
-                                expandBtn.title = '收起';
-                            }
-                        }
-                    } else {
-                        // 如果找不到旧卡片，重新渲染所有卡片
-                        window.currentSlider.renderCards();
-                        window.currentSlider.attachCardEventsForAll();
-                    }
+        const { dayId, itemId } = data;
+        console.log(`[Event] 收到 UI_REFRESH_REQUESTED, dayId: ${dayId}, itemId: ${itemId}`);
+        if (window.currentSlider) {
+            console.log(`[Event] currentSlider.dayId: ${window.currentSlider.dayId}`);
+            // 直接比较 dayId，不使用 isIdMatch（避免未定义的函数）
+            if (window.currentSlider.dayId === dayId) {
+                // 【优化】如果有 itemId，只更新单个卡片，避免整个容器重绘导致闪烁
+                if (itemId && window.currentSlider.updateSingleCard) {
+                    console.log(`[Event] 调用 updateSingleCard，itemId: ${itemId}`);
+                    window.currentSlider.updateSingleCard(itemId);
                 } else {
-                    // 找不到卡片，重新渲染所有
+                    console.log(`[Event] 调用 renderCards`);
                     window.currentSlider.renderCards();
-                    window.currentSlider.attachCardEventsForAll();
                 }
             } else {
-                // 没有 itemId，更新所有卡片
-                window.currentSlider.renderCards();
-                window.currentSlider.attachCardEventsForAll();
+                console.log(`[Event] dayId 不匹配，currentSlider.dayId: ${window.currentSlider.dayId}, event dayId: ${dayId}`);
             }
         } else {
-            // 如果没有CardSlider或不是同一个day，调用showDay刷新整个页面
-            if (typeof window.showDay === 'function') {
-                window.showDay(dayId);
-            }
+            console.log(`[Event] currentSlider 不存在`);
         }
-    });
+    })
+    //     // 如果当前有CardSlider实例且是同一个day，直接更新它
+    //     if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
+    //         // 如果有 itemId，只更新该卡片，否则更新所有卡片
+    //         if (itemId) {
+    //             // 增量更新：只更新指定的卡片
+    //             const cardIndex = window.currentSlider.cards.findIndex(c => c.id === itemId);
+    //             if (cardIndex !== -1) {
+    //                 // 保存当前卡片的展开状态
+    //                 const currentCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
+    //                 if (currentCard) {
+    //                     const cardContent = currentCard.querySelector('.card-content');
+    //                     const isExpanded = cardContent && cardContent.classList.contains('expanded');
+    //                     window.currentSlider.setCardExpanded(itemId, isExpanded);
+    //                 }
+    //                 // 重新加载数据
+    //                 const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
+    //                 window.currentSlider.cards = items;
+    //                 // 只重新渲染这个卡片
+    //                 const newCard = window.currentSlider.createCard(items[cardIndex], cardIndex);
+    //                 const oldCard = window.currentSlider.container.querySelector(`.card[data-item-id="${itemId}"]`);
+    //                 if (oldCard && newCard) {
+    //                     oldCard.replaceWith(newCard);
+    //                     window.currentSlider.attachCardEvents(newCard, cardIndex);
+                        
+    //                     // 恢复展开状态
+    //                     const savedExpanded = window.currentSlider.getCardExpanded(itemId);
+    //                     if (savedExpanded) {
+    //                         const cardContent = newCard.querySelector('.card-content');
+    //                         const expandBtn = newCard.querySelector('.card-expand-btn');
+    //                         if (cardContent && expandBtn) {
+    //                             cardContent.classList.remove('collapsed');
+    //                             cardContent.classList.add('expanded');
+    //                             expandBtn.style.transform = 'rotate(180deg)';
+    //                             expandBtn.setAttribute('data-expanded', 'true');
+    //                             expandBtn.title = '收起';
+    //                         }
+    //                     }
+    //                 } else {
+    //                     // 如果找不到旧卡片，重新渲染所有卡片
+    //                     window.currentSlider.renderCards();
+    //                     window.currentSlider.attachCardEventsForAll();
+    //                 }
+    //             } else {
+    //                 // 找不到卡片，重新渲染所有
+    //                 window.currentSlider.renderCards();
+    //                 window.currentSlider.attachCardEventsForAll();
+    //             }
+    //         } else {
+    //             // 没有 itemId，更新所有卡片
+    //             window.currentSlider.renderCards();
+    //             window.currentSlider.attachCardEventsForAll();
+    //         }
+    //     } else {
+    //         // 如果没有CardSlider或不是同一个day，调用showDay刷新整个页面
+    //         if (typeof window.showDay === 'function') {
+    //             window.showDay(dayId);
+    //         }
+    //     }
+    // });
     
     // 2. 数据更新事件 - CardSlider响应（优化：只刷新相关卡片）
     eventBus.on(EventTypes.ITEM_ADDED, (data) => {
-        const { dayId, itemId } = data;
-        if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
-            // 重新加载数据并刷新
-            const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
-            window.currentSlider.cards = items;
-            window.currentSlider.renderCards();
-            window.currentSlider.attachCardEventsForAll();
+        const { dayId } = data;
+        
+        // 强制同步一次 StateManager
+        if (window.tripDataStructure && window.stateManager) {
+            const freshData = window.tripDataStructure.loadUnifiedData();
+            window.stateManager.setState({ tripData: freshData });
+        }
+
+        // 模糊匹配 DayID：解决长短 ID 不一致导致的刷新失效
+        const slider = window.currentSlider;
+        if (slider) {
+            const isSameDay = slider.dayId === dayId || 
+                            slider.dayId.startsWith(dayId + '_') || 
+                            dayId.startsWith(slider.dayId + '_');
+
+            if (isSameDay) {
+                console.log(">>> [Event] 检测到当前日期有新增，执行重绘");
+                // 直接调用重构后的 renderCards，它内部会自动清洗数据并重新排版
+                slider.renderCards();
+            }
         }
     });
-    
+
+// 同样处理删除事件，确保删除后 UI 立即反馈
     eventBus.on(EventTypes.ITEM_DELETED, (data) => {
-        const { dayId, itemId } = data;
-        if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
-            // 从cards中移除被删除的项
-            window.currentSlider.cards = window.currentSlider.cards.filter(c => c.id !== itemId);
+        if (window.currentSlider) {
+            // 同步并刷新
+            const freshData = window.tripDataStructure.loadUnifiedData();
+            window.stateManager.setState({ tripData: freshData });
             window.currentSlider.renderCards();
-            window.currentSlider.attachCardEventsForAll();
         }
     });
+
+    // eventBus.on(EventTypes.ITEM_DELETED, (data) => {
+    //     const { dayId, itemId, source } = data;
+    //     if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
+    //         // 【优化】如果是本地触发的事件，使用增量更新（只移除单个卡片）
+    //         if (source === 'local') {
+    //             const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
+    //             window.currentSlider.cards = items;
+    //             if (window.currentSlider.removeSingleCard) {
+    //                 window.currentSlider.removeSingleCard(itemId);
+    //             } else {
+    //                 window.currentSlider.renderCards();
+    //                 window.currentSlider.attachCardEventsForAll();
+    //             }
+    //         } else {
+    //             // 远程触发的事件，使用全量更新
+    //             const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
+    //             window.currentSlider.cards = items;
+    //             window.currentSlider.renderCards();
+    //             window.currentSlider.attachCardEventsForAll();
+    //         }
+    //     }
+    // });
     
     eventBus.on(EventTypes.ITEM_UPDATED, (data) => {
-        const { dayId, itemId } = data;
+        const { dayId, itemId, source } = data;
         if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === dayId) {
-            // 重新加载数据并刷新
-            const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
-            window.currentSlider.cards = items;
-            window.currentSlider.renderCards();
-            window.currentSlider.attachCardEventsForAll();
+            // 【优化】如果是本地触发的事件，使用增量更新（只更新单个卡片）
+            if (source === 'local' && window.currentSlider.updateSingleCard) {
+                window.currentSlider.updateSingleCard(itemId);
+            } else {
+                // 远程触发的事件或不支持增量更新，使用全量更新
+                const items = typeof window.getDayItems === 'function' ? window.getDayItems(dayId) : [];
+                window.currentSlider.cards = items;
+                window.currentSlider.renderCards();
+                window.currentSlider.attachCardEventsForAll();
+            }
         }
     });
     
-    // 3. 日期切换事件 - 可以用于其他模块（如统计面板）
+    // 3. 日期删除事件 - 刷新界面
+    eventBus.on(EventTypes.DAY_DELETED, (data) => {
+        const { dayId: deletedDayId } = data;
+        
+        // 如果删除的是当前显示的天数，UIRenderer 已经处理了跳转
+        // 这里处理删除的是其他天数的情况
+        const currentDayId = window.stateManager ? window.stateManager.getState('currentDayId') : null;
+        
+        if (currentDayId && currentDayId !== deletedDayId) {
+            // 删除的是其他天数，刷新当前显示的天数的卡片列表
+            if (typeof window.currentSlider !== 'undefined' && window.currentSlider && window.currentSlider.dayId === currentDayId) {
+                // 重新加载数据并刷新
+                const items = typeof window.getDayItems === 'function' ? window.getDayItems(currentDayId) : [];
+                window.currentSlider.cards = items;
+                window.currentSlider.renderCards();
+                window.currentSlider.attachCardEventsForAll();
+            }
+        }
+    });
+    
+    // 4. 日期切换事件 - 可以用于其他模块（如统计面板）
     eventBus.on(EventTypes.DAY_CHANGED, (data) => {
         const { dayId } = data;
         // 可以在这里添加其他需要响应日期切换的模块
@@ -745,7 +890,6 @@ function initEventBusListeners() {
             if (itemId && dataSyncFirebase.uploadItem) {
                 // 使用增量更新，只上传这个 item
                 dataSyncFirebase.uploadItem(dayId, itemId).catch(error => {
-                    console.error('上传 item 失败:', error);
                     // 如果增量更新失败，回退到全量上传
                     if (typeof window.triggerImmediateUpload === 'function') {
                         window.triggerImmediateUpload();
@@ -759,8 +903,6 @@ function initEventBusListeners() {
             }
         }
     });
-    
-    console.log('✅ 事件总线监听器已初始化');
 }
 
 // 大图查看器功能

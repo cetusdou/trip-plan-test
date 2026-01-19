@@ -297,10 +297,11 @@
             });
         });
         
-        // 如果没有参与人，使用默认的两个人
+        // 如果没有参与人，使用默认的1-10人列表
         if (allParticipants.size === 0) {
-            allParticipants.add('mrb');
-            allParticipants.add('djy');
+            for (let i = 1; i <= 10; i++) {
+                allParticipants.add(`p${i}`);
+            }
         }
         
         // 计算每个人的实际支出
@@ -320,35 +321,28 @@
             }
         });
         
-        // 计算每个人应该支付的金额（根据参与人数量平摊）
+        // 计算总支出
+        let totalExpense = 0;
+        validExpenses.forEach(expense => {
+            totalExpense += expense.amount || 0;
+        });
+        
+        // 计算每个人应该支付的金额（按照所有参与人平摊）
         const userShouldPay = {};
+        const participantCount = allParticipants.size;
         
         // 初始化每个人应该支付的金额为0
         allParticipants.forEach(user => {
             userShouldPay[user] = 0;
         });
         
-        // 计算总支出
-        let totalExpense = 0;
-        
-        // 计算每个人应该支付的金额
-        validExpenses.forEach(expense => {
-            const amount = expense.amount || 0;
-            const participants = expense.participants || [];
-            
-            // 如果没有参与人，默认平摊给所有人
-            const splitParticipants = participants.length > 0 ? participants : Array.from(allParticipants);
-            const splitAmount = amount / splitParticipants.length;
-            
-            // 累加每个人应该支付的金额
-            splitParticipants.forEach(participant => {
-                if (userShouldPay.hasOwnProperty(participant)) {
-                    userShouldPay[participant] = (userShouldPay[participant] || 0) + splitAmount;
-                }
+        // 按照所有参与人平摊，不考虑每个消费项的具体参与人
+        if (participantCount > 0) {
+            const splitPerPerson = totalExpense / participantCount;
+            allParticipants.forEach(user => {
+                userShouldPay[user] = splitPerPerson;
             });
-            
-            totalExpense += amount;
-        });
+        }
         
         // 计算每个人的差额
         const userDifferences = {};

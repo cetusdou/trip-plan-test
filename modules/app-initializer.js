@@ -20,12 +20,8 @@
          */
         async initialize() {
             if (this.initialized) {
-                console.warn('应用已经初始化，跳过重复初始化');
                 return;
             }
-
-            console.log('🚀 开始初始化应用...');
-
             try {
                 // 阶段 1: 初始化 EventBus
                 
@@ -56,15 +52,12 @@
                 await this.finalize();
                 
                 this.initialized = true;
-                console.log('✅ 应用初始化完成');
-                
                 // 触发初始化完成事件
                 if (window.eventBus) {
                     window.eventBus.emit('app-initialized', { timestamp: Date.now() });
                 }
                 
             } catch (error) {
-                console.error('❌ 应用初始化失败:', error);
                 throw error;
             }
         }
@@ -73,8 +66,6 @@
          * 阶段 1: 初始化 EventBus
          */
         async initEventBus() {
-            console.log('📡 初始化 EventBus...');
-            
             if (!window.eventBus) {
                 throw new Error('EventBus 未加载');
             }
@@ -86,8 +77,6 @@
          * 阶段 2: 初始化 State Manager
          */
         async initStateManager() {
-            console.log('🗂️ 初始化 State Manager...');
-            
             if (!window.stateManager) {
                 throw new Error('StateManager 未加载');
             }
@@ -102,8 +91,6 @@
          * 阶段 3: 初始化数据管理（绑定数据监听）
          */
         async initDataManager() {
-            console.log('💾 初始化 Data Manager...');
-            
             // 订阅数据更新事件，更新 State Manager
             if (window.eventBus) {
                 window.eventBus.on('item-updated', (data) => {
@@ -124,12 +111,9 @@
          * 阶段 4: 初始化 UI 渲染器（订阅状态变化）
          */
         async initUIRenderer() {
-            console.log('🎨 初始化 UI Renderer...');
-            
             if (window.UIRenderer && window.UIRenderer.initialize) {
                 window.UIRenderer.initialize();
             } else {
-                console.error('UIRenderer 未加载');
             }
             
             this.recordStep('UIRenderer');
@@ -139,8 +123,6 @@
          * 阶段 5: 初始化认证管理器（检查登录状态）
          */
         async initAuthManager() {
-            console.log('🔐 初始化 Auth Manager...');
-            
             // 等待 Firebase 加载
             if (typeof window.firebaseLoaded === 'undefined' || !window.firebaseLoaded) {
                 await new Promise((resolve) => {
@@ -162,7 +144,6 @@
             
             // 关键修复：检查登录状态（如果 localStorage 中有缓存，自动恢复登录）
             if (window.AuthManager && window.AuthManager.init) {
-                console.log('🚀 启动 AuthManager 生命周期...');
                 window.AuthManager.init();
             } else {
                 console.error('❌ AuthManager 未加载或缺少 init 方法 (请检查 AuthManager.js 是否已更新)');
@@ -179,11 +160,8 @@
          * 阶段 6: 初始化 Firebase 同步
          */
         async initFirebaseSync() {
-            console.log('🔥 初始化 Firebase 同步...');
-            
             // 检查 dataSyncFirebase 是否已加载
             if (!window.dataSyncFirebase) {
-                console.warn('⚠️ dataSyncFirebase 未加载，跳过 Firebase 同步初始化');
                 this.recordStep('FirebaseSync');
                 return;
             }
@@ -211,7 +189,6 @@
                         })
                     ]);
                 } catch (error) {
-                    console.error('等待 Firebase 加载时出错:', error);
                     firebaseReady = false;
                 }
             }
@@ -233,8 +210,6 @@
                 }
                 
                 if (initResult && initResult.success) {
-                    console.log('✅ Firebase 同步初始化成功');
-                    
                     // 如果已登录，静默下载数据（不显示错误）
                     const isLoggedIn = window.stateManager ? window.stateManager.getState('isLoggedIn') : false;
                     if (isLoggedIn) {
@@ -256,10 +231,8 @@
                     }
                 } else {
                     const message = initResult ? initResult.message : '未知错误';
-                    console.warn('⚠️ Firebase 未配置，将使用本地数据:', message);
                 }
             } catch (error) {
-                console.error('❌ Firebase 同步初始化出错:', error);
             }
             
             this.recordStep('FirebaseSync');
@@ -269,8 +242,6 @@
          * 阶段 7: 初始化其他模块
          */
         async initOtherModules() {
-            console.log('🔧 初始化其他模块...');
-            
             // 初始化事件总线监听器
             if (window.initEventBusListeners) {
                 window.initEventBusListeners();
@@ -288,21 +259,27 @@
          * 阶段 8: 初始化数据结构
          */
         async initDataStructure() {
-            console.log('📦 初始化数据结构...');
-            
-            if (window.tripDataStructure && window.tripData) {
+            if (window.tripDataStructure) {
                 try {
                     const existingData = window.tripDataStructure.loadUnifiedData();
                     if (!existingData) {
-                        console.log('初始化统一数据结构...');
-                        const newData = window.tripDataStructure.initializeTripDataStructure(window.tripData);
+                        // 如果没有现有数据，创建空数据结构，不使用默认卡片
+                        const newData = {
+                            id: 'trip_1',
+                            title: '我的行程',
+                            overview: [],
+                            days: {},
+                            _backup: {},
+                            _version: 2,
+                            _lastSync: new Date().toISOString(),
+                            _syncUser: null
+                        };
                         window.tripDataStructure.saveUnifiedData(newData);
                         
                         // 更新 State Manager
                         if (window.stateManager) {
                             window.stateManager.setState({ tripData: newData, unifiedData: newData });
                         }
-                        console.log('统一数据结构初始化完成');
                     } else {
                         // 更新 State Manager
                         if (window.stateManager) {
@@ -315,7 +292,6 @@
                         window.tripDataStructure.updateExistingExpensesWithParticipants();
                     }
                 } catch (error) {
-                    console.error('初始化数据结构失败:', error);
                 }
             }
             
@@ -326,8 +302,6 @@
          * 阶段 8: 最终化（根据登录状态通知 UIRenderer 渲染）
          */
         async finalize() {
-            console.log('✨ 完成最终化...');
-            
             // 等待一小段时间，确保登录状态检查已完成
             await new Promise(resolve => setTimeout(resolve, 100));
             
@@ -343,7 +317,6 @@
             const savedUser = localStorage.getItem('trip_current_user');
             const savedPasswordHash = localStorage.getItem('trip_password_hash');
             if (savedUser && savedPasswordHash && !isLoggedIn) {
-                console.log('检测到缓存的登录信息，重新验证...');
                 if (window.AuthManager && window.AuthManager.checkLoginStatus) {
                     await window.AuthManager.checkLoginStatus();
                     // 再次检查登录状态
@@ -358,7 +331,7 @@
                 window.UIRenderer.renderOverview();
                 window.UIRenderer.renderNavigation();
                 const currentDayId = window.stateManager ? window.stateManager.getState('currentDayId') : 'day1';
-                window.UIRenderer.renderDay(currentDayId || 'day1');
+                window.UIRenderer.renderDay(currentDayId);
             } else {
                 // 未登录，显示登录界面
                 if (window.AuthManager && window.AuthManager.showLoginUI) {
@@ -374,7 +347,6 @@
          */
         recordStep(step) {
             this.initOrder.push(step);
-            console.log(`  ✓ ${step} 初始化完成`);
         }
 
         /**

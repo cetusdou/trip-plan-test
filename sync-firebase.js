@@ -15,37 +15,27 @@ function generateSyncHash(content, user, timestamp) {
 }
 
 // 工具函数：安全解析统一数据结构
-// 注意：Firebase 返回的已经是对象，此函数主要用于兼容旧数据（localStorage 中的字符串）
 function parseUnifiedData(data) {
     if (!data) return null;
     
-    // 如果已经是对象，直接使用（Firebase 返回的情况）
     if (typeof data === 'object' && data !== null) {
         return data;
     }
     
-    // 如果是字符串，尝试解析（localStorage 中的旧数据）
     if (typeof data === 'string') {
         const trimmed = data.trim();
-        // 检查是否是无效的字符串
         if (trimmed === '[object Object]') {
-            console.warn('统一数据是无效的字符串 "[object Object]"');
             return null;
         }
-        // 检查是否是有效的 JSON 字符串
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
             try {
                 return JSON.parse(data);
             } catch (e) {
-                console.warn('解析 JSON 字符串失败:', e);
                 return null;
             }
         }
-        console.warn('统一数据不是有效的 JSON 字符串:', trimmed.substring(0, 50));
-        return null;
     }
     
-    console.warn('统一数据格式不正确:', typeof data);
     return null;
 }
 
@@ -76,39 +66,20 @@ function mergeLikesObject(localLikes, remoteLikes, currentUser) {
 
 // 合并统一结构数据
 function mergeUnifiedData(localData, remoteData) {
-    // 验证参数
     if (!localData || typeof localData !== 'object') {
-        console.error('mergeUnifiedData: localData 无效', localData);
         return remoteData || null;
     }
     if (!remoteData || typeof remoteData !== 'object') {
-        console.error('mergeUnifiedData: remoteData 无效', remoteData);
         return localData || null;
     }
     
-    // days 现在是对象结构 {dayId: dayData}
-    // 如果 days 是数组（旧数据），转换为对象
     let localDaysObj = localData.days;
-    if (Array.isArray(localDaysObj)) {
-        localDaysObj = {};
-        localData.days.forEach(day => {
-            if (day && day.id) {
-                localDaysObj[day.id] = day;
-            }
-        });
-    } else if (!localDaysObj || typeof localDaysObj !== 'object' || localDaysObj === null) {
+    if (!localDaysObj || typeof localDaysObj !== 'object' || Array.isArray(localDaysObj)) {
         localDaysObj = {};
     }
     
     let remoteDaysObj = remoteData.days;
-    if (Array.isArray(remoteDaysObj)) {
-        remoteDaysObj = {};
-        remoteData.days.forEach(day => {
-            if (day && day.id) {
-                remoteDaysObj[day.id] = day;
-            }
-        });
-    } else if (!remoteDaysObj || typeof remoteDaysObj !== 'object' || remoteDaysObj === null) {
+    if (!remoteDaysObj || typeof remoteDaysObj !== 'object' || Array.isArray(remoteDaysObj)) {
         remoteDaysObj = {};
     }
     
@@ -122,32 +93,14 @@ function mergeUnifiedData(localData, remoteData) {
         
         const localDay = localDaysObj[dayId];
         if (localDay) {
-            // 确保 items 是对象结构（支持从数组迁移）
             let localItems = localDay.items;
-            if (Array.isArray(localItems)) {
-                const itemsObj = {};
-                localItems.forEach(item => {
-                    if (item && item.id) {
-                        itemsObj[item.id] = item;
-                    }
-                });
-                localItems = itemsObj;
-                localDay.items = itemsObj;
-            } else if (!localItems || typeof localItems !== 'object' || localItems === null) {
+            if (!localItems || typeof localItems !== 'object' || Array.isArray(localItems)) {
                 localItems = {};
                 localDay.items = {};
             }
             
             let remoteItems = remoteDay.items;
-            if (Array.isArray(remoteItems)) {
-                const itemsObj = {};
-                remoteItems.forEach(item => {
-                    if (item && item.id) {
-                        itemsObj[item.id] = item;
-                    }
-                });
-                remoteItems = itemsObj;
-            } else if (!remoteItems || typeof remoteItems !== 'object' || remoteItems === null) {
+            if (!remoteItems || typeof remoteItems !== 'object' || Array.isArray(remoteItems)) {
                 remoteItems = {};
             }
             
@@ -173,7 +126,6 @@ function mergeUnifiedData(localData, remoteData) {
                     if (!remoteItemIds.has(itemId)) {
                         // 本地有这个 item，但远程没有，说明远程删除了它
                         delete mergedItems[itemId];
-                        console.log(`远程删除了 item ${itemId}，已从本地移除`);
                     }
                 });
             }
@@ -212,9 +164,7 @@ function mergeUnifiedData(localData, remoteData) {
                     const hasLocalUpdates = localDayLastSync > 0 && localDayLastSync > remoteItemUpdated;
                     
                     if (hasLocalUpdates) {
-                        // 不添加：本地有更新，可能删除了这个 item
-                        console.log(`跳过恢复远程 item ${itemId}，本地有更新（最后同步: ${localDayLastSync.toISOString()}, 远程item更新时间: ${remoteItemUpdated.toISOString()}）`);
-                        return; // 跳过这个 item
+                        return;
                     }
                     
                     // 远程 item 是新的（在本地最后同步之后创建的），添加它
@@ -227,16 +177,7 @@ function mergeUnifiedData(localData, remoteData) {
                 items: mergedItems
             };
         } else {
-            // 远程有新day，添加（但需要确保 items 是对象结构）
-            if (Array.isArray(remoteDay.items)) {
-                const itemsObj = {};
-                remoteDay.items.forEach(item => {
-                    if (item && item.id) {
-                        itemsObj[item.id] = item;
-                    }
-                });
-                remoteDay.items = itemsObj;
-            } else if (!remoteDay.items || typeof remoteDay.items !== 'object' || remoteDay.items === null) {
+            if (!remoteDay.items || typeof remoteDay.items !== 'object' || Array.isArray(remoteDay.items)) {
                 remoteDay.items = {};
             }
             mergedDaysObj[dayId] = { ...remoteDay };
@@ -279,16 +220,13 @@ function mergeUnifiedData(localData, remoteData) {
 // 增量更新点赞数组：保留远程的所有点赞，只根据本地操作添加/删除当前用户
 function mergeLikesIncremental(localLikes, remoteLikes, currentUser) {
     if (!currentUser) {
-        // 如果没有当前用户信息，直接返回远程的点赞
         return remoteLikes || localLikes || [];
     }
     
-    // 转换旧格式到新格式
     const normalizeLikes = (likes) => {
         if (Array.isArray(likes)) {
             return likes;
         } else if (typeof likes === 'object' && likes !== null) {
-            // 旧格式：{ mrb: boolean, djy: boolean }
             return Object.keys(likes).filter(k => likes[k]);
         }
         return [];
@@ -327,76 +265,53 @@ function mergeLikesIncremental(localLikes, remoteLikes, currentUser) {
 function mergeComments(localComments, remoteComments) {
     const commentMap = new Map();
     
-    // 先添加本地留言
     localComments.forEach(c => {
-        // 过滤掉 null 和 undefined
-        if (!c) {
-            return;
-        }
+        if (!c) return;
         if (c._hash) {
             commentMap.set(c._hash, c);
         } else {
-            // 没有哈希值的旧数据：使用内容生成确定性哈希（向后兼容）
-            // 这样每次合并时，相同内容的旧数据会得到相同的哈希，避免重复
             const message = c.message || '';
             const user = c.user || '';
-            // 修复：只使用内容和用户生成哈希，不使用时间戳
             const deterministicHash = generateSyncHash(message, user, null);
-            // 为旧数据添加哈希值，避免下次合并时再次生成
             c._hash = deterministicHash;
             commentMap.set(deterministicHash, c);
         }
     });
     
-    // 合并远程留言
     remoteComments.forEach(c => {
-        // 过滤掉 null 和 undefined
-        if (!c) {
-            return;
-        }
+        if (!c) return;
         if (c._hash) {
             const existing = commentMap.get(c._hash);
             if (existing) {
-                // 哈希值相同，比较时间戳，保留最新的，但合并 _likes 字段
                 const localTime = new Date(existing._timestamp || existing._updatedAt || 0);
                 const remoteTime = new Date(c._timestamp || c._updatedAt || 0);
+                const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                 if (remoteTime > localTime) {
-                    // 使用远程数据，但增量更新 _likes（只更新当前用户的点赞状态）
-                    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                     c._likes = mergeLikesIncremental(existing._likes, c._likes, currentUser);
                     commentMap.set(c._hash, c);
                 } else {
-                    // 保留本地的，但增量更新远程的 _likes（只更新当前用户的点赞状态）
-                    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                     existing._likes = mergeLikesIncremental(c._likes, existing._likes, currentUser);
                 }
-                // 否则保留本地的（已存在）
             } else {
-                // 哈希值不同，添加新的
                 commentMap.set(c._hash, c);
             }
         } else {
-            // 没有哈希值的旧数据：使用内容生成确定性哈希（向后兼容）
             const message = c.message || '';
             const user = c.user || '';
-            // 修复：只使用内容和用户生成哈希，不使用时间戳
             const deterministicHash = generateSyncHash(message, user, null);
             const existing = commentMap.get(deterministicHash);
             if (existing) {
-                // 如果本地已有相同哈希的留言，比较时间戳，保留最新的
                 const localTime = new Date(existing.timestamp || existing._timestamp || 0);
                 const remoteTime = new Date(c.timestamp || c._timestamp || 0);
+                const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                 if (remoteTime > localTime) {
                     c._hash = deterministicHash;
-                    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                     c._likes = mergeLikesIncremental(existing._likes, c._likes, currentUser);
                     commentMap.set(deterministicHash, c);
                 } else {
-                    const currentUser = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') : null;
                     existing._likes = mergeLikesIncremental(c._likes, existing._likes, currentUser);
                 }
             } else {
-                // 为旧数据添加哈希值
                 c._hash = deterministicHash;
                 commentMap.set(deterministicHash, c);
             }
@@ -917,7 +832,7 @@ class DataSyncFirebase {
                 if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
                     unifiedData._backup = {};
                     needSave = true;
-                    console.log('检测到 _backup 字段缺失，已初始化为空对象');
+
                 } else if (Array.isArray(unifiedData._backup)) {
                     // 如果是从旧数组格式迁移过来的，转换为对象格式
                     const backupObj = {};
@@ -936,16 +851,16 @@ class DataSyncFirebase {
                     });
                     unifiedData._backup = backupObj;
                     needSave = true;
-                    console.log('已从数组格式迁移 _backup 到对象格式');
+
                 }
                 
                 // 如果需要保存，保存回 localStorage（确保本地数据也更新）
                 if (needSave) {
                     try {
                         tripDataStructure.saveUnifiedData(unifiedData);
-                        console.log('已保存初始化后的 _backup 字段到 localStorage');
+
                     } catch (e) {
-                        console.warn('初始化 _backup 字段后保存到 localStorage 失败:', e);
+
                     }
                 }
                 
@@ -960,13 +875,13 @@ class DataSyncFirebase {
                     unifiedData.days = daysObj;
                     const daysSaveNeeded = true;
                     needSave = needSave || daysSaveNeeded;
-                    console.log('上传前检测到 days 是数组格式，已转换为对象格式');
+
                     // 保存转换后的数据
                     if (daysSaveNeeded) {
                         try {
                             tripDataStructure.saveUnifiedData(unifiedData);
                         } catch (e) {
-                            console.warn('转换 days 后保存失败:', e);
+
                         }
                     }
                 } else if (!unifiedData.days || typeof unifiedData.days !== 'object' || unifiedData.days === null) {
@@ -1032,7 +947,7 @@ class DataSyncFirebase {
     setAllLocalData(data) {
         // 调试：检查传入的数据结构
         if (!data || typeof data !== 'object') {
-            console.error('setAllLocalData: data 参数无效', data);
+
             return;
         }
         
@@ -1046,7 +961,7 @@ class DataSyncFirebase {
                 try {
                     unifiedData = JSON.parse(unifiedData);
                 } catch (e) {
-                    console.error('setAllLocalData: 无法解析 trip_unified_data 字符串', e);
+
                     unifiedData = null;
                 }
             }
@@ -1064,13 +979,13 @@ class DataSyncFirebase {
                     // 尝试修复：如果 unifiedData 本身就是一个包含 days 的对象，但被嵌套了
                     // 检查是否有其他可能的键包含 days
                     if (unifiedData.trip_unified_data && typeof unifiedData.trip_unified_data === 'object') {
-                        console.warn('setAllLocalData: 检测到嵌套的 trip_unified_data，尝试提取');
+
                         unifiedData = unifiedData.trip_unified_data;
                     }
                     
                     // 再次检查
                     if (!unifiedData.days) {
-                        console.error('setAllLocalData: 无法修复数据，跳过保存');
+
                         // 删除统一数据键，避免重复处理
                         delete data['trip_unified_data'];
                         return;
@@ -1086,7 +1001,7 @@ class DataSyncFirebase {
                         }
                     });
                     unifiedData.days = daysObj;
-                    console.log('setAllLocalData: 已将 days 从数组转换为对象结构');
+
                 } else if (typeof unifiedData.days !== 'object' || unifiedData.days === null) {
                     console.error('setAllLocalData: days 类型不正确，应该是对象结构', {
                         hasDays: !!unifiedData.days,
@@ -1123,10 +1038,7 @@ class DataSyncFirebase {
                 // 数据结构正确，保存
                 tripDataStructure.saveUnifiedData(unifiedData);
             } else {
-                console.error('setAllLocalData: trip_unified_data 不是对象', {
-                    unifiedDataType: typeof unifiedData,
-                    unifiedData: unifiedData
-                });
+
             }
             // 删除统一数据键，避免重复处理
             delete data['trip_unified_data'];
@@ -1147,7 +1059,7 @@ class DataSyncFirebase {
                     : String(data[key]);
                 localStorage.setItem(key, value);
             } catch (e) {
-                console.warn(`保存数据失败 ${key}:`, e);
+
             }
         });
     }
@@ -1179,6 +1091,64 @@ class DataSyncFirebase {
             return { success: true, message: `已删除卡片 ${itemId}` };
         } catch (error) {
             return { success: false, message: `删除卡片失败: ${error.message}` };
+        }
+    }
+
+    // 【新增】增量备份方法（一箭双雕）
+    // 实现同步删除原位数据 + 同步新增备份数据的原子操作
+    // 使用 Firebase 的 update 方法一次完成两个操作：
+    // 1. 将原位数据路径设为 null（硬删除）
+    // 2. 将备份数据上传到 _backup 节点（使用唯一的 timestampKey 作为 key）
+    // @param {string} dayId - 天数 ID
+    // @param {string} itemId - 行程项 ID
+    // @param {string} timestampKey - 备份的唯一时间戳 key
+    // @param {Object} backupEntry - 备份数据对象
+    async cloudIncrementalBackup(dayId, itemId, timestampKey, backupEntry) {
+        try {
+            if (!this.isConfigured()) {
+                throw new Error('Firebase未初始化，请先配置');
+            }
+            
+            // 检查写权限
+            if (typeof window.checkWritePermission === 'function' && !window.checkWritePermission()) {
+                throw new Error('未登录，无法删除数据');
+            }
+            
+            // 检查参数
+            if (!dayId || !itemId || !timestampKey || !backupEntry) {
+                throw new Error('参数不完整：dayId, itemId, timestampKey, backupEntry 都是必需的');
+            }
+            
+            // days 现在是对象结构，直接使用 dayId 和 itemId 作为路径
+            // 路径格式：days/{dayId}/items/{itemId}
+            const itemPath = `days/${dayId}/items/${itemId}`;
+            
+            // 构建更新对象：一次完成两个操作
+            const updates = {};
+            
+            // 操作1：删除原位数据（将路径设为 null）
+            updates[`trip_unified_data/${itemPath}`] = null;
+            
+            // 操作2：新增备份数据（使用唯一的 timestampKey 作为 key，实现增量更新）
+            // _backup 是对象结构，使用 timestampKey 作为 key，避免覆盖其他备份
+            updates[`trip_unified_data/_backup/${timestampKey}`] = backupEntry;
+            
+            // 更新顶层元数据
+            updates['_lastSync'] = new Date().toISOString();
+            updates['_syncUser'] = getCurrentUser() || 'unknown';
+            
+            // 使用 Firebase 的 update 方法执行原子级写入
+            // 这是真正的并发协作：多个用户同时修改不同路径时，Firebase 会在云端合并这些操作，互不干扰
+            await this.update(this.databaseRef, updates);
+
+            return { 
+                success: true, 
+                message: `已删除卡片 ${itemId} 并备份到云端`,
+                timestampKey: timestampKey
+            };
+        } catch (error) {
+
+            return { success: false, message: `增量备份失败: ${error.message}` };
         }
     }
 
@@ -1398,7 +1368,7 @@ class DataSyncFirebase {
                     // 确保 _backup 字段作为独立字段存在（和 trip_unified_data 同级，对象结构）
                     if (!data['_backup'] || typeof data['_backup'] !== 'object' || data['_backup'] === null) {
                         data['_backup'] = {};
-                        console.warn('上传前检测到 _backup 字段缺失，已强制初始化为空对象');
+
                     } else if (Array.isArray(data['_backup'])) {
                         // 如果是从旧数组格式迁移过来的，转换为对象格式
                         const backupObj = {};
@@ -1416,28 +1386,33 @@ class DataSyncFirebase {
                             }
                         });
                         data['_backup'] = backupObj;
-                        console.warn('上传前检测到 _backup 是数组格式，已转换为对象格式');
+
                     }
                     const backupCount = Object.keys(data['_backup']).length;
-                    console.log(`✅ 上传数据验证：_backup 字段存在（独立字段），类型: Object，备份数量: ${backupCount}`);
+
                     console.log('上传数据的顶级键:', Object.keys(data));
                     if (data['trip_unified_data']) {
                         console.log('上传数据的 trip_unified_data 键:', Object.keys(data['trip_unified_data']));
                     }
                     
+                    // 【重要修改】在全量上传时，移除 _backup 字段
+                    // _backup 字段只通过 cloudIncrementalBackup 方法进行增量更新
+                    // 这样可以避免全量上传覆盖云端的备份数据
+                    const dataToUpload = { ...data };
+                    delete dataToUpload['_backup']; // 移除 _backup 字段，不进行全量上传
+
                     // 添加时间戳
-                    data._lastSync = new Date().toISOString();
-                    data._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
+                    dataToUpload._lastSync = new Date().toISOString();
+                    dataToUpload._syncUser = localStorage.getItem('trip_current_user') || 'unknown';
 
                     // 上传到Firebase（直接传对象，Firebase 会自动序列化）
                     const uploadPath = this.databaseRef.toString();
-                    console.log(`准备上传数据到路径: ${uploadPath}，数据键:`, Object.keys(data));
-                    if (data['trip_unified_data']) {
-                        console.log(`trip_unified_data 的键:`, Object.keys(data['trip_unified_data']));
+                    console.log(`准备上传数据到路径: ${uploadPath}，数据键:`, Object.keys(dataToUpload));
+                    if (dataToUpload['trip_unified_data']) {
+                        console.log(`trip_unified_data 的键:`, Object.keys(dataToUpload['trip_unified_data']));
                     }
-                    await this.set(this.databaseRef, data);
-                    console.log(`✅ 数据已成功上传到 Firebase，路径: ${uploadPath}`);
-                    
+                    await this.set(this.databaseRef, dataToUpload);
+
                     resolve({ 
                         success: true, 
                         message: `同步成功！已上传 ${dataKeys.length} 个数据项到路径: ${uploadPath}` 
@@ -1480,22 +1455,15 @@ class DataSyncFirebase {
             
             // 调试信息：检查数据是否为空对象
             const dataKeys = Object.keys(remoteData);
-            console.log('从 Firebase 下载的数据键:', dataKeys);
-            
+
             // 检查数据格式：可能是统一数据结构对象，也可能是包含 trip_unified_data 的对象
             const isUnifiedDataStructure = remoteData.id && remoteData.title && remoteData.days;
             const hasTripUnifiedData = remoteData.trip_unified_data !== undefined;
-            
-            console.log('数据格式检查:', {
-                isUnifiedDataStructure,
-                hasTripUnifiedData,
-                dataKeys
-            });
-            
+
             // 如果 remoteData 本身就是统一数据结构（没有 trip_unified_data 字段）
             let processedRemoteData = remoteData;
             if (isUnifiedDataStructure && !hasTripUnifiedData) {
-                console.log('检测到 remoteData 本身就是统一数据结构，转换为 trip_unified_data 格式');
+
                 // 将整个 remoteData 包装为 trip_unified_data
                 const unifiedDataObj = { ...remoteData };
                 // 移除元数据（这些会在保存时重新添加）
@@ -1511,7 +1479,7 @@ class DataSyncFirebase {
                 if (remoteData._backup) {
                     delete processedRemoteData._backup; // 确保不下载备份
                 }
-                console.log('已转换数据格式');
+
             }
             
             const hasRealData = dataKeys.some(key => key !== '_lastSync' && key !== '_syncUser' && key !== 'trip_unified_data' && key !== '_backup') || processedRemoteData.trip_unified_data;
@@ -1542,15 +1510,14 @@ class DataSyncFirebase {
                         return true;
                     });
                 
-                // 如果本地没有有效数据，直接使用云端数据，但忽略远程的 _backup 字段
-                // 备份是本地删除操作的记录，不应该从云端下载
+                // 如果本地没有有效数据，直接使用云端数据
+                // 保留远程的 _backup 字段（Firebase 已经支持增量更新）
                 if (!hasLocalData) {
-                    // 移除远程的独立 _backup 字段（不下载备份）
-                    delete processedRemoteData['_backup'];
-                    // 确保 trip_unified_data 中没有 _backup 字段
+                    // 确保 trip_unified_data 中没有 _backup 字段（因为它是独立字段）
                     if (processedRemoteData['trip_unified_data'] && typeof processedRemoteData['trip_unified_data'] === 'object') {
                         processedRemoteData['trip_unified_data']._backup = {};
                     }
+                    // 不删除远程的 _backup 字段，直接保留所有备份数据
                     this.setAllLocalData(processedRemoteData);
                     return { success: true, message: '同步成功！已从云端加载数据。', data: processedRemoteData };
                 }
@@ -1558,17 +1525,14 @@ class DataSyncFirebase {
                 // 本地有数据，使用合并策略
                 const mergedData = { ...localData };
                 
-                // 处理备份数据：只保留本地的备份（不合并远程的）
-                // 备份是本地删除操作的记录，不应该从云端下载
-                if (localData['_backup'] && typeof localData['_backup'] === 'object' && localData['_backup'] !== null) {
-                    // 保留本地的备份（对象结构）
-                    mergedData['_backup'] = localData['_backup'];
-                } else {
-                    // 本地没有备份，初始化为空对象
-                    mergedData['_backup'] = {};
+                // 处理备份数据：保留远程的所有备份
+                // Firebase 已经支持增量更新（使用唯一的 key），不需要在下载时合并
+                // 只需要保留远程的备份字段即可
+                if (processedRemoteData['_backup'] && typeof processedRemoteData['_backup'] === 'object' && processedRemoteData['_backup'] !== null && !Array.isArray(processedRemoteData['_backup'])) {
+                    // 保留远程的所有备份（Firebase 已经使用唯一的 key）
+                    mergedData['_backup'] = processedRemoteData['_backup'];
                 }
-                // 删除远程的备份字段（不下载）
-                delete processedRemoteData['_backup'];
+                // 不删除远程的备份字段，直接保留所有备份数据
                 
                 // 优先处理统一结构数据
                 if (processedRemoteData['trip_unified_data'] || localData['trip_unified_data']) {
@@ -1649,7 +1613,7 @@ class DataSyncFirebase {
                 this.setAllLocalData(mergedData);
             } else {
                 // 直接覆盖模式
-                console.log('覆盖模式：直接使用云端数据', remoteData);
+
                 // Firebase 返回的已经是对象，直接使用
                 this.setAllLocalData(remoteData);
             }
@@ -1669,7 +1633,7 @@ class DataSyncFirebase {
                     errorMessage = '下载失败: 未知错误';
                 }
             }
-            console.error('下载失败:', error);
+
             return { success: false, message: errorMessage };
         }
     }
@@ -1711,7 +1675,7 @@ class DataSyncFirebase {
                         setTimeout(() => {
                             // 再次检查，如果输入框仍然活动，再延迟
                             if (this.hasActiveInputs()) {
-                                console.log('检测到活动输入框，延迟UI刷新');
+
                                 // 继续延迟，但不丢失数据
                                 setTimeout(() => {
                                     if (typeof window.showDay === 'function' && window.currentDayId) {

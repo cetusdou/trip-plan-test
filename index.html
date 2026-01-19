@@ -46,6 +46,40 @@
                         </label>
                     </div>
                     <button class="btn-login" id="login-btn" type="button">登录</button>
+                    <button class="btn-register" id="register-btn" type="button" style="margin-top: 10px; width: 100%;" onclick="showRegisterModal()">注册新账户</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 注册账户模态框（必须在 main-content 外面，未登录时也能看到） -->
+    <div id="register-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>注册新账户</h3>
+                <button class="modal-close" onclick="closeRegisterModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="register-username">用户名：</label>
+                    <input type="text" id="register-username" class="form-input" placeholder="请输入用户名（字母数字下划线）" pattern="^[a-zA-Z0-9_]+">
+                </div>
+                <div class="form-group">
+                    <label for="register-password">密码：</label>
+                    <input type="password" id="register-password" class="form-input" placeholder="请输入密码（至少4位）" minlength="4">
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm">确认密码：</label>
+                    <input type="password" id="register-confirm" class="form-input" placeholder="请再次输入密码" minlength="4">
+                </div>
+                <div class="form-group">
+                    <label for="register-invite-code">邀请码：</label>
+                    <input type="text" id="register-invite-code" class="form-input" placeholder="请输入邀请码" required>
+                </div>
+                <small style="color: #666; display: block; margin-top: 10px;">⚠️ 密码将存储在Firebase中，请妥善保管。忘记密码需要重新注册。</small>
+                <div class="config-actions" style="margin-top: 20px;">
+                    <button class="btn-primary" onclick="registerUser()">注册账户</button>
+                    <button class="btn-secondary" onclick="closeRegisterModal()">取消</button>
                 </div>
             </div>
         </div>
@@ -110,31 +144,6 @@
             </div>
         </div>
 
-        <!-- 初始化密码模态框 -->
-        <div id="init-password-modal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>初始化用户密码</h3>
-                    <button class="modal-close" onclick="closeInitPasswordModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="init-mrb-password">mrb密码：</label>
-                        <input type="password" id="init-mrb-password" class="form-input" placeholder="设置mrb的密码">
-                    </div>
-                    <div class="form-group">
-                        <label for="init-djy-password">djy密码：</label>
-                        <input type="password" id="init-djy-password" class="form-input" placeholder="设置djy的密码">
-                    </div>
-                    <small style="color: #666; display: block; margin-top: 10px;">⚠️ 密码将存储在Firebase中，请妥善保管。忘记密码需要重新初始化。</small>
-                    <div class="config-actions" style="margin-top: 20px;">
-                        <button class="btn-primary" onclick="initPasswords()">保存密码</button>
-                        <button class="btn-secondary" onclick="closeInitPasswordModal()">取消</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- 开支总计模态框 -->
         <div id="expense-summary-modal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 800px;">
@@ -161,58 +170,8 @@
             </div>
         </div>
 
-        <!-- 同步配置模态框 -->
-        <div id="sync-config-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>同步配置</h3>
-                    <button class="modal-close" onclick="closeSyncConfig()">×</button>
-                </div>
-                <div class="modal-body">
-                    <!-- Firebase 配置 -->
-                    <div id="firebase-config" class="sync-config-panel">
-                        <div class="config-section">
-                            <label for="firebase-api-key">API Key：</label>
-                            <input type="text" id="firebase-api-key" placeholder="AIza...">
-                        </div>
-                        <div class="config-section">
-                            <label for="firebase-auth-domain">Auth Domain：</label>
-                            <input type="text" id="firebase-auth-domain" placeholder="your-project.firebaseapp.com">
-                        </div>
-                        <div class="config-section">
-                            <label for="firebase-database-url">Database URL：</label>
-                            <input type="text" id="firebase-database-url" placeholder="https://your-project.firebaseio.com">
-                        </div>
-                        <div class="config-section">
-                            <label for="firebase-project-id">Project ID：</label>
-                            <input type="text" id="firebase-project-id" placeholder="your-project-id">
-                        </div>
-                        <div class="config-section">
-                            <label for="firebase-database-path">Database Path（可选）：</label>
-                            <input type="text" id="firebase-database-path" placeholder="trip_plan_data" value="trip_plan_data">
-                            <small>数据存储路径，默认：trip_plan_data</small>
-                        </div>
-                        <div class="config-section">
-                            <small>⚠️ 注意：使用Firebase需要先引入Firebase SDK。在index.html中添加：<br>
-                            &lt;script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"&gt;&lt;/script&gt;<br>
-                            &lt;script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"&gt;&lt;/script&gt;</small>
-                        </div>
-                    </div>
-                    
-                    <div class="config-section">
-                        <label>
-                            <input type="checkbox" id="auto-sync-checkbox">
-                            启用自动同步
-                            <span id="auto-sync-desc">（每30秒自动上传）</span>
-                        </label>
-                    </div>
-                    <div class="config-actions">
-                        <button class="btn-primary" onclick="saveSyncConfig()">保存配置</button>
-                        <button class="btn-secondary" onclick="closeSyncConfig()">取消</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- 配置页面链接 -->
+        <a href="config.html" id="config-link" class="config-link" style="display: none;">配置</a>
 
         <!-- 标题区域 -->
         <div class="header">
@@ -241,7 +200,7 @@
 
         <!-- 日期标题 -->
         <div class="day-header">
-            <h2>Day 1: 上海 → 绍兴（不变）</h2>
+            <h2>请选择日期</h2>
         </div>
 
         <!-- 卡片容器 -->

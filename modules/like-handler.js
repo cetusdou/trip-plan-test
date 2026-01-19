@@ -16,7 +16,17 @@ class LikeHandler {
             return type === 'item' ? {} : [];
         }
         
-        const unifiedData = tripDataStructure.loadUnifiedData();
+        // 【关键修复】优先从 stateManager 获取最新数据
+        let unifiedData = null;
+        if (typeof window !== 'undefined' && window.stateManager) {
+            unifiedData = window.stateManager.getState('tripData');
+        }
+        
+        // 如果 stateManager 没有数据，从 localStorage 加载
+        if (!unifiedData) {
+            unifiedData = tripDataStructure.loadUnifiedData();
+        }
+        
         if (!unifiedData) {
             return type === 'item' ? {} : [];
         }
@@ -181,7 +191,6 @@ class LikeHandler {
             case 'item':
                 // Item 点赞：操作 item._likes[section]
                 if (!section) {
-                    console.error('item 类型需要指定 section');
                     return false;
                 }
                 if (!item._likes) item._likes = {};
@@ -195,7 +204,6 @@ class LikeHandler {
                 // Plan item 点赞：操作 plan[index]._likes
                 // 关键修复：plan 现在是对象结构 {hash: planItem}，需要适配
                 if (index === null || index < 0 || !item.plan) {
-                    console.error('找不到 plan item: index 无效或 plan 不存在', { index, hasPlan: !!item.plan });
                     return false;
                 }
                 
@@ -210,18 +218,15 @@ class LikeHandler {
                         return timeA - timeB;
                     });
                 } else {
-                    console.error('plan 类型不正确', { planType: typeof item.plan });
                     return false;
                 }
                 
                 if (index >= planArray.length) {
-                    console.error('找不到 plan item: index 超出范围', { index, planLength: planArray.length });
                     return false;
                 }
                 
                 const planItem = planArray[index];
                 if (!planItem || typeof planItem !== 'object') {
-                    console.error('plan item 无效', { planItem, planItemType: typeof planItem });
                     return false;
                 }
                 if (!planItem._likes) planItem._likes = [];
@@ -234,7 +239,6 @@ class LikeHandler {
                 // Comment 点赞：操作 comments[index]._likes
                 // 关键修复：comments 现在是对象结构 {hash: comment}，需要适配
                 if (index === null || index < 0 || !item.comments) {
-                    console.error('找不到 comment: index 无效或 comments 不存在', { index, hasComments: !!item.comments });
                     return false;
                 }
                 
@@ -251,18 +255,15 @@ class LikeHandler {
                             return timeA - timeB;
                         });
                 } else {
-                    console.error('comments 类型不正确', { commentsType: typeof item.comments });
                     return false;
                 }
                 
                 if (index >= commentsArray.length) {
-                    console.error('找不到 comment: index 超出范围', { index, commentsLength: commentsArray.length });
                     return false;
                 }
                 
                 const comment = commentsArray[index];
                 if (!comment || typeof comment !== 'object') {
-                    console.error('comment 无效', { comment, commentType: typeof comment });
                     return false;
                 }
                 if (!comment._likes) comment._likes = [];
@@ -272,7 +273,6 @@ class LikeHandler {
                 break;
                 
             default:
-                console.error('未知的点赞类型:', type);
                 return false;
         }
         
@@ -281,12 +281,13 @@ class LikeHandler {
         const wasLiked = userIndex > -1;
         if (userIndex > -1) {
             targetLikes.splice(userIndex, 1); // 取消点赞
-            console.log('toggleLike: 取消点赞', { currentUser, type, index, section, targetLikes: [...targetLikes] });
+            console.log(`[LikeHandler] 取消点赞: ${currentUser} 从 ${type} 移除`);
         } else {
             targetLikes.push(currentUser); // 点赞
-            console.log('toggleLike: 添加点赞', { currentUser, type, index, section, targetLikes: [...targetLikes] });
+            console.log(`[LikeHandler] 点赞: ${currentUser} 添加到 ${type}`);
         }
         
+        console.log(`[LikeHandler] 当前点赞列表:`, targetLikes);
 
         const timestamp = new Date().toISOString();
         if (targetObject._updatedAt !== undefined || type !== 'item') {
@@ -295,14 +296,16 @@ class LikeHandler {
         item._updatedAt = timestamp; // 确保父级 item 也标记为已更新
 
         // 1. 保存到本地统一结构 (localStorage)
-        console.log('toggleLike: 准备保存到本地', { dayId, itemId, type, index, section });
         const saveSuccess = tripDataStructure.saveUnifiedData(unifiedData);
         if (saveSuccess === false) {
-            console.error('点赞保存到本地失败');
             return false;
         }
-        console.log('toggleLike: 本地保存成功', { dayId, itemId, type, index, section });
-
+        
+        // 【关键修复】更新 stateManager 中的 tripData
+        if (typeof window !== 'undefined' && window.stateManager) {
+            window.stateManager.setState({ tripData: unifiedData });
+        }
+        
         // 2. 触发增量同步到云端 (Firebase)
         if (window.dataSyncFirebase && window.dataSyncFirebase.cloudIncrementalUpdate) {
             // 根据类型构建精确的云端路径和数据包
@@ -313,20 +316,8 @@ class LikeHandler {
             const itemIndex = window.dataSyncFirebase.getItemIndex(dayId, itemId);
             
             if (dayIndex === null || itemIndex === null) {
-                console.error('点赞同步失败: 无法找到 dayId 或 itemId 的索引', { 
-                    dayId, 
-                    itemId, 
-                    dayIndex, 
-                    itemIndex,
-                    type,
-                    index,
-                    section
-                });
                 return;
             }
-            
-            console.log('点赞同步: 找到索引', { dayId, itemId, dayIndex, itemIndex, type, index, section });
-            
             switch (type) {
                 case 'item':
                     // Item 点赞：更新 item._likes[section]
@@ -354,9 +345,7 @@ class LikeHandler {
                     window.dataSyncFirebase.cloudIncrementalUpdate(planSubPath, planUpdatePayload)
                         .then(res => {
                             if (res.success) {
-                                console.log('Plan item 点赞同步成功', { dayIndex, itemIndex, planIndex: index });
                             } else {
-                                console.warn('点赞同步延迟:', res.message);
                             }
                         })
                         .catch(err => console.error('点赞同步失败:', err));
@@ -372,9 +361,7 @@ class LikeHandler {
                     window.dataSyncFirebase.cloudIncrementalUpdate(commentSubPath, commentUpdatePayload)
                         .then(res => {
                             if (res.success) {
-                                console.log('Comment 点赞同步成功', { dayIndex, itemIndex, commentIndex: index });
                             } else {
-                                console.warn('点赞同步延迟:', res.message);
                             }
                         })
                         .catch(err => console.error('点赞同步失败:', err));

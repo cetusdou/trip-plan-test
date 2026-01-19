@@ -66,11 +66,9 @@ function markdownToHtml(markdown) {
         try {
             return marked.parse(markdown);
         } catch (error) {
-            console.error('Markdown 解析失败:', error);
             return escapeHtmlKeepBr(markdown);
         }
     } else {
-        console.warn('marked.js 未加载，使用普通文本显示');
         return escapeHtmlKeepBr(markdown);
     }
 }

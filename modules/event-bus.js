@@ -64,7 +64,6 @@ class EventBus {
             try {
                 callback(data);
             } catch (error) {
-                console.error(`事件处理器执行失败 [${eventName}]:`, error);
             }
         });
     }

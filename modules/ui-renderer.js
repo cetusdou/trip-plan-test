@@ -28,7 +28,6 @@
         getDependencies();
         
             if (!stateManager) {
-                console.error('StateManager 未加载，无法初始化 UI 渲染器');
                 return;
             }
     
@@ -174,10 +173,12 @@
             html += `
                 <li class="nav-item">
                     <a href="#" class="nav-link" data-day="${dayId}">${escapeHtml(dayTitle)}</a>
+                    <button class="delete-day-btn" data-day-id="${dayId}" title="删除这一天" onclick="deleteDay('${dayId}')">×</button>
                 </li>
             `;
         });
         html += '</ul>';
+        html += '<button class="add-day-btn" onclick="addDay()" title="添加新的一天">+ 添加天数</button>';
     navContainer.innerHTML = html;
     
     // 添加导航点击事件
@@ -198,14 +199,24 @@
         
         // 防止递归调用
         if (isRenderingDay) {
-            console.warn('renderDayInternal: 正在渲染中，跳过重复调用', { dayId });
             return;
         }
         
+        if (window.currentSlider && typeof window.currentSlider.destroy === 'function') {
+            console.log(`[UI] 销毁旧 Slider 实例`);
+            window.currentSlider.destroy();
+            window.currentSlider = null;
+        }
+        const cardsContainer = document.getElementById('cards-container');
+        if (!cardsContainer) return;
+        cardsContainer.innerHTML = ''; // 物理切断 AABBCC 的产生路径
+
+        // --- 关键修改 3: 确保使用最新的统一数据 ---
+        // let day = null;
+
         // 确保 dayId 是字符串，并且不是 tripId
         let dayIdStr = String(dayId);
         if (dayIdStr.startsWith('trip_')) {
-            console.error('renderDayInternal: 错误！传入的是 tripId 而不是 dayId', { tripId: dayIdStr });
             if (tripDataStructure) {
                 const unifiedData = tripDataStructure.loadUnifiedData();
                 if (unifiedData && unifiedData.days) {
@@ -217,17 +228,17 @@
                             // 按 order 排序，获取第一个
                             const sortedDays = Object.values(unifiedData.days)
                                 .sort((a, b) => (a.order || 0) - (b.order || 0));
-                            firstDayId = sortedDays[0]?.id || dayIds[0] || 'day1';
+                            firstDayId = sortedDays[0]?.id || dayIds[0];
                         }
                     } else if (Array.isArray(unifiedData.days) && unifiedData.days.length > 0) {
-                        firstDayId = unifiedData.days[0]?.id || 'day1';
+                        firstDayId = unifiedData.days[0]?.id;
                     }
                     dayIdStr = firstDayId;
                 } else {
-                    dayIdStr = 'day1';
+                    ;
                 }
             } else {
-                dayIdStr = 'day1';
+                ;
             }
         }
         
@@ -235,13 +246,17 @@
         let day = null;
         if (tripDataStructure) {
             const unifiedData = tripDataStructure.loadUnifiedData();
-            if (unifiedData) {
-                day = tripDataStructure.getDayData(unifiedData, dayIdStr);
-            }
+            // 这里的 getDayData 内部应包含你之前的长 ID 匹配逻辑
+            day = tripDataStructure.getDayData(unifiedData, dayId); 
         }
+        // if (tripDataStructure) {
+        //     const unifiedData = tripDataStructure.loadUnifiedData();
+        //     if (unifiedData) {
+        //         day = tripDataStructure.getDayData(unifiedData, dayIdStr);
+        //     }
+        // }
         
         if (!day) {
-            console.warn(`未找到日期数据: ${dayIdStr}`);
             return;
         }
         
@@ -288,7 +303,6 @@
             // 创建卡片容器（滚动模式）
             const cardsContainer = document.getElementById('cards-container');
             if (!cardsContainer) {
-                console.error('找不到 cards-container 元素');
                 return;
             }
             
@@ -301,13 +315,12 @@
             }
             
             if (!CardSliderClass) {
-                console.error('CardSlider 类未找到，无法渲染卡片。请确保 script.js 已加载。');
                 return;
             }
             
             // 创建 CardSlider 实例（这会执行实际渲染）
             const slider = new CardSliderClass('cards-container', filteredItems, dayIdStr);
-            
+            window.currentSlider = slider;
             // 更新状态（在实际渲染完成后）
             if (stateManager && shouldUpdateState) {
                 // 检查是否需要更新 currentDayId

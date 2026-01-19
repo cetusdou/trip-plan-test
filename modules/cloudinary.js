@@ -17,7 +17,7 @@ class CloudinaryUploadService {
         return !!(this.cloudName && this.uploadPreset);
     }
     
-    async uploadImage(file) {
+    async uploadImage(file, maxRetries = 2) {
         if (!this.isConfigured()) {
             throw new Error('Cloudinary 未配置，请先设置 cloudName 和 uploadPreset');
         }
@@ -32,29 +32,37 @@ class CloudinaryUploadService {
         const publicId = `trip_plan/${Date.now()}_${Math.random().toString(36).substring(7)}`;
         formData.append('public_id', publicId);
         
-        try {
-            const response = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error?.message || '上传失败');
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`, {
+                    method: 'POST',
+                    body: formData,
+                    signal: AbortSignal.timeout(30000) // 30秒超时
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error?.message || '上传失败');
+                }
+                
+                const result = await response.json();
+                const optimizedUrl = result.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
+                
+                return {
+                    url: optimizedUrl,
+                    publicId: result.public_id,
+                    originalUrl: result.secure_url
+                };
+            } catch (error) {
+                if (attempt < maxRetries && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION'))) {
+                    console.warn(`Cloudinary 上传失败 (尝试 ${attempt + 1}/${maxRetries + 1})，正在重试:`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                    continue;
+                }
+                throw new Error(`图片上传失败: ${error.message}`);
             }
-            
-            const result = await response.json();
-            const optimizedUrl = result.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
-            
-            return {
-                url: optimizedUrl,
-                publicId: result.public_id,
-                originalUrl: result.secure_url
-            };
-        } catch (error) {
-            console.error('Cloudinary 上传失败:', error);
-            throw new Error(`图片上传失败: ${error.message}`);
         }
+        throw new Error('图片上传失败: 已达到最大重试次数');
     }
     
     async compressImageFile(file) {
@@ -111,8 +119,6 @@ class CloudinaryUploadService {
         if (!this.isConfigured()) {
             throw new Error('Cloudinary 未配置');
         }
-        
-        console.warn('图片删除功能需要配置签名或使用服务器端 API');
         return { success: true, message: '图片已标记删除（需要在服务器端实际删除）' };
     }
 }

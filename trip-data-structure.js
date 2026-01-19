@@ -212,235 +212,6 @@ function initializeTripDataStructure(originalData) {
 // 注意：这个函数已被第38行的 normalizePlan 函数替代，保留此函数仅用于向后兼容
 // 实际应该使用第38行的版本，它返回对象结构 {}
 
-// 数据迁移：将现有分散的localStorage数据合并到新结构（已废弃，不再使用）
-// 此函数已停用，不再从分散存储合并数据
-async function migrateToUnifiedStructure(originalData) {
-    // 开始数据迁移
-    
-    // 检查是否已经有统一结构的数据
-    let unifiedData = null;
-    const existingUnifiedData = localStorage.getItem('trip_unified_data');
-    if (existingUnifiedData) {
-        try {
-            const parsed = JSON.parse(existingUnifiedData);
-            if (parsed._version === DATA_STRUCTURE_VERSION) {
-                // 已存在统一结构数据，合并最新的分散数据
-                unifiedData = parsed;
-            }
-        } catch (e) {
-            console.warn('解析现有统一数据失败，重新迁移', e);
-        }
-    }
-    
-    // 如果没有现有数据，初始化新结构
-    if (!unifiedData) {
-        unifiedData = initializeTripDataStructure(originalData);
-    }
-    
-    // 迁移每个day的数据（合并最新的分散数据）
-    for (const day of unifiedData.days) {
-        const dayId = day.id;
-        
-        // 确保所有item都有images字段（如果缺失则初始化）
-        day.items.forEach((item, index) => {
-            // 确保 images 是数组
-            if (!item.hasOwnProperty('images') || !Array.isArray(item.images)) {
-                item.images = Array.isArray(item.images) ? item.images : [];
-            }
-            // 确保 comments 是数组
-            if (!item.hasOwnProperty('comments') || !Array.isArray(item.comments)) {
-                item.comments = Array.isArray(item.comments) ? item.comments : [];
-            }
-            // spend 可能是数组或 null
-            if (!item.hasOwnProperty('spend')) {
-                item.spend = null;
-            } else if (item.spend !== null && !Array.isArray(item.spend)) {
-                // 如果 spend 不是数组也不是 null，转换为数组
-                item.spend = [item.spend];
-            }
-        });
-        
-        // 迁移标签（如果统一数据中没有或分散数据更新）
-        day.items.forEach((item, index) => {
-            const tagKey = `trip_tag_${dayId}_${index}`;
-            const savedTag = localStorage.getItem(tagKey);
-            if (savedTag) {
-                // 如果统一数据中没有tag，或者分散数据存在，则使用分散数据
-                if (!item.tag || savedTag !== item.tag) {
-                    item.tag = savedTag;
-                }
-            }
-        });
-        
-        // 迁移图片（合并，保留统一数据和分散数据中的所有图片）
-        day.items.forEach((item, index) => {
-            const imageKey = `trip_images_${dayId}_${index}`;
-            const savedImages = localStorage.getItem(imageKey);
-            if (savedImages) {
-                try {
-                    const images = JSON.parse(savedImages);
-                    // 合并图片，去重
-                    const existingImages = item.images || [];
-                    const allImages = [...existingImages, ...images];
-                    // 简单的去重（基于URL）
-                    item.images = Array.from(new Set(allImages));
-                } catch (e) {
-                    console.warn(`解析图片数据失败 ${imageKey}:`, e);
-                }
-            }
-        });
-        
-        // 迁移留言（合并，使用哈希值去重）
-        day.items.forEach((item, index) => {
-            const commentKey = `trip_comments_${dayId}_${index}`;
-            const savedComments = localStorage.getItem(commentKey);
-            if (savedComments) {
-                try {
-                    // 检查 savedComments 是否已经是对象（统一结构中的情况）
-                    let parsedComments;
-                    if (typeof savedComments === 'string') {
-                        try {
-                            parsedComments = JSON.parse(savedComments);
-                        } catch (e) {
-                            console.warn(`解析留言数据失败 ${commentKey}:`, e);
-                            // 跳过这个 item 的 comments 处理，继续下一个
-                            return;
-                        }
-                    } else {
-                        // 如果已经是对象，直接使用
-                        parsedComments = savedComments;
-                    }
-                    // 确保解析出来的是数组
-                    const comments = Array.isArray(parsedComments) ? parsedComments : (parsedComments ? [parsedComments] : []);
-                    const existingComments = Array.isArray(item.comments) ? item.comments : [];
-                    // 使用哈希值去重合并
-                    const commentMap = new Map();
-                    existingComments.forEach(c => {
-                        if (c && c._hash) commentMap.set(c._hash, c);
-                    });
-                    comments.forEach(c => {
-                        if (!c) return; // 跳过 null 或 undefined
-                        if (c._hash && !commentMap.has(c._hash)) {
-                            commentMap.set(c._hash, c);
-                        } else if (!c._hash) {
-                            // 没有哈希值的旧留言，也添加（可能重复，但保留）
-                            commentMap.set(JSON.stringify(c), c);
-                        }
-                    });
-                    item.comments = Array.from(commentMap.values());
-                } catch (e) {
-                    console.warn(`解析留言数据失败 ${commentKey}:`, e);
-                    // 如果解析失败，确保 comments 至少是空数组
-                    if (!Array.isArray(item.comments)) {
-                        item.comments = [];
-                    }
-                }
-            }
-        });
-        
-        // 迁移计划项（如果分散数据存在，使用分散数据）
-        day.items.forEach((item, index) => {
-            const planKey = `trip_plan_${dayId}_${index}`;
-            const savedPlan = localStorage.getItem(planKey);
-            if (savedPlan) {
-                try {
-                    const planData = JSON.parse(savedPlan);
-                    if (Array.isArray(planData) && planData.length > 0) {
-                        // 如果分散数据存在且有内容，使用分散数据
-                        item.plan = planData;
-                    }
-                } catch (e) {
-                    console.warn(`解析计划数据失败 ${planKey}:`, e);
-                }
-            }
-        });
-        
-        // 迁移自定义项
-        const customItemsKey = `trip_custom_items_${dayId}`;
-        const savedCustomItems = localStorage.getItem(customItemsKey);
-        if (savedCustomItems) {
-            try {
-                const customItems = JSON.parse(savedCustomItems);
-                const validCustomItems = customItems;
-                validCustomItems.forEach(customItem => {
-                    // 确保自定义项有完整的结构
-                    const migratedItem = {
-                        id: customItem.id || generateItemId(dayId, day.items.length),
-                        category: customItem.category || "",
-                        time: customItem.time || "",
-                        tag: customItem.tag || "其他",
-                        plan: normalizePlan(customItem.plan || []),
-                        note: customItem.note || "",
-                        rating: customItem.rating || "",
-                        images: customItem.images || [],
-                        comments: customItem.comments || [],
-                        spend: customItem.spend || null,
-                        order: customItem.order !== undefined ? customItem.order : day.items.length,
-                        isCustom: true,
-                        _createdAt: customItem._createdAt || new Date().toISOString(),
-                        _updatedAt: customItem._updatedAt || new Date().toISOString()
-                    };
-                    day.items.push(migratedItem);
-                });
-            } catch (e) {
-                console.warn(`解析自定义项数据失败 ${customItemsKey}:`, e);
-            }
-        }
-        
-        // 迁移卡片顺序
-        const orderKey = `trip_card_order_${dayId}`;
-        const savedOrder = localStorage.getItem(orderKey);
-        if (savedOrder) {
-            try {
-                const order = JSON.parse(savedOrder);
-                // 根据顺序重新排列items
-                const itemMap = new Map();
-                day.items.forEach(item => {
-                    // 对于原始项，使用category+time+plan组合作为key
-                    if (!item.isCustom) {
-                        const time = item.time || '';
-                        const plan = (item.plan && item.plan.length > 0) 
-                            ? (typeof item.plan[0] === 'string' ? item.plan[0] : item.plan[0]._text || '')
-                            : '';
-                        const key = `${item.category || 'item'}_${time}_${plan.substring(0, 20)}`.replace(/\s+/g, '_');
-                        itemMap.set(key, item);
-                    } else {
-                        itemMap.set(item.id, item);
-                    }
-                });
-                
-                const orderedItems = [];
-                order.forEach(orderItem => {
-                    const item = itemMap.get(orderItem.id);
-                    if (item) {
-                        orderedItems.push(item);
-                        itemMap.delete(orderItem.id);
-                    }
-                });
-                
-                // 添加未排序的项
-                itemMap.forEach(item => {
-                    orderedItems.push(item);
-                });
-                
-                day.items = orderedItems;
-                // 更新order字段
-                day.items.forEach((item, index) => {
-                    item.order = index;
-                });
-            } catch (e) {
-                console.warn(`解析顺序数据失败 ${orderKey}:`, e);
-            }
-        }
-    }
-    
-    // 保存统一结构
-    saveUnifiedData(unifiedData);
-    
-    // 数据迁移完成
-    return unifiedData;
-}
-
 // 保存统一数据
 function saveUnifiedData(data) {
     data._lastSync = new Date().toISOString();
@@ -461,7 +232,7 @@ function saveUnifiedData(data) {
             localStorage.setItem(testKey, 'test');
             localStorage.removeItem(testKey);
         } catch (e) {
-            console.error('❌ localStorage空间不足，无法保存数据:', e);
+
             alert('存储空间不足，请清理浏览器数据或减少数据量。');
             return false;
         }
@@ -472,9 +243,9 @@ function saveUnifiedData(data) {
         
         return true;
     } catch (e) {
-        console.error('保存统一数据失败:', e);
+
         if (e.name === 'QuotaExceededError') {
-            console.warn('存储空间不足，无法保存数据');
+
             alert('数据太大，无法保存。请删除一些不需要的内容。');
             return false;
         }
@@ -519,7 +290,7 @@ function updateExistingExpensesWithParticipants() {
     // 如果有更新，保存数据
     if (updated) {
         saveUnifiedData(unifiedData);
-        console.log('已更新所有现有花销，添加了默认参与人信息');
+
     }
 }
 
@@ -528,506 +299,98 @@ function loadUnifiedData() {
     const data = localStorage.getItem('trip_unified_data');
     if (data) {
         try {
-            // localStorage.getItem() 总是返回字符串或 null
-            // 如果是字符串，尝试解析
             if (typeof data === 'string') {
-                // 检查是否是无效的字符串（如 "[object Object]"）
                 const trimmed = data.trim();
-                if (trimmed === '[object Object]' || trimmed === '[object Object]') {
-                    console.warn('统一数据是无效的字符串 "[object Object]"，已清除');
-                    // 清除无效数据
+                if (trimmed === '[object Object]') {
+
                     localStorage.removeItem('trip_unified_data');
                     return null;
                 }
-                // 检查是否是有效的JSON字符串
                 if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
                     const parsed = JSON.parse(data);
-                    // 验证解析后的数据结构
                     if (parsed && typeof parsed === 'object') {
-                        // 检查是否是 trip_plan_data 而不是 trip_unified_data
-                        if (parsed.trip_unified_data && typeof parsed.trip_unified_data === 'object') {
-                            console.warn('loadUnifiedData: 检测到嵌套的 trip_unified_data，尝试提取');
-                            const nestedUnifiedData = parsed.trip_unified_data;
-                            if (nestedUnifiedData.days && Array.isArray(nestedUnifiedData.days)) {
-                                // 成功提取嵌套的 trip_unified_data
-                                return nestedUnifiedData;
-                            } else {
-                                console.error('loadUnifiedData: 嵌套的 trip_unified_data 也无效');
-                                return null;
-                            }
-                        }
-                        
-                        // 检查是否是有效的统一数据结构
-                        // days 现在是对象结构，不是数组
-                        if (!parsed.days || (typeof parsed.days !== 'object' || parsed.days === null || Array.isArray(parsed.days))) {
-                            // 如果 days 不存在或不是对象（而是数组或 null），可能是旧数据，在迁移阶段处理
-                            if (!parsed.days) {
-                                parsed.days = {};
-                            }
-                        }
-                        
-                        // 检查版本，如果是旧版本，进行数据迁移
-                        const currentVersion = parsed._version || 1;
-                        let needMigration = currentVersion < DATA_STRUCTURE_VERSION;
-                        let needSave = false;
-                        
-                        // 首先检查 days 是否为数组（旧格式），如果是，需要迁移为对象结构
-                        if (parsed.days && Array.isArray(parsed.days)) {
-                            const daysObj = {};
-                            parsed.days.forEach(day => {
-                                if (day && day.id) {
-                                    daysObj[day.id] = day;
-                                }
-                            });
-                            parsed.days = daysObj;
-                            needSave = true;
-                            needMigration = true;
-                            console.log('已从数组格式迁移 days 到对象格式');
-                        } else if (!parsed.days || typeof parsed.days !== 'object' || parsed.days === null || Array.isArray(parsed.days)) {
-                            // 如果 days 不存在或格式不正确，初始化为空对象
+                        // 确保 days 是对象结构
+                        if (!parsed.days || typeof parsed.days !== 'object' || Array.isArray(parsed.days)) {
                             parsed.days = {};
-                            needSave = true;
                         }
                         
-                        // 确保 _backup 字段存在（向后兼容：支持从数组迁移到对象）
-                        if (!parsed._backup) {
-                            parsed._backup = {};
-                            needSave = true;
-                        } else if (Array.isArray(parsed._backup)) {
-                            // 如果是从旧数组格式迁移过来的，转换为对象格式
-                            const backupObj = {};
-                            parsed._backup.forEach((entry, index) => {
-                                if (entry && entry._deletedAt) {
-                                    const safeKey = String(entry._deletedAt).replace(/[.#$\/\[\]]/g, '_') + '_' + Date.now() + '_' + index;
-                                    backupObj[safeKey] = entry;
-                                } else if (entry) {
-                                    const timestamp = Date.now() + '_' + index;
-                                    entry._deletedAt = new Date().toISOString();
-                                    backupObj[timestamp] = entry;
-                                }
-                            });
-                            parsed._backup = backupObj;
-                            needSave = true;
-                            needMigration = true;
-                            console.log('已从数组格式迁移 _backup 到对象格式');
-                        } else if (typeof parsed._backup !== 'object' || parsed._backup === null) {
-                            parsed._backup = {};
-                            needSave = true;
+                        // 【重要修改】trip_unified_data 下不应该有 _backup 字段
+                        // _backup 应该是独立的顶级字段，和 trip_unified_data 同级
+                        // 因此从 trip_unified_data 中移除 _backup
+                        if (parsed._backup) {
+                            delete parsed._backup;
                         }
                         
-                        // 迁移 items、plan、comments、images 从数组到对象
-                        if (needMigration || currentVersion < DATA_STRUCTURE_VERSION) {
-                            console.log('开始数据迁移：将数组结构转换为对象结构');
-                            
-                            // 迁移 days 从数组到对象结构
-                            if (parsed.days) {
-                                // 如果 days 是数组，转换为对象结构
-                                if (Array.isArray(parsed.days)) {
-                                    const daysObj = {};
-                                    parsed.days.forEach(day => {
-                                        if (day && day.id) {
-                                            daysObj[day.id] = day;
-                                        }
-                                    });
-                                    parsed.days = daysObj;
-                                    needSave = true;
-                                } else if (typeof parsed.days !== 'object' || parsed.days === null) {
-                                    // 如果 days 不是对象或为 null，初始化为空对象
-                                    parsed.days = {};
-                                    needSave = true;
-                                }
-                                
-                                // 迁移 days 中的 items（确保每个 day 的 items 都是对象结构）
-                                Object.keys(parsed.days).forEach(dayId => {
-                                    const day = parsed.days[dayId];
-                                    if (!day) return;
-                                    
-                                    if (day && Array.isArray(day.items)) {
-                                        // 将 items 数组转换为对象
-                                        const itemsObj = {};
-                                        day.items.forEach(item => {
-                                            if (item && item.id) {
-                                                // 迁移 item 内的 plan、comments、images
-                                                if (Array.isArray(item.plan)) {
-                                                    item.plan = normalizePlan(item.plan);
-                                                } else if (!item.plan || typeof item.plan !== 'object') {
-                                                    item.plan = normalizePlan(item.plan || []);
-                                                }
-                                                
-                                                if (Array.isArray(item.comments)) {
-                                                    item.comments = normalizeComments(item.comments);
-                                                } else if (!item.comments || typeof item.comments !== 'object') {
-                                                    item.comments = normalizeComments(item.comments || []);
-                                                }
-                                                
-                                                if (Array.isArray(item.images)) {
-                                                    item.images = normalizeImages(item.images);
-                                                } else if (!item.images || typeof item.images !== 'object') {
-                                                    item.images = normalizeImages(item.images || []);
-                                                }
-                                                
-                                                itemsObj[item.id] = item;
-                                            }
-                                        });
-                                        day.items = itemsObj;
-                                        needSave = true;
-                                    } else if (day && day.items && typeof day.items === 'object' && !Array.isArray(day.items)) {
-                                        // 如果已经是对象，但内部的 plan/comments/images 可能是数组，也需要迁移
-                                        Object.keys(day.items).forEach(itemId => {
-                                            const item = day.items[itemId];
-                                            if (item) {
-                                                if (Array.isArray(item.plan)) {
-                                                    item.plan = normalizePlan(item.plan);
-                                                    needSave = true;
-                                                }
-                                                if (Array.isArray(item.comments)) {
-                                                    item.comments = normalizeComments(item.comments);
-                                                    needSave = true;
-                                                }
-                                                if (Array.isArray(item.images)) {
-                                                    item.images = normalizeImages(item.images);
-                                                    needSave = true;
-                                                }
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-                            
-                            // 更新版本号
+                        // 确保版本号正确
+                        if (!parsed._version || parsed._version < DATA_STRUCTURE_VERSION) {
                             parsed._version = DATA_STRUCTURE_VERSION;
-                            needSave = true;
-                            console.log('数据迁移完成：已转换为对象结构');
                         }
                         
-                        // 如果进行了迁移，保存回 localStorage
-                        if (needSave) {
-                            try {
-                                saveUnifiedData(parsed);
-                                console.log('已保存迁移后的数据');
-                            } catch (e) {
-                                console.warn('迁移数据后保存失败:', e);
-                            }
-                        }
-                        
-                        // 验证数据完整性，成功加载统一数据
                         return parsed;
-                    } else {
-                        console.error('loadUnifiedData: 解析后的数据不是对象', typeof parsed);
-                        return null;
                     }
-                } else {
-                    console.warn('统一数据不是有效的JSON字符串:', data.substring(0, 50));
-                    return null;
                 }
             }
-            // 理论上不应该到达这里，但为了安全起见
-            console.warn('统一数据类型不正确:', typeof data);
-            return null;
         } catch (e) {
-            console.error('加载统一数据失败:', e, '数据:', typeof data === 'string' ? data.substring(0, 100) : data);
-            // 如果解析失败，可能是数据损坏，清除它
+
             try {
                 localStorage.removeItem('trip_unified_data');
-                console.warn('已清除损坏的统一数据');
+
             } catch (clearError) {
-                console.error('清除损坏数据失败:', clearError);
+
             }
-            return null;
         }
     }
-    console.warn('loadUnifiedData: localStorage 中没有 trip_unified_data');
     return null;
 }
 
 // 获取指定day的数据
 function getDayData(unifiedData, dayId) {
-    // 【关键修复】检查参数顺序：如果第一个参数有 days（数组或对象），说明参数顺序可能错了
-    if (unifiedData && unifiedData.days && (Array.isArray(unifiedData.days) || (typeof unifiedData.days === 'object' && unifiedData.days !== null))) {
-        // 第一个参数是正确的 unifiedData
-        // 继续处理
-    } else if (unifiedData && typeof unifiedData === 'object' && !unifiedData.days) {
-        // 第一个参数可能是 dayId（对象），第二个参数可能是 unifiedData
-        // 交换参数
-        console.error('getDayData: 参数顺序错误！第一个参数应该是 unifiedData，第二个参数应该是 dayId', {
-            firstParam: unifiedData,
-            secondParam: dayId,
-            firstParamHasDays: !!unifiedData.days,
-            secondParamHasDays: dayId && dayId.days ? true : false
-        });
-        // 尝试交换参数
-        const temp = unifiedData;
-        unifiedData = dayId;
-        dayId = temp;
-    } else {
-        console.error('getDayData: unifiedData 无效', {
-            unifiedData,
-            unifiedDataType: typeof unifiedData,
-            hasDays: unifiedData && unifiedData.days ? true : false
-        });
+    if (!unifiedData || !unifiedData.days || typeof unifiedData.days !== 'object' || Array.isArray(unifiedData.days)) {
         return null;
     }
     
-    if (!unifiedData || !unifiedData.days) {
-        return null;
-    }
-
-    // 【核心修复】统一将 dayId 转为字符串，正确处理对象类型
     let targetId = null;
     
-    // 【关键检查】如果 dayId 是 unifiedData 对象（有 days），这是错误的调用
-    if (dayId && typeof dayId === 'object' && dayId.days) {
-        const availableDayIds = dayId.days && typeof dayId.days === 'object' && !Array.isArray(dayId.days)
-            ? Object.keys(dayId.days).filter(id => id)
-            : (Array.isArray(dayId.days) ? dayId.days.map(d => d ? d.id : 'null') : []);
-        console.error('getDayData: 错误！第二个参数是 unifiedData 对象而不是 dayId', {
-            dayId,
-            dayIdKeys: Object.keys(dayId),
-            dayIdHasDays: !!dayId.days,
-            availableDayIds: availableDayIds
-        });
-        return null;
-    }
-    
     if (typeof dayId === 'string') {
-        // 已经是字符串，直接使用
         targetId = dayId;
-    } else if (dayId && typeof dayId === 'object') {
-        // 如果是对象，尝试提取 id 属性
-        if (dayId.id && typeof dayId.id === 'string') {
-            targetId = dayId.id;
-        } else if (dayId.id) {
-            // id 存在但不是字符串，转换为字符串
-            targetId = String(dayId.id);
-        } else {
-            // 对象但没有 id 属性，尝试转换为字符串（可能是误传）
-            targetId = String(dayId);
-        }
+    } else if (dayId && typeof dayId === 'object' && dayId.id) {
+        targetId = String(dayId.id);
     } else if (dayId !== null && dayId !== undefined) {
-        // 其他类型（数字等），转换为字符串
         targetId = String(dayId);
     } else {
-        // null 或 undefined
-        return null;
-    }
-
-    // 检查是否是 tripId（以 trip_ 开头），如果是则报错
-    if (targetId && targetId.startsWith('trip_')) {
-        const availableDayIds = unifiedData.days && typeof unifiedData.days === 'object' && !Array.isArray(unifiedData.days)
-            ? Object.keys(unifiedData.days).filter(id => id)
-            : (Array.isArray(unifiedData.days) ? unifiedData.days.map(d => d ? d.id : 'null') : []);
-        console.error('getDayData: 错误！传入的是 tripId 而不是 dayId', {
-            tripId: targetId,
-            originalDayId: dayId,
-            dayIdType: typeof dayId,
-            availableDayIds: availableDayIds
-        });
         return null;
     }
     
-    // 最终验证：确保 targetId 是有效的字符串
-    if (!targetId || typeof targetId !== 'string') {
-        console.error('getDayData: 无法提取有效的 dayId', {
-            originalDayId: dayId,
-            dayIdType: typeof dayId,
-            extractedTargetId: targetId
-        });
-        return null;
-    }
-
-    // days 现在是对象结构 {dayId: dayData}
-    // 如果 days 是数组（旧数据），先转换为对象
-    if (Array.isArray(unifiedData.days)) {
-        const daysObj = {};
-        unifiedData.days.forEach(day => {
-            if (day && day.id) {
-                daysObj[day.id] = day;
-            }
-        });
-        unifiedData.days = daysObj;
-        // 保存迁移后的数据
-        if (typeof saveUnifiedData === 'function') {
-            saveUnifiedData(unifiedData);
-        }
-    }
-    
-    // 确保 days 是对象结构
-    if (!unifiedData.days || typeof unifiedData.days !== 'object' || unifiedData.days === null || Array.isArray(unifiedData.days)) {
-        unifiedData.days = {};
-        return null;
-    }
-    
-    // 直接从对象中获取 day（使用 dayId 作为 key）
-    const day = unifiedData.days[targetId];
-    
-    if (!day) {
-        const availableDayIds = Object.keys(unifiedData.days).filter(id => id);
-        console.error(`getDayData: 无法定位日期数据。请求ID: ${targetId}`, {
-            requestedId: targetId,
-            availableIds: availableDayIds,
-            daysCount: Object.keys(unifiedData.days).length
-        });
-        return null;
-    }
-    
-    return day;
+    return unifiedData.days[targetId] || null;
 }
 
 // 获取指定item的数据
 function getItemData(unifiedData, dayId, itemId) {
-    // 【关键修复】检查参数：确保 unifiedData 是有效的统一数据对象
-    if (!unifiedData || typeof unifiedData !== 'object') {
-        console.error('getItemData: unifiedData 无效', {
-            unifiedData,
-            unifiedDataType: typeof unifiedData
-        });
+    if (!unifiedData || !unifiedData.days || typeof unifiedData.days !== 'object' || Array.isArray(unifiedData.days)) {
         return null;
     }
     
-    // 【关键检查】days 现在是对象结构 {dayId: dayData}，不再是数组
-    // 如果 days 是数组（旧数据），先转换为对象
-    if (!unifiedData.days) {
-        console.error('getItemData: unifiedData 结构不正确，缺少 days', {
-            unifiedData,
-            unifiedDataKeys: Object.keys(unifiedData),
-            hasDays: !!unifiedData.days
-        });
-        return null;
-    }
-    
-    // 如果 days 是数组（旧数据），转换为对象结构
-    if (Array.isArray(unifiedData.days)) {
-        const daysObj = {};
-        unifiedData.days.forEach(day => {
-            if (day && day.id) {
-                daysObj[day.id] = day;
-            }
-        });
-        unifiedData.days = daysObj;
-        // 保存迁移后的数据
-        if (typeof saveUnifiedData === 'function') {
-            saveUnifiedData(unifiedData);
-        }
-    } else if (typeof unifiedData.days !== 'object' || unifiedData.days === null) {
-        console.error('getItemData: unifiedData.days 类型不正确，应该是对象结构', {
-            unifiedData,
-            unifiedDataKeys: Object.keys(unifiedData),
-            hasDays: !!unifiedData.days,
-            daysType: typeof unifiedData.days,
-            daysIsArray: Array.isArray(unifiedData.days)
-        });
-        unifiedData.days = {}; // 初始化为空对象
-        return null;
-    }
-    
-    // 【关键检查】如果 dayId 是 unifiedData 对象（有 days），这是错误的调用
-    if (dayId && typeof dayId === 'object' && dayId.days) {
-        const availableDayIds = dayId.days && typeof dayId.days === 'object' && !Array.isArray(dayId.days)
-            ? Object.keys(dayId.days).filter(id => id)
-            : (Array.isArray(dayId.days) ? dayId.days.map(d => d ? d.id : 'null') : []);
-        console.error('getItemData: 错误！第二个参数是 unifiedData 对象而不是 dayId', {
-            dayId,
-            dayIdKeys: Object.keys(dayId),
-            dayIdHasDays: !!dayId.days,
-            availableDayIds: availableDayIds
-        });
-        return null;
-    }
-    
-    // 【核心修复】统一将 dayId 转为字符串，与 getDayData 逻辑保持一致
     let dayIdStr = null;
-    
     if (typeof dayId === 'string') {
-        // 已经是字符串，直接使用
         dayIdStr = dayId;
-    } else if (dayId && typeof dayId === 'object') {
-        // 如果是对象，尝试提取 id 属性
-        if (dayId.id && typeof dayId.id === 'string') {
-            dayIdStr = dayId.id;
-        } else if (dayId.id) {
-            // id 存在但不是字符串，转换为字符串
-            dayIdStr = String(dayId.id);
-        } else {
-            // 对象但没有 id 属性，尝试转换为字符串（可能是误传）
-            dayIdStr = String(dayId);
-        }
+    } else if (dayId && typeof dayId === 'object' && dayId.id) {
+        dayIdStr = String(dayId.id);
     } else if (dayId !== null && dayId !== undefined) {
-        // 其他类型（数字等），转换为字符串
         dayIdStr = String(dayId);
     } else {
-        // null 或 undefined
         return null;
     }
     
-    // 检查是否是 tripId（以 trip_ 开头），如果是则报错
-    if (dayIdStr && dayIdStr.startsWith('trip_')) {
-        console.error('getItemData: 错误！传入的是 tripId 而不是 dayId', {
-            tripId: dayIdStr,
-            originalDayId: dayId,
-            dayIdType: typeof dayId,
-            availableDayIds: unifiedData && unifiedData.days 
-                ? (typeof unifiedData.days === 'object' && !Array.isArray(unifiedData.days)
-                    ? Object.keys(unifiedData.days).filter(id => id)
-                    : (Array.isArray(unifiedData.days) ? unifiedData.days.map(d => d ? d.id : 'null') : []))
-                : []
-        });
+    const day = unifiedData.days[dayIdStr];
+    if (!day || !day.items || typeof day.items !== 'object' || Array.isArray(day.items)) {
         return null;
     }
     
-    // 最终验证：确保 dayIdStr 是有效的字符串
-    if (!dayIdStr || typeof dayIdStr !== 'string') {
-        console.error('getItemData: 无法提取有效的 dayId', {
-            originalDayId: dayId,
-            dayIdType: typeof dayId,
-            extractedDayIdStr: dayIdStr
-        });
-        return null;
-    }
-    
-    // 【关键修复】使用 tripDataStructure.getDayData 确保调用正确的函数
-    // 避免被全局 window.getDayData (getDayDataByDayId) 覆盖
-    const day = tripDataStructure.getDayData(unifiedData, dayIdStr);
-    if (!day) {
-
-        return null;
-    }
-    // items 现在是对象结构 {itemId: itemData}
-    // 如果 day.items 是数组（旧数据），需要先迁移
-    if (!day.items) {
-        console.warn('getItemData: day.items 不存在', { dayId, dayId: day.id });
-        return null;
-    }
-    
-    // 处理旧数据：如果 items 是数组，转换为对象
-    if (Array.isArray(day.items)) {
-        const itemsObj = {};
-        day.items.forEach(item => {
-            if (item && item.id) {
-                itemsObj[item.id] = item;
-            }
-        });
-        day.items = itemsObj;
-        // 保存迁移后的数据
-        if (typeof saveUnifiedData === 'function') {
-            saveUnifiedData(unifiedData);
-        }
-    }
-    
-    // 确保 items 是对象
-    if (typeof day.items !== 'object' || day.items === null || Array.isArray(day.items)) {
-        day.items = {};
-        return null;
-    }
-
-    // 同样，确保 itemId 是字符串进行比较
     const targetItemId = (typeof itemId === 'object' && itemId !== null && itemId.id) 
         ? String(itemId.id) 
         : String(itemId);
     
-    // 直接从对象中获取 item
-    const item = day.items[targetItemId];
-    
-    return item || null;
+    return day.items[targetItemId] || null;
 }
 
 // 更新item数据
@@ -1075,6 +438,12 @@ function addItemData(unifiedData, dayId, itemData) {
     // 使用 itemId 作为 key 添加到 items 对象
     day.items[newItemId] = newItem;
     saveUnifiedData(unifiedData);
+    
+    // 【关键修复】更新 stateManager 中的 tripData
+    if (typeof window !== 'undefined' && window.stateManager) {
+        window.stateManager.setState({ tripData: unifiedData });
+    }
+    
     return newItem;
 }
 
@@ -1090,14 +459,14 @@ function addItemData(unifiedData, dayId, itemData) {
 function createBackupEntry(unifiedData, type, deletedData, metadata) {
     // 【修复】确保 unifiedData 是有效的
     if (!unifiedData || typeof unifiedData !== 'object') {
-        console.error('createBackupEntry: unifiedData 无效');
+
         return { success: false };
     }
     
     // 初始化备份对象（如果不存在）
     if (!unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
         unifiedData._backup = {};
-        console.log('createBackupEntry: 初始化 _backup 对象');
+
     }
     
     // 生成唯一的时间戳作为 key（确保唯一性）
@@ -1155,10 +524,9 @@ function createBackupEntry(unifiedData, type, deletedData, metadata) {
     unifiedData._backup[timestampKey] = backupEntry;
     
     // 保存备份数据到本地 localStorage
-    console.log('createBackupEntry: 保存数据到 localStorage...');
+
     const saveResult = saveUnifiedData(unifiedData);
-    console.log('createBackupEntry: 保存结果:', saveResult);
-    
+
     // 如果保存成功，同步备份数据到云端作为独立字段
     if (saveResult) {
         // 同步备份数据到云端（只上传新添加的那一条备份项）
@@ -1171,13 +539,13 @@ function createBackupEntry(unifiedData, type, deletedData, metadata) {
                 updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
                 
                 window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
-                    console.log(`已增量更新云端备份字段，备份 key: ${timestampKey}`);
+
                 }).catch(backupError => {
-                    console.error('增量更新云端备份字段出错:', backupError);
+
                     // 如果备份同步失败，不影响本地操作
                 });
             } catch (e) {
-                console.error('同步备份到云端时出错:', e);
+
                 // 同步失败不影响本地操作
             }
         }
@@ -1189,14 +557,14 @@ function createBackupEntry(unifiedData, type, deletedData, metadata) {
                 const parsedData = JSON.parse(localStorageData);
                 if (parsedData && parsedData._backup && typeof parsedData._backup === 'object' && parsedData._backup[timestampKey]) {
                     const backupCount = Object.keys(parsedData._backup).length;
-                    console.log(`✅ 已创建备份条目（类型: ${type}），当前备份数量: ${backupCount}，备份 key: ${timestampKey}`);
+
                     return { success: true, timestampKey, backupEntry };
                 } else {
-                    console.warn(`⚠️  警告：备份条目（类型: ${type}）可能未正确保存到 localStorage`);
+
                 }
             }
         } catch (e) {
-            console.error('验证备份时解析 localStorage 数据失败:', e);
+
         }
     }
     
@@ -1235,7 +603,7 @@ function deleteItemData(unifiedData, dayId, itemId) {
     });
     
     if (!backupResult.success) {
-        console.error('创建备份失败，取消删除操作');
+
         return false;
     }
     
@@ -1253,6 +621,26 @@ function deleteItemData(unifiedData, dayId, itemId) {
     // 确保保存包含删除后的数据
     saveUnifiedData(unifiedData);
     
+    // 【关键修复】更新 stateManager 中的 tripData
+    if (typeof window !== 'undefined' && window.stateManager) {
+        window.stateManager.setState({ tripData: unifiedData });
+    }
+    
+    // 【新增】显式触发增量更新请求，将删除操作同步到云端
+    // 调用 cloudIncrementalBackup 方法实现"一箭双雕"：
+    // 1. 同步删除原位数据（将路径设为 null）
+    // 2. 同步新增备份数据（上传到 _backup 节点）
+    if (typeof window.dataSyncFirebase !== 'undefined' && window.dataSyncFirebase && window.dataSyncFirebase.cloudIncrementalBackup) {
+        try {
+            window.dataSyncFirebase.cloudIncrementalBackup(dayId, targetItemId, backupResult.timestampKey, backupResult.backupEntry);
+
+        } catch (e) {
+
+        }
+    } else {
+
+    }
+    
     // 返回备份信息
     return {
         success: true,
@@ -1265,26 +653,26 @@ function deleteItemData(unifiedData, dayId, itemId) {
 // backupKey: 备份项的 key（时间戳）
 function restoreItemFromBackup(unifiedData, backupKey, targetDayId = null) {
     if (!unifiedData || !unifiedData._backup || typeof unifiedData._backup !== 'object' || unifiedData._backup === null) {
-        console.error('备份数据不存在或格式不正确');
+
         return false;
     }
     
     const backupEntry = unifiedData._backup[backupKey];
     if (!backupEntry) {
-        console.error('备份项不存在，key:', backupKey);
+
         return false;
     }
     
     // 确定目标 dayId（优先使用参数，否则使用备份中的原始 dayId）
     const dayId = targetDayId || backupEntry._deletedFromDay;
     if (!dayId) {
-        console.error('无法确定目标 dayId');
+
         return false;
     }
     
     const day = tripDataStructure.getDayData(unifiedData, dayId);
     if (!day) {
-        console.error('目标 day 不存在:', dayId);
+
         return false;
     }
     
@@ -1338,13 +726,13 @@ function restoreItemFromBackup(unifiedData, backupKey, targetDayId = null) {
                 updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
                 
                 window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
-                    console.log(`已从云端恢复备份项并同步更改，备份 key: ${backupKey}`);
+
                 }).catch(error => {
-                    console.error('同步恢复操作到云端时出错:', error);
+
                     // 如果同步失败，不影响本地恢复
                 });
             } catch (e) {
-                console.error('准备同步恢复操作到云端时出错:', e);
+
                 // 同步失败不影响本地恢复
             }
         }
@@ -1388,13 +776,13 @@ function clearBackupData(unifiedData) {
                 updates['_syncUser'] = typeof localStorage !== 'undefined' ? localStorage.getItem('trip_current_user') || 'unknown' : 'unknown';
                 
                 window.dataSyncFirebase.update(window.dataSyncFirebase.databaseRef, updates).then(() => {
-                    console.log('已清空云端备份数据');
+
                 }).catch(error => {
-                    console.error('同步清空备份数据到云端时出错:', error);
+
                     // 如果同步失败，不影响本地操作
                 });
             } catch (e) {
-                console.error('准备清空云端备份数据时出错:', e);
+
                 // 同步失败不影响本地操作
             }
         }
@@ -1409,6 +797,102 @@ function getUnifiedDataSize() {
     const data = localStorage.getItem('trip_unified_data');
     if (!data) return 0;
     return new Blob([data]).size / (1024 * 1024);
+}
+
+// 添加新的天数
+function addDayData(unifiedData, dayTitle = '') {
+    if (!unifiedData || !unifiedData.days || typeof unifiedData.days !== 'object' || Array.isArray(unifiedData.days)) {
+
+        return null;
+    }
+    
+    // 计算新的天数序号
+    const dayCount = Object.keys(unifiedData.days).length;
+    
+    // 【改进】使用时间戳 + 随机字符串生成唯一的 dayId
+    // 避免在多个设备同步时可能出现的冲突
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substr(2, 9);
+    const newDayId = `day${dayCount + 1}_${timestamp}_${randomStr}`;
+    
+    // 创建新的天数
+    const newDay = {
+        id: newDayId,
+        title: dayTitle || `第${dayCount + 1}天`,
+        items: {},
+        order: dayCount
+    };
+    
+    // 添加到 days 对象
+    unifiedData.days[newDayId] = newDay;
+    
+    // 保存数据
+    const saveResult = saveUnifiedData(unifiedData);
+    
+    if (saveResult) {
+
+        // 【重要修改】添加天数时不再调用 triggerImmediateUpload()
+        // 新添加的天数将通过实时监听自动同步到云端
+
+        return newDay;
+    } else {
+
+        return null;
+    }
+}
+
+// 删除天数
+function deleteDayData(unifiedData, dayId) {
+    if (!unifiedData || !unifiedData.days || typeof unifiedData.days !== 'object' || Array.isArray(unifiedData.days)) {
+
+        return false;
+    }
+    
+    // 检查天数是否存在
+    const dayToDelete = unifiedData.days[dayId];
+    if (!dayToDelete) {
+
+        return false;
+    }
+    
+    // 深拷贝要删除的天数数据
+    const dayToBackup = JSON.parse(JSON.stringify(dayToDelete));
+    
+    // 创建备份
+    const backupResult = createBackupEntry(unifiedData, 'day', dayToBackup, {
+        dayId: dayId
+    });
+    
+    if (!backupResult.success) {
+
+        return false;
+    }
+    
+    // 从 days 对象中删除
+    delete unifiedData.days[dayId];
+    
+    // 重新排序剩余的天数
+    const remainingDays = Object.values(unifiedData.days);
+    remainingDays.forEach((day, index) => {
+        if (day) {
+            day.order = index;
+        }
+    });
+    
+    // 保存数据
+    const saveResult = saveUnifiedData(unifiedData);
+    
+    if (saveResult) {
+
+        // 【重要修改】删除天数时不再调用 triggerImmediateUpload()
+        // 备份数据已经在 createBackupEntry 函数中通过增量更新同步到云端
+        // 原位数据的删除将通过实时监听自动同步
+
+        return true;
+    } else {
+
+        return false;
+    }
 }
 
 // 导出供全局使用
@@ -1429,6 +913,8 @@ window.tripDataStructure = {
     getUnifiedDataSize,
     createBackupEntry,
     updateExistingExpensesWithParticipants,
+    addDayData,
+    deleteDayData,
     DATA_STRUCTURE_VERSION
 };
 
