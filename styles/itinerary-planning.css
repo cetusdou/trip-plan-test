@@ -2487,10 +2487,6 @@ body {
 }
 
 /* 登录弹窗默认显示 */
-#login-modal {
-    display: flex !important;
-}
-
 .modal-content {
     background: white;
     border-radius: 12px;

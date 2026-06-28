@@ -96,8 +96,8 @@
         if (mainContent) mainContent.style.display = 'none';
         if (loggedInBar) loggedInBar.style.display = 'none';
         if (registerModal) registerModal.style.display = 'none';
-        if (loginModal) loginModal.style.setProperty('display', 'flex', 'important');
 
+        // 先把内容调成最终态，再显示，避免“原始登录框”闪一下
         // 注册按钮隐藏（固定五个用户）
         const regBtn = document.getElementById('register-btn');
         if (regBtn) regBtn.style.display = 'none';
@@ -109,6 +109,9 @@
         }
         const pwInput = document.getElementById('login-password');
         if (pwInput) pwInput.setAttribute('placeholder', '初始密码为 用户名+1234');
+
+        // 内容就绪后再显示登录框
+        if (loginModal) loginModal.style.setProperty('display', 'flex', 'important');
 
         const loginBtn = document.getElementById('login-btn');
         if (loginBtn && !loginBtn._bound) {
