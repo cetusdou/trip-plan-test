@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行程规划 - 旅行规划</title>
+    <link rel="stylesheet" href="../styles/itinerary-planning.css">
+</head>
+<body>
+    <div id="itinerary-app">
+        <!-- 顶部导航 -->
+        <nav class="top-nav">
+            <h1>行程规划</h1>
+            <div class="nav-buttons">
+                <button id="nav-pre-departure" class="nav-btn">行前准备</button>
+                <button id="nav-itinerary" class="nav-btn active">行程规划</button>
+                <button id="nav-post-trip" class="nav-btn">行后复盘</button>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 行程选择区域 -->
+            <section id="plan-selector-section" class="section">
+                <h2>选择行程规划</h2>
+                <div id="plan-selector-container">
+                    <!-- 行程选择内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">行程选择功能开发中...</p>
+                </div>
+            </section>
+
+            <!-- 行程卡片区域 -->
+            <section id="cards-section" class="section">
+                <h2>行程卡片</h2>
+                <div id="cards-container">
+                    <!-- 行程卡片内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">行程卡片功能开发中...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 脚本引入 -->
+    <script src="../modules/core/state-manager.js"></script>
+    <script src="../modules/core/event-bus.js"></script>
+    <script src="../modules/core/ui-renderer.js"></script>
+    <script src="../modules/core/utils.js"></script>
+    <script src="../modules/core/auth-manager.js"></script>
+    <script src="../modules/core/app-initializer.js"></script>
+    <script src="../modules/storage/sync-firebase.js"></script>
+    <script src="../modules/storage/trip-data-structure.js"></script>
+    <script src="../modules/storage/cloudinary.js"></script>
+    <script src="../modules/storage/expense-manager.js"></script>
+    <script src="../modules/itinerary-planning/card-slider.js"></script>
+    <script src="../modules/itinerary-planning/data-manager.js"></script>
+    <script src="../modules/itinerary-planning/like-handler.js"></script>
+    <script src="../modules/itinerary-planning/itinerary-app.js"></script>
+</body>
+</html>

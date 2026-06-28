@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行后复盘 - 旅行规划</title>
+    <link rel="stylesheet" href="../styles/post-trip.css">
+</head>
+<body>
+    <div id="post-trip-app">
+        <!-- 顶部导航 -->
+        <nav class="top-nav">
+            <h1>行后复盘</h1>
+            <div class="nav-buttons">
+                <button id="nav-pre-departure" class="nav-btn">行前准备</button>
+                <button id="nav-itinerary" class="nav-btn">行程规划</button>
+                <button id="nav-post-trip" class="nav-btn active">行后复盘</button>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 留言板区域 -->
+            <section id="message-board-section" class="section">
+                <h2>💬 留言板</h2>
+                <div id="message-board-container">
+                    <!-- 留言板内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">留言板功能开发中...</p>
+                </div>
+            </section>
+
+            <!-- 共享照片区域 -->
+            <section id="photo-gallery-section" class="section">
+                <h2>📷 共享照片</h2>
+                <div id="photo-gallery-container">
+                    <!-- 共享照片内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">共享照片功能开发中...</p>
+                </div>
+            </section>
+
+            <!-- 分账区域 -->
+            <section id="expense-splitter-section" class="section">
+                <h2>💰 分账</h2>
+                <div id="expense-splitter-container">
+                    <!-- 分账内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">分账功能开发中...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 脚本引入 -->
+    <script src="../modules/core/state-manager.js"></script>
+    <script src="../modules/core/event-bus.js"></script>
+    <script src="../modules/core/ui-renderer.js"></script>
+    <script src="../modules/core/utils.js"></script>
+    <script src="../modules/core/auth-manager.js"></script>
+    <script src="../modules/core/app-initializer.js"></script>
+    <script src="../modules/storage/sync-firebase.js"></script>
+    <script src="../modules/storage/trip-data-structure.js"></script>
+    <script src="../modules/storage/cloudinary.js"></script>
+    <script src="../modules/storage/expense-manager.js"></script>
+    <script src="../modules/post-trip/message-board.js"></script>
+    <script src="../modules/post-trip/photo-gallery.js"></script>
+    <script src="../modules/post-trip/expense-splitter.js"></script>
+    <script src="../modules/post-trip/post-trip-app.js"></script>
+</body>
+</html>

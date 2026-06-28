@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行前准备 - 旅行规划</title>
+    <link rel="stylesheet" href="../styles/pre-departure.css">
+</head>
+<body>
+    <div id="pre-departure-app">
+        <!-- 顶部导航 -->
+        <nav class="top-nav">
+            <h1>行前准备</h1>
+            <div class="nav-buttons">
+                <button id="nav-pre-departure" class="nav-btn active">行前准备</button>
+                <button id="nav-itinerary" class="nav-btn">行程规划</button>
+                <button id="nav-post-trip" class="nav-btn">行后复盘</button>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 时间线区域 -->
+            <section id="timeline-section" class="section">
+                <h2>📅 时间线</h2>
+                <div id="timeline-container">
+                    <!-- 时间线内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">时间线功能开发中...</p>
+                </div>
+            </section>
+
+            <!-- 共享表格区域 -->
+            <section id="calendar-section" class="section">
+                <h2>📋 共享表格</h2>
+                <div id="calendar-container">
+                    <!-- 共享表格内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">共享表格功能开发中...</p>
+                </div>
+            </section>
+
+            <!-- 留言板区域 -->
+            <section id="message-board-section" class="section">
+                <h2>💬 留言板</h2>
+                <div id="message-board-container">
+                    <!-- 留言板内容将通过 JavaScript 动态生成 -->
+                    <p class="placeholder">留言板功能开发中...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 脚本引入 -->
+    <script src="../modules/core/state-manager.js"></script>
+    <script src="../modules/core/event-bus.js"></script>
+    <script src="../modules/core/ui-renderer.js"></script>
+    <script src="../modules/core/utils.js"></script>
+    <script src="../modules/core/auth-manager.js"></script>
+    <script src="../modules/core/app-initializer.js"></script>
+    <script src="../modules/storage/sync-firebase.js"></script>
+    <script src="../modules/storage/trip-data-structure.js"></script>
+    <script src="../modules/storage/cloudinary.js"></script>
+    <script src="../modules/storage/expense-manager.js"></script>
+    <script src="../modules/pre-departure/timeline-manager.js"></script>
+    <script src="../modules/pre-departure/shared-calendar.js"></script>
+    <script src="../modules/pre-departure/message-board.js"></script>
+    <script src="../modules/pre-departure/pre-departure-app.js"></script>
+</body>
+</html>

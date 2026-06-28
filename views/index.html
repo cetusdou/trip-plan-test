@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅行规划 - 主入口</title>
+    <link rel="stylesheet" href="../styles/main.css">
+</head>
+<body>
+    <div id="main-app">
+        <!-- 标题区域 -->
+        <header class="app-header">
+            <h1>✈️ 旅行规划</h1>
+            <p class="subtitle">一站式旅行规划平台</p>
+        </header>
+
+        <!-- 模块选择区域 -->
+        <main class="module-selector">
+            <div class="module-card" id="module-pre-departure">
+                <div class="module-icon">📅</div>
+                <h2>行前准备</h2>
+                <p class="module-description">
+                    <span class="feature">• 时间线管理</span><br>
+                    <span class="feature">• 共享表格</span><br>
+                    <span class="feature">• 留言板</span>
+                </p>
+                <button class="enter-btn">进入 →</button>
+            </div>
+
+            <div class="module-card" id="module-itinerary">
+                <div class="module-icon">🗺️</div>
+                <h2>行程规划</h2>
+                <p class="module-description">
+                    <span class="feature">• 多行程规划</span><br>
+                    <span class="feature">• 行程卡片</span><br>
+                    <span class="feature">• 点赞互动</span>
+                </p>
+                <button class="enter-btn">进入 →</button>
+            </div>
+
+            <div class="module-card" id="module-post-trip">
+                <div class="module-icon">📸</div>
+                <h2>行后复盘</h2>
+                <p class="module-description">
+                    <span class="feature">• 留言板</span><br>
+                    <span class="feature">• 共享照片</span><br>
+                    <span class="feature">• 分账系统</span>
+                </p>
+                <button class="enter-btn">进入 →</button>
+            </div>
+        </main>
+
+        <!-- 底部信息 -->
+        <footer class="app-footer">
+            <p>© 2026 旅行规划 | 一站式旅行解决方案</p>
+        </footer>
+    </div>
+
+    <!-- 脚本引入 -->
+    <script src="../modules/core/state-manager.js"></script>
+    <script src="../modules/core/event-bus.js"></script>
+    <script src="../modules/core/ui-renderer.js"></script>
+    <script src="../modules/core/utils.js"></script>
+    <script src="../modules/core/app-initializer.js"></script>
+    <script src="../modules/core/main-app.js"></script>
+</body>
+</html>
