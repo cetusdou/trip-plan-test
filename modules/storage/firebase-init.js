@@ -25,7 +25,10 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    signOut
+    signOut,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -77,7 +80,10 @@ window.fb = {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    signOut
+    signOut,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider
 };
 
 // 向后兼容旧 app-initializer / 模块中对这些全局的存在性检查

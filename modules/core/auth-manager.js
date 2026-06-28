@@ -1,23 +1,31 @@
 /**
- * 用户管理模块（简单密码验证版）
+ * 用户管理模块（Firebase Auth 版）
  * - 预置五个固定用户：djy / xwz / mrb / hrz / zyt。
- * - 初始密码 = 用户名 + '1234'（如 djy1234），首次登录自动在 Firestore 建账户。
- * - 登录成功后记住会话；可在顶部「🔑」修改自己的密码；「×」退出登录。
- * - 密码以明文存于 Firestore users/{name}（简单验证，仅供小范围私密使用）。
+ * - 登录方式：Email/Password。前端输「用户名 + 密码」，内部映射为合成邮箱 <name>@trip.local。
+ * - 账户与初始密码由 scripts/setup-users.js 用 Admin SDK 创建（初始密码 = 用户名+1234）。
+ * - 会话由 Firebase Auth 持久化（IndexedDB），刷新自动保持登录。
+ * - 身份对外仍以「用户名」字符串暴露（getCurrentUser 返回 djy），业务数据无需迁移。
  */
 (function () {
     'use strict';
 
     const USERS = ['djy', 'xwz', 'mrb', 'hrz', 'zyt'];
-    const SESSION_KEY = 'trip_logged_in';     // 当前已登录用户名
-    const CURRENT_KEY = 'trip_current_user';   // 兼容各模块读取的“当前用户”
+    const EMAIL_DOMAIN = 'trip.local';
+    const SESSION_KEY = 'trip_logged_in';      // 缓存：已登录用户名（用于刷新瞬间的同步判断）
+    const CURRENT_KEY = 'trip_current_user';    // 各模块读取的「当前用户」
     let inited = false;
 
     function isValidUser(name) { return USERS.indexOf(name) > -1; }
-    function defaultPassword(name) { return name + '1234'; }
+    function emailOf(name) { return `${name}@${EMAIL_DOMAIN}`; }
+    function usernameFromUser(user) {
+        if (!user) return null;
+        if (user.displayName && isValidUser(user.displayName)) return user.displayName;
+        const local = (user.email || '').split('@')[0];
+        return local || null;
+    }
 
-    // ---------- Firestore 账户 ----------
-    function fbReady() { return !!(window.fb && window.fb.db); }
+    // ---------- Firebase ----------
+    function fbReady() { return !!(window.fb && window.fb.auth); }
     function waitForFirebase() {
         if (fbReady()) return Promise.resolve(true);
         return new Promise(resolve => {
@@ -26,50 +34,18 @@
         });
     }
 
-    async function getUserDoc(name) {
-        await waitForFirebase();
-        if (!fbReady()) return null;
-        const { db, doc, getDoc } = window.fb;
-        try {
-            const snap = await getDoc(doc(db, 'users', name));
-            return snap.exists() ? (snap.data() || {}) : null;
-        } catch (e) { console.error('[Auth] 读取账户失败:', e); return null; }
-    }
-
-    async function ensureUser(name) {
-        if (!fbReady()) return { password: defaultPassword(name) };
-        let data = await getUserDoc(name);
-        if (!data || typeof data.password !== 'string') {
-            const { db, doc, setDoc } = window.fb;
-            data = { password: defaultPassword(name), _createdAt: new Date().toISOString() };
-            try { await setDoc(doc(db, 'users', name), data); } catch (e) { console.error('[Auth] 初始化账户失败:', e); }
+    function mapAuthError(e) {
+        const code = (e && e.code) || '';
+        if (code.indexOf('wrong-password') > -1 || code.indexOf('invalid-credential') > -1 || code.indexOf('user-not-found') > -1) {
+            return '用户名或密码错误';
         }
-        return data;
+        if (code.indexOf('too-many-requests') > -1) return '尝试次数过多，请稍后再试';
+        if (code.indexOf('network') > -1) return '网络异常，请检查网络后重试';
+        return '登录失败：' + (e && (e.message || e.code) || '未知错误');
     }
 
-    async function verifyPassword(name, password) {
-        const data = await ensureUser(name);
-        return !!data && data.password === password;
-    }
-
-    async function changePassword(name, oldPw, newPw) {
-        const ok = await verifyPassword(name, oldPw);
-        if (!ok) return { success: false, message: '原密码不正确' };
-        if (!newPw || newPw.length < 4) return { success: false, message: '新密码至少 4 位' };
-        const { db, doc, setDoc } = window.fb;
-        try {
-            await setDoc(doc(db, 'users', name), { password: newPw, _updatedAt: new Date().toISOString() }, { merge: true });
-            return { success: true };
-        } catch (e) {
-            return { success: false, message: '修改失败：' + (e.message || e) };
-        }
-    }
-
-    // ---------- 会话 ----------
-    function getSessionUser() {
-        try { const n = localStorage.getItem(SESSION_KEY); return isValidUser(n) ? n : null; } catch (e) { return null; }
-    }
-    function setSession(name) {
+    // ---------- 本地缓存（仅作刷新瞬间的同步判断，真相以 Auth 为准）----------
+    function cacheUser(name) {
         try {
             localStorage.setItem(SESSION_KEY, name);
             localStorage.setItem(CURRENT_KEY, name);
@@ -78,12 +54,16 @@
         window.currentUser = name;
         if (window.stateManager) window.stateManager.setState({ isLoggedIn: true, currentUser: name });
     }
-    function clearSession() {
+    function clearCache() {
         try {
             localStorage.removeItem(SESSION_KEY);
             localStorage.removeItem(CURRENT_KEY);
         } catch (e) {}
         window.currentUser = null;
+        if (window.stateManager) window.stateManager.setState({ isLoggedIn: false, currentUser: null });
+    }
+    function getCachedUser() {
+        try { const n = localStorage.getItem(SESSION_KEY); return isValidUser(n) ? n : null; } catch (e) { return null; }
     }
 
     // ---------- UI ----------
@@ -98,7 +78,6 @@
         if (registerModal) registerModal.style.display = 'none';
 
         // 先把内容调成最终态，再显示，避免“原始登录框”闪一下
-        // 注册按钮隐藏（固定五个用户）
         const regBtn = document.getElementById('register-btn');
         if (regBtn) regBtn.style.display = 'none';
 
@@ -110,7 +89,6 @@
         const pwInput = document.getElementById('login-password');
         if (pwInput) pwInput.setAttribute('placeholder', '初始密码为 用户名+1234');
 
-        // 内容就绪后再显示登录框
         if (loginModal) loginModal.style.setProperty('display', 'flex', 'important');
 
         const loginBtn = document.getElementById('login-btn');
@@ -151,7 +129,6 @@
         btn.title = '修改密码';
         btn.textContent = '🔑';
         btn.addEventListener('click', handleChangePassword);
-        // 放在退出按钮前面
         const logout = bar.querySelector('.btn-logout');
         if (logout) bar.insertBefore(btn, logout); else bar.appendChild(btn);
     }
@@ -160,7 +137,7 @@
         let el = document.getElementById('login-message');
         if (!el) {
             const form = document.querySelector('#login-modal .login-form');
-            if (!form) { if (msg) alert(msg); return; }
+            if (!form) return;
             el = document.createElement('div');
             el.id = 'login-message';
             el.style.cssText = 'margin-top:10px;font-size:13px;text-align:center;';
@@ -181,24 +158,50 @@
         if (!pw) { setLoginMessage('请输入密码', true); return; }
 
         setLoginMessage('验证中…', false);
-        const ok = await verifyPassword(name, pw);
-        if (!ok) { setLoginMessage('密码错误（初始密码为 用户名+1234）', true); return; }
+        await waitForFirebase();
+        if (!fbReady()) { setLoginMessage('登录服务未就绪，请稍后重试', true); return; }
+        try {
+            await window.fb.signInWithEmailAndPassword(window.fb.auth, emailOf(name), pw);
+            cacheUser(name);
+            location.reload();
+        } catch (e) {
+            setLoginMessage(mapAuthError(e), true);
+        }
+    }
 
-        setSession(name);
+    async function handleLogout() {
+        try { if (fbReady()) await window.fb.signOut(window.fb.auth); } catch (e) {}
+        clearCache();
         location.reload();
     }
 
-    function handleLogout() {
-        clearSession();
-        location.reload();
+    async function changePassword(name, oldPw, newPw) {
+        if (!fbReady()) return { success: false, message: '登录服务未就绪' };
+        const auth = window.fb.auth;
+        const user = auth.currentUser;
+        if (!user) return { success: false, message: '未登录' };
+        if (!newPw || newPw.length < 6) return { success: false, message: '新密码至少 6 位' };
+        try {
+            const cred = window.fb.EmailAuthProvider.credential(user.email, oldPw);
+            await window.fb.reauthenticateWithCredential(user, cred);
+        } catch (e) {
+            return { success: false, message: '原密码不正确' };
+        }
+        try {
+            await window.fb.updatePassword(user, newPw);
+            return { success: true };
+        } catch (e) {
+            return { success: false, message: '修改失败：' + (e.message || e.code || e) };
+        }
     }
 
-    // 使用页内模态框（此环境会屏蔽原生 prompt/alert，因此不能用它们）
+    // 使用页内模态框（此环境会屏蔽原生 prompt/alert）
     function buildChangePasswordModal() {
         if (document.getElementById('change-pw-modal')) return;
         const modal = document.createElement('div');
         modal.id = 'change-pw-modal';
         modal.className = 'modal';
+        modal.style.display = 'none';
         modal.innerHTML = `
             <div class="modal-content" style="max-width:420px;">
                 <div class="modal-header">
@@ -211,7 +214,7 @@
                         <input type="password" id="cpw-old" class="form-input" placeholder="请输入当前密码" autocomplete="current-password">
                     </div>
                     <div class="form-group">
-                        <label for="cpw-new">新密码（至少 4 位）</label>
+                        <label for="cpw-new">新密码（至少 6 位）</label>
                         <input type="password" id="cpw-new" class="form-input" placeholder="请输入新密码" autocomplete="new-password">
                     </div>
                     <div class="form-group">
@@ -259,14 +262,14 @@
     }
 
     async function saveChangePassword() {
-        const name = getSessionUser();
+        const name = getCurrentUser();
         if (!name) return;
         const oldPw = (document.getElementById('cpw-old') || {}).value || '';
         const newPw = (document.getElementById('cpw-new') || {}).value || '';
         const confirmPw = (document.getElementById('cpw-confirm') || {}).value || '';
 
         if (!oldPw) { setChangePwMessage('请输入当前密码', true); return; }
-        if (newPw.length < 4) { setChangePwMessage('新密码至少 4 位', true); return; }
+        if (newPw.length < 6) { setChangePwMessage('新密码至少 6 位', true); return; }
         if (newPw !== confirmPw) { setChangePwMessage('两次输入的新密码不一致', true); return; }
 
         setChangePwMessage('保存中…', false);
@@ -282,7 +285,7 @@
     function handleChangePassword() { openChangePasswordModal(); }
 
     function proceed(name) {
-        setSession(name);
+        cacheUser(name);
         showContent(name);
         if (typeof window.onLoginSuccess === 'function') window.onLoginSuccess();
     }
@@ -291,17 +294,36 @@
         if (inited) return;
         inited = true;
 
-        const session = getSessionUser();
-        if (session) {
-            proceed(session);
-        } else {
-            showLoginUI();
-        }
+        waitForFirebase().then(() => {
+            if (!fbReady()) { showLoginUI(); return; }
+            window.fb.onAuthStateChanged(window.fb.auth, (user) => {
+                if (user) {
+                    const name = usernameFromUser(user);
+                    if (name) { proceed(name); return; }
+                }
+                clearCache();
+                showLoginUI();
+            });
+        });
     }
 
-    function checkWritePermission() { return !!getSessionUser(); }
+    // ---------- 对外查询 ----------
+    function getLoginStatus() {
+        if (fbReady() && window.fb.auth.currentUser) return true;
+        return !!getCachedUser();
+    }
+    async function checkLoginStatus() {
+        await waitForFirebase();
+        if (!fbReady()) return !!getCachedUser();
+        if (window.fb.auth.currentUser) return true;
+        return await new Promise(resolve => {
+            const unsub = window.fb.onAuthStateChanged(window.fb.auth, u => { unsub(); resolve(!!u); });
+        });
+    }
+    function checkWritePermission() { return getLoginStatus(); }
     function getCurrentUser() {
-        try { return localStorage.getItem(CURRENT_KEY) || getSessionUser(); } catch (e) { return getSessionUser(); }
+        if (fbReady() && window.fb.auth.currentUser) return usernameFromUser(window.fb.auth.currentUser);
+        try { return localStorage.getItem(CURRENT_KEY); } catch (e) { return getCachedUser(); }
     }
     function noop() {}
 
@@ -313,8 +335,8 @@
         changePassword: handleChangePassword,
         handleLogin,
         handleLogout,
-        getLoginStatus: () => !!getSessionUser(),
-        checkLoginStatus: async () => !!getSessionUser(),
+        getLoginStatus,
+        checkLoginStatus,
         showLoginUI,
         showRegisterModal: noop,
         closeRegisterModal: noop,
@@ -330,7 +352,7 @@
     window.closeRegisterModal = noop;
     window.registerUser = noop;
     window.showLoginUI = showLoginUI;
-    window.checkLoginStatus = async () => !!getSessionUser();
+    window.checkLoginStatus = checkLoginStatus;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

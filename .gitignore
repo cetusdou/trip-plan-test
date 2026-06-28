@@ -1,1 +1,10 @@
 modules/backup/*
+
+# 依赖
+node_modules/
+scripts/node_modules/
+
+# 服务账号私钥（绝对不要提交！）
+scripts/service-account.json
+service-account.json
+**/serviceAccountKey.json

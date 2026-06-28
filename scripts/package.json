@@ -1,0 +1,12 @@
+{
+  "name": "trip-plan-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "一次性运维脚本（创建登录账户等）",
+  "scripts": {
+    "setup-users": "node setup-users.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

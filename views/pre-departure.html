@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>行前准备 - 旅行规划</title>
     <link rel="stylesheet" href="../styles/theme.css?v=5">
-    <link rel="stylesheet" href="../styles/pre-departure.css?v=3">
+    <link rel="stylesheet" href="../styles/pre-departure.css?v=5">
 </head>
 <body>
     <!-- 登录弹窗 -->
@@ -77,6 +77,10 @@
                     <h2>📅 有空时间</h2>
                     <div id="calendar-container"></div>
                 </section>
+                <section id="schedule-section" class="section">
+                    <h2>🗓️ 最近 30 天</h2>
+                    <div id="schedule-container"></div>
+                </section>
                 <section id="message-board-section" class="section">
                     <h2>💬 留言板</h2>
                     <div id="message-board-container"></div>
@@ -86,17 +90,17 @@
     </div>
 
     <!-- Firebase 初始化 -->
-    <script type="module" src="../modules/storage/firebase-init.js"></script>
+    <script type="module" src="../modules/storage/firebase-init.js?v=2"></script>
     <!-- 核心 -->
     <script src="../modules/core/utils.js"></script>
     <script src="../modules/core/state-manager.js"></script>
     <script src="../modules/core/event-bus.js"></script>
-    <script src="../modules/core/auth-manager.js?v=6"></script>
+    <script src="../modules/core/auth-manager.js?v=7"></script>
     <!-- 存储 -->
     <script src="../modules/storage/module-store.js"></script>
     <script src="../modules/storage/trip-registry.js?v=3"></script>
     <!-- 功能模块 -->
-    <script src="../modules/pre-departure/shared-calendar.js?v=4"></script>
+    <script src="../modules/pre-departure/shared-calendar.js?v=6"></script>
     <script src="../modules/pre-departure/message-board.js"></script>
     <script src="../modules/pre-departure/pre-departure-app.js"></script>
 </body>
