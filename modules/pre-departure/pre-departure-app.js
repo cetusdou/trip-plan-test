@@ -4,7 +4,6 @@
  */
 class PreDepartureApp {
     constructor() {
-        this.timelineManager = null;
         this.sharedCalendar = null;
         this.messageBoard = null;
     }
@@ -14,14 +13,6 @@ class PreDepartureApp {
      */
     init() {
         console.log('[PreDepartureApp] 初始化行前准备应用...');
-
-        // 初始化时间线管理器
-        const timelineContainer = document.getElementById('timeline-container');
-        if (timelineContainer && typeof TimelineManager !== 'undefined') {
-            this.timelineManager = new TimelineManager();
-            this.timelineManager.init(timelineContainer);
-            console.log('[PreDepartureApp] 时间线管理器初始化完成');
-        }
 
         // 初始化共享日历管理器
         const calendarContainer = document.getElementById('calendar-container');
@@ -83,18 +74,18 @@ class PreDepartureApp {
     destroy() {
         console.log('[PreDepartureApp] 销毁行前准备应用...');
         // 清理资源
-        this.timelineManager = null;
         this.sharedCalendar = null;
         this.messageBoard = null;
     }
 }
 
-// 当DOM加载完成后初始化应用
-if (typeof document !== 'undefined') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.preDepartureApp = new PreDepartureApp();
-        window.preDepartureApp.init();
-    });
+// 登录成功后初始化应用（确保 Firestore 订阅在通过鉴权后才建立）
+function startPreDepartureApp() {
+    if (!window.preDepartureApp) window.preDepartureApp = new PreDepartureApp();
+    window.preDepartureApp.init();
+}
+if (typeof window !== 'undefined') {
+    window.onLoginSuccess = startPreDepartureApp;
 }
 
 // 导出模块

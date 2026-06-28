@@ -4,65 +4,113 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>行后复盘 - 旅行规划</title>
-    <link rel="stylesheet" href="../styles/post-trip.css">
+    <link rel="stylesheet" href="../styles/theme.css?v=5">
+    <link rel="stylesheet" href="../styles/post-trip.css?v=2">
 </head>
 <body>
-    <div id="post-trip-app">
-        <!-- 顶部导航 -->
-        <nav class="top-nav">
-            <h1>行后复盘</h1>
-            <div class="nav-buttons">
-                <button id="nav-pre-departure" class="nav-btn">行前准备</button>
-                <button id="nav-itinerary" class="nav-btn">行程规划</button>
-                <button id="nav-post-trip" class="nav-btn active">行后复盘</button>
+    <!-- 登录弹窗 -->
+    <div id="login-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h3>用户登录</h3></div>
+            <div class="modal-body">
+                <div class="login-form">
+                    <div class="form-group">
+                        <label for="login-username">用户名：</label>
+                        <input type="text" id="login-username" class="form-input" placeholder="请输入用户名" autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">密码：</label>
+                        <input type="password" id="login-password" class="form-input" placeholder="请输入密码" autocomplete="current-password">
+                    </div>
+                    <button class="btn-login" id="login-btn" type="button">登录</button>
+                    <button class="btn-register" id="register-btn" type="button" style="margin-top: 10px; width: 100%;">注册新账户</button>
+                </div>
             </div>
-        </nav>
-
-        <!-- 主内容区 -->
-        <main class="main-content">
-            <!-- 留言板区域 -->
-            <section id="message-board-section" class="section">
-                <h2>💬 留言板</h2>
-                <div id="message-board-container">
-                    <!-- 留言板内容将通过 JavaScript 动态生成 -->
-                    <p class="placeholder">留言板功能开发中...</p>
-                </div>
-            </section>
-
-            <!-- 共享照片区域 -->
-            <section id="photo-gallery-section" class="section">
-                <h2>📷 共享照片</h2>
-                <div id="photo-gallery-container">
-                    <!-- 共享照片内容将通过 JavaScript 动态生成 -->
-                    <p class="placeholder">共享照片功能开发中...</p>
-                </div>
-            </section>
-
-            <!-- 分账区域 -->
-            <section id="expense-splitter-section" class="section">
-                <h2>💰 分账</h2>
-                <div id="expense-splitter-container">
-                    <!-- 分账内容将通过 JavaScript 动态生成 -->
-                    <p class="placeholder">分账功能开发中...</p>
-                </div>
-            </section>
-        </main>
+        </div>
     </div>
 
-    <!-- 脚本引入 -->
+    <!-- 注册弹窗 -->
+    <div id="register-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header"><h3>注册新账户</h3><button class="modal-close" onclick="closeRegisterModal()">×</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label for="register-username">用户名：</label><input type="text" id="register-username" class="form-input" placeholder="字母数字下划线"></div>
+                <div class="form-group"><label for="register-password">密码：</label><input type="password" id="register-password" class="form-input" placeholder="至少6位" minlength="6"></div>
+                <div class="form-group"><label for="register-confirm">确认密码：</label><input type="password" id="register-confirm" class="form-input" placeholder="请再次输入密码" minlength="6"></div>
+                <div class="form-group"><label for="register-invite-code">邀请码：</label><input type="text" id="register-invite-code" class="form-input" placeholder="请输入邀请码"></div>
+                <div class="config-actions" style="margin-top: 20px;">
+                    <button class="btn-primary" onclick="registerUser()">注册账户</button>
+                    <button class="btn-secondary" onclick="closeRegisterModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-content" style="display: none;">
+        <div id="post-trip-app">
+            <!-- 顶部导航 -->
+            <nav class="top-nav">
+                <h1>行后复盘</h1>
+                <div class="nav-buttons">
+                    <button id="nav-pre-departure" class="nav-btn">行前准备</button>
+                    <button id="nav-itinerary" class="nav-btn">行程规划</button>
+                    <button id="nav-post-trip" class="nav-btn active">行后复盘</button>
+                </div>
+            </nav>
+
+            <!-- 登录态栏 -->
+            <div id="user-logged-in" class="user-sync-container" style="display: none;">
+                <div class="user-sync-header">
+                    <div class="user-info">
+                        <span class="user-label">当前用户：</span>
+                        <span id="logged-in-user-name" class="user-name"></span>
+                        <span id="sync-status" class="sync-status"></span>
+                    </div>
+                    <div class="sync-buttons-top">
+                        <button class="btn-logout" onclick="handleLogout()" title="退出登录">×</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 行程切换器（按行程区分照片/分账等） -->
+            <div id="trip-switcher" class="trip-switcher"></div>
+
+            <main class="main-content">
+                <section id="message-board-section" class="section">
+                    <h2>💬 留言板</h2>
+                    <div id="message-board-container"></div>
+                </section>
+                <section id="photo-gallery-section" class="section">
+                    <h2>📷 共享照片</h2>
+                    <div id="photo-gallery-container"></div>
+                </section>
+                <section id="expense-splitter-section" class="section">
+                    <h2>💰 分账</h2>
+                    <div id="expense-splitter-container"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Firebase 初始化 -->
+    <script type="module" src="../modules/storage/firebase-init.js"></script>
+    <!-- 核心 -->
+    <script src="../modules/core/utils.js"></script>
     <script src="../modules/core/state-manager.js"></script>
     <script src="../modules/core/event-bus.js"></script>
-    <script src="../modules/core/ui-renderer.js"></script>
-    <script src="../modules/core/utils.js"></script>
-    <script src="../modules/core/auth-manager.js"></script>
-    <script src="../modules/core/app-initializer.js"></script>
-    <script src="../modules/storage/sync-firebase.js"></script>
-    <script src="../modules/storage/trip-data-structure.js"></script>
+    <script src="../modules/core/auth-manager.js?v=5"></script>
+    <!-- 存储 -->
+    <script src="../modules/storage/trip-registry.js?v=3"></script>
+    <script src="../modules/storage/module-store.js?v=2"></script>
     <script src="../modules/storage/cloudinary.js"></script>
-    <script src="../modules/storage/expense-manager.js"></script>
+    <!-- 功能模块 -->
     <script src="../modules/post-trip/message-board.js"></script>
     <script src="../modules/post-trip/photo-gallery.js"></script>
     <script src="../modules/post-trip/expense-splitter.js"></script>
-    <script src="../modules/post-trip/post-trip-app.js"></script>
+    <script src="../modules/post-trip/post-trip-app.js?v=2"></script>
+    <!-- 行程切换器（多行程） -->
+    <script src="../modules/itinerary-planning/trip-switcher.js?v=3"></script>
+    <!-- 外部依赖（照片上传） -->
+    <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 </body>
 </html>

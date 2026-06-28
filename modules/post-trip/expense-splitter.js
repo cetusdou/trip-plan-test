@@ -17,37 +17,30 @@ class ExpenseSplitter {
         this.container = container;
         this.loadData();
         this.render();
-    }
-
-    /**
-     * 加载分账数据
-     */
-    loadData() {
-        // 从 stateManager 或 localStorage 加载数据
-        if (typeof window !== 'undefined' && window.stateManager) {
-            const state = window.stateManager.getState('postTrip');
-            if (state && state.expenses) {
-                this.expenses = state.expenses;
-            }
-            if (state && state.participants) {
-                this.participants = state.participants;
-            }
+        if (window.moduleStore) {
+            window.moduleStore.subscribe('postTrip_expenses', (data) => {
+                this.expenses = (data && data.expenses) || {};
+                this.participants = (data && data.participants) || [];
+                this.render();
+            });
         }
     }
 
     /**
-     * 保存分账数据
+     * 加载分账数据（Firestore 缓存）
+     */
+    loadData() {
+        const data = (window.moduleStore && window.moduleStore.get('postTrip_expenses')) || {};
+        this.expenses = data.expenses || {};
+        this.participants = data.participants || [];
+    }
+
+    /**
+     * 保存分账数据（Firestore）
      */
     saveData() {
-        // 保存到 stateManager 和 localStorage
-        if (typeof window !== 'undefined' && window.stateManager) {
-            window.stateManager.setState({
-                postTrip: {
-                    ...window.stateManager.getState('postTrip'),
-                    expenses: this.expenses,
-                    participants: this.participants
-                }
-            });
+        if (window.moduleStore) {
+            window.moduleStore.save('postTrip_expenses', { expenses: this.expenses, participants: this.participants });
         }
     }
 

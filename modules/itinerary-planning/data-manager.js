@@ -213,6 +213,10 @@ function refreshUIAndSync(dayId, itemId = null) {
 // 添加行程项
 function addItem(dayId, itemData) {
     if (!validateWriteOperation(dayId)) return;
+    if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+        alert('请先加入该行程后再添加内容');
+        return;
+    }
     
     const unifiedData = tripDataStructure.loadUnifiedData();
     if (!unifiedData) {
@@ -251,6 +255,15 @@ function addItem(dayId, itemData) {
     } else {
         refreshUIAndSync(dayId, newItem.id);
     }
+
+    // 兜底：直接重渲染当前天，确保新卡片立即出现（不依赖事件/模糊匹配是否命中）
+    try {
+        const realDay = tripDataStructure.getDayData(unifiedData, dayId);
+        const renderId = realDay ? realDay.id : dayId;
+        if (window.UIRenderer && typeof window.UIRenderer.renderDay === 'function') {
+            window.UIRenderer.renderDay(renderId);
+        }
+    } catch (e) { /* 重渲染失败不阻塞添加 */ }
 }
 
 // 辅助函数：回退上传整个 items 数组（当无法找到索引时）
@@ -305,6 +318,11 @@ function deleteItem(dayId, itemId) {
     
     const deleteResult = tripDataStructure.deleteItemData(unifiedData, dayId, itemId);
     if (!deleteResult || !deleteResult.success) {
+        if (deleteResult && deleteResult.reason === 'not_member') {
+            alert('请先加入该行程后再操作');
+        } else if (deleteResult && deleteResult.reason === 'not_owner') {
+            alert('只能删除自己添加的内容');
+        }
         return;
     }
     
@@ -463,6 +481,10 @@ function getAllEditedData() {
 // 添加天数
 function addDay() {
     if (!validateWriteOperation()) return;
+    if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+        alert('请先加入该行程后再添加内容');
+        return;
+    }
     
     const unifiedData = tripDataStructure.loadUnifiedData();
     if (!unifiedData) {

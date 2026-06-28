@@ -645,7 +645,9 @@ class CardSlider {
                         <div class="card-tag tag-${data.tag}" data-card-index="${index}" data-current-tag="${data.tag}">${this.getTagLabel(data.tag)}</div>
                     </div>
                     <div class="card-header-actions">
-                        <button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项" ${this.sortMode ? 'style="display: none;"' : ''}>×</button>
+                        ${((typeof window.canDeleteItem !== 'function') || window.canDeleteItem(cardData))
+                            ? `<button class="delete-item-btn" data-item-id="${cardData.id}" title="删除此项" ${this.sortMode ? 'style="display: none;"' : ''}>×</button>`
+                            : ''}
                     </div>
                 </div>
             </div>`;
@@ -687,10 +689,18 @@ class CardSlider {
             </div>`;
     }
 
+    // 权限助手：当前用户 / 是否已加入当前行程（成员才能添加，删除还需是作者）
+    _me() { return (window.getCurrentUser && window.getCurrentUser()) || null; }
+    _canEdit() { return (typeof window.canEditCurrentTrip !== 'function') || window.canEditCurrentTrip(); }
+
     _renderPlanSection(planItems, itemId, cardIndex) {
+        const me = this._me();
+        const canEdit = this._canEdit();
         const listHtml = planItems.length > 0 ? planItems.map((item, idx) => {
             const text = (typeof item === 'object') ? item._text : item;
             const hash = (typeof item === 'object') ? item._hash : '';
+            const owner = (typeof item === 'object') ? (item._user || null) : null;
+            const canDel = canEdit && (!owner || owner === me);
             const safeText = window.escapeHtmlKeepBr ? window.escapeHtmlKeepBr(text) : this._escape(text);
             
             // 获取点赞状态
@@ -708,8 +718,8 @@ class CardSlider {
                             <span class="like-icon">♥</span>
                             ${likeCount > 0 ? `<span class="like-count">${likeCount}</span>` : ''}
                         </button>
-                        <button class="plan-item-delete-btn" 
-                                data-card-index="${cardIndex}" data-plan-index="${idx}" data-plan-hash="${hash}" data-item-id="${itemId || ''}" title="删除此项">×</button>
+                        ${canDel ? `<button class="plan-item-delete-btn" 
+                                data-card-index="${cardIndex}" data-plan-index="${idx}" data-plan-hash="${hash}" data-item-id="${itemId || ''}" title="删除此项">×</button>` : ''}
                     </div>
                 </li>`;
         }).join('') : '';
@@ -719,7 +729,7 @@ class CardSlider {
                 <div class="card-section-header"><div class="card-section-title plan">计划</div></div>
                 <ul class="plan-list">
                     ${listHtml}
-                    <li class="plan-item plan-add-item">
+                    ${canEdit ? `<li class="plan-item plan-add-item">
                         <button class="plan-add-btn" data-card-index="${cardIndex}" title="添加计划项">+ 添加计划项</button>
                         <div class="plan-input-container" style="display: none;">
                             <input type="text" class="plan-input" placeholder="输入计划项..." />
@@ -728,7 +738,7 @@ class CardSlider {
                                 <button class="plan-input-cancel">✕</button>
                             </div>
                         </div>
-                    </li>
+                    </li>` : ''}
                 </ul>
             </div>`;
     }
@@ -790,10 +800,14 @@ class CardSlider {
             `).join('');
         };
         
+        const me = this._me();
+        const canEdit = this._canEdit();
         const rows = spendItems.length > 0 ? spendItems.map((item, i) => {
             // 处理参与人信息，默认显示所有参与人
             const participants = item.participants || [];
             const participantsText = participants.length > 0 ? participants.join(', ') : '未指定';
+            const owner = item._user || null;
+            const canDel = canEdit && (!owner || owner === me);
             return `
             <tr class="spend-row" data-spend-index="${i}">
                 <td class="spend-item-name">${this._escape(item.item)}</td>
@@ -801,7 +815,7 @@ class CardSlider {
                 <td class="spend-item-payer">${this._escape(item.payer)}</td>
                 <td class="spend-item-participants">${this._escape(participantsText)}</td>
                 <td class="spend-item-action">
-                    <button class="spend-delete-btn" data-spend-index="${i}" title="删除">×</button>
+                    ${canDel ? `<button class="spend-delete-btn" data-spend-index="${i}" title="删除">×</button>` : ''}
                 </td>
             </tr>`;
         }).join('') : '<tr><td colspan="5" class="spend-empty">暂无消费记录</td></tr>';
@@ -822,7 +836,7 @@ class CardSlider {
                             </tr>
                         </tfoot>
                     </table>
-                    <div class="spend-add-container">
+                    <div class="spend-add-container" ${canEdit ? '' : 'style="display: none;"'}>
                         <button class="spend-add-btn" data-card-index="${index}" title="添加消费项">+ 添加消费项</button>
                         <div class="spend-input-container" style="display: none;">
                         <input type="text" class="spend-item-input" placeholder="项目名称..." />
@@ -849,8 +863,11 @@ class CardSlider {
     }
 
     _renderCommentSection(comments, itemId, index) {
+        const me = this._me();
+        const canEdit = this._canEdit();
         const listHtml = comments.length > 0 ? comments.map((comment, i) => {
             const user = comment.user || 'unknown';
+            const canDel = canEdit && (!comment.user || comment.user === me);
             const msg = String(comment.message || '');
             const formattedTime = window.formatTime ? window.formatTime(comment.timestamp) : '';
             
@@ -870,7 +887,7 @@ class CardSlider {
                         <span class="comment-time">${formattedTime}</span>
                     </div>
                     <div class="comment-content">${this._escape(msg)}</div>
-                    <button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>
+                    ${canDel ? `<button class="comment-delete-btn" data-comment-hash="${comment._hash || ''}" title="删除留言">×</button>` : ''}
                     <button class="comment-like-btn ${isLiked ? 'liked' : ''}" 
                             data-comment-index="${i}" title="点赞">
                         <span class="like-icon">♥</span>
@@ -883,10 +900,10 @@ class CardSlider {
             <div class="card-section">
                 <div class="card-section-title comment"> 留言</div>
                 <div class="comments-container">${listHtml}</div>
-                <div class="comment-input-container">
+                ${canEdit ? `<div class="comment-input-container">
                     <textarea class="comment-input" placeholder="输入留言..." rows="2"></textarea>
                     <button class="comment-submit">发送</button>
-                </div>
+                </div>` : ''}
             </div>`;
     }
 
@@ -2343,6 +2360,10 @@ class CardSlider {
         if (!checkWritePermission()) {
             return;
         }
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再添加内容');
+            return;
+        }
         
         const card = this.cards[cardIndex];
         if (!card) {
@@ -2358,7 +2379,8 @@ class CardSlider {
             item: itemName,
             amount: parseFloat(amount) || 0,
             payer: payer || '',
-            participants: participants || []
+            participants: participants || [],
+            _user: (typeof getCurrentUser === 'function' ? getCurrentUser() : (window.getCurrentUser && window.getCurrentUser())) || 'unknown'
         };
         
         // 关键修复：从统一结构获取最新的 spend 数据，而不是从 card.spend 获取
@@ -2438,6 +2460,10 @@ class CardSlider {
     async deleteSpendItem(cardIndex, spendIndex) {
         // 检查写权限
         if (!checkWritePermission()) return;
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再操作');
+            return;
+        }
         
         const card = this.cards[cardIndex];
         if (!card) {
@@ -2477,6 +2503,14 @@ class CardSlider {
         
         // 验证索引有效性
         if (spendIndex < 0 || spendIndex >= spendItems.length) {
+            return;
+        }
+        
+        // 归属校验：只能删除自己添加的消费项（无归属的旧数据放行）
+        const spendOwner = spendItems[spendIndex] && spendItems[spendIndex]._user;
+        const meNow = (window.getCurrentUser && window.getCurrentUser()) || null;
+        if (spendOwner && spendOwner !== meNow) {
+            alert('只能删除自己添加的内容');
             return;
         }
         
@@ -2530,11 +2564,23 @@ class CardSlider {
     async deleteComment(dayId, itemIndex, commentHash, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再操作');
+            return;
+        }
         
         const comments = this.getComments(dayId, itemIndex, itemId);
         const commentIndex = comments.findIndex(c => c._hash === commentHash);
         
         if (commentIndex === -1) return;
+        
+        // 归属校验：只能删除自己发的留言（无归属的旧数据放行）
+        const commentOwner = comments[commentIndex] && comments[commentIndex].user;
+        const meNow = (window.getCurrentUser && window.getCurrentUser()) || null;
+        if (commentOwner && commentOwner !== meNow) {
+            alert('只能删除自己添加的内容');
+            return;
+        }
         
         // 获取要删除的 comment（深拷贝，避免引用问题）
         const deletedComment = JSON.parse(JSON.stringify(comments[commentIndex]));
@@ -2656,6 +2702,10 @@ class CardSlider {
     async addComment(dayId, itemIndex, message, itemId = null) {
         // 检查写权限
         if (!checkWritePermission()) return;
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再添加内容');
+            return;
+        }
         
         // 如果 itemId 为空，尝试从 cards 数组中获取
         if (!itemId && this.cards && this.cards[itemIndex]) {
@@ -3026,6 +3076,10 @@ class CardSlider {
         if (!checkWritePermission()) {
             return;
         }
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再添加内容');
+            return;
+        }
         
         const card = this.cards[cardIndex];
         if (!card || !newItem || !newItem.trim()) {
@@ -3119,6 +3173,10 @@ class CardSlider {
         if (!checkWritePermission()) {
             return;
         }
+        if (typeof window.canEditCurrentTrip === 'function' && !window.canEditCurrentTrip()) {
+            alert('请先加入该行程后再操作');
+            return;
+        }
         
         const card = this.cards[cardIndex];
         if (!card) {
@@ -3169,6 +3227,13 @@ class CardSlider {
                     
                     // 检查哈希是否有效
                     if (targetHash && item.plan[targetHash]) {
+                        // 归属校验：只能删除自己添加的计划项（无归属的旧数据放行）
+                        const planOwner = item.plan[targetHash]._user || null;
+                        const meNow = (window.getCurrentUser && window.getCurrentUser()) || null;
+                        if (planOwner && planOwner !== meNow) {
+                            alert('只能删除自己添加的内容');
+                            return;
+                        }
                         // 获取要删除的 plan item（深拷贝，避免引用问题）
                         const deletedPlanItem = JSON.parse(JSON.stringify(item.plan[targetHash]));
                         // 使用统一的备份方法

@@ -15,6 +15,11 @@ class PostTripApp {
     init() {
         console.log('[PostTripApp] 初始化行后复盘应用...');
 
+        // 行后数据按「当前行程」隔离（照片/分账/留言各行程独立）
+        if (window.moduleStore && window.moduleStore.setScoped) {
+            window.moduleStore.setScoped(true);
+        }
+
         // 初始化留言板管理器
         const messageBoardContainer = document.getElementById('message-board-container');
         if (messageBoardContainer && typeof PostTripMessageBoard !== 'undefined') {
@@ -89,12 +94,13 @@ class PostTripApp {
     }
 }
 
-// 当DOM加载完成后初始化应用
-if (typeof document !== 'undefined') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.postTripApp = new PostTripApp();
-        window.postTripApp.init();
-    });
+// 登录成功后初始化应用（确保 Firestore 订阅在通过鉴权后才建立）
+function startPostTripApp() {
+    if (!window.postTripApp) window.postTripApp = new PostTripApp();
+    window.postTripApp.init();
+}
+if (typeof window !== 'undefined') {
+    window.onLoginSuccess = startPostTripApp;
 }
 
 // 导出模块

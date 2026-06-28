@@ -1,0 +1,620 @@
+/* ============================================================
+   共享主题 theme.css
+   统一三页(行前/行中/行后)的视觉语言，基准 = 行中(行程规划)。
+   设计要点：全屏蓝→粉渐变背景、600px 居中窄列、毛玻璃面板、
+   蓝/粉/绿配色按钮、固定顶部用户栏、毛玻璃胶囊模块导航。
+   配色：396185-517194-6981a3-93b1d1-a8c9e8-ded4ee-ffc8dd-f1b5c8-e2a2b3-db8c9f-cb7892
+   ============================================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+html {
+    min-height: 100%;
+}
+
+body {
+    background: linear-gradient(120deg, #396185 0%, #517194 10%, #6981a3 20%, #93b1d1 30%, #a8c9e8 40%, #ded4ee 50%, #ffc8dd 60%, #f1b5c8 70%, #e2a2b3 80%, #db8c9f 90%, #cb7892 100%);
+    background-attachment: fixed;
+    color: #333;
+    line-height: 1.6;
+    padding: 10px;
+    padding-top: 60px; /* 为固定的顶部用户栏留出空间 */
+    min-height: 100vh;
+}
+
+/* 居中窄列：行中用 .main-container，行前/行后用各自 app 容器 */
+.main-container,
+#pre-departure-app,
+#post-trip-app {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* 行前/行后内层 <main> 不再限制宽度（宽度由 app 容器控制） */
+.main-content {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------- 顶部用户 / 同步固定栏 ---------- */
+.user-sync-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, #396185 0%, #517194 100%);
+    padding: 6px 15px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+.user-sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5px;
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.user-info {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+}
+
+.user-label,
+.user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.user-select {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    padding: 2px 8px;
+    cursor: pointer;
+    outline: none;
+}
+.user-select option {
+    color: #2c3e50;
+}
+
+.sync-status {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 400;
+}
+
+.sync-buttons-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+    margin-left: auto;
+}
+
+.sync-btn,
+.btn-logout {
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sync-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.sync-btn:active {
+    transform: translateY(0);
+}
+
+.btn-logout:hover {
+    background: rgba(231, 76, 60, 0.3);
+    border-color: rgba(231, 76, 60, 0.5);
+    transform: translateY(-2px);
+}
+
+/* ---------- 模块切换导航（毛玻璃胶囊，三页统一） ---------- */
+.top-nav {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(80px);
+    -webkit-backdrop-filter: blur(80px);
+    border-radius: 12px;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.top-nav h1 {
+    font-size: 18px;
+    color: #2c3e50;
+    text-align: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #517194;
+}
+
+.nav-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.nav-btn {
+    flex: 1;
+    min-width: 90px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.55);
+    color: #396185;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.nav-btn:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-2px);
+}
+
+.nav-btn.active {
+    background: linear-gradient(135deg, #396185 0%, #517194 100%);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(57, 97, 133, 0.4);
+}
+
+/* ---------- 通用毛玻璃面板（行前/行后的 section / 标题） ---------- */
+.header,
+.section,
+.panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(80px);
+    -webkit-backdrop-filter: blur(80px);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.header {
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 22px;
+    color: #2c3e50;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #517194;
+}
+
+.section h2 {
+    font-size: 18px;
+    color: #34495e;
+    margin-bottom: 15px;
+    padding-left: 8px;
+    border-left: 3px solid #93b1d1;
+}
+
+/* ---------- 按钮 ---------- */
+.btn-primary {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(86, 171, 47, 0.4);
+    background: linear-gradient(135deg, #4a9a26 0%, #95d055 100%);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: #f5f5f5;
+    color: #333;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: #e0e0e0;
+}
+
+.btn-danger {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #e74c3c 0%, #ff7675 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
+/* 登录/注册按钮（免登录下隐藏，保留样式避免裸态） */
+.btn-login {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #396185 0%, #517194 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    display: block;
+}
+
+.btn-register {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #86ab2f 0%, #a8c94e 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    display: block;
+}
+
+/* ---------- 模态框 ---------- */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    margin: 20px;
+    position: relative;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #2c3e50;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 20px;
+    border-top: 1px solid #eee;
+}
+
+/* ---------- 表单 ---------- */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 10px 0;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #34495e;
+}
+
+.form-input,
+.form-textarea,
+.config-section input[type="text"],
+.config-section input[type="password"],
+.config-section textarea,
+.config-section select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px; /* 移动端防止自动缩放 */
+    font-family: inherit;
+    transition: border-color 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.config-section input:focus,
+.config-section textarea:focus,
+.config-section select:focus {
+    outline: none;
+    border-color: #56ab2f;
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.config-section {
+    margin-bottom: 20px;
+}
+
+.config-section label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #34495e;
+    margin-bottom: 8px;
+}
+
+.config-section select {
+    cursor: pointer;
+    background: #fff;
+}
+
+.config-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+
+/* ============================================================
+   行程切换器（多行程）——行中 / 行后 共用
+   ============================================================ */
+.trip-switcher {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.5));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(57, 97, 133, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.trip-switcher .ts-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    font-size: 13px;
+    color: #fff;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #517194, #396185);
+    box-shadow: 0 3px 8px rgba(57, 97, 133, 0.3);
+    white-space: nowrap;
+}
+
+.trip-switcher .ts-select {
+    flex: 1 1 180px;
+    min-width: 150px;
+    padding: 9px 14px;
+    border: 1px solid rgba(147, 177, 209, 0.8);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #2c3e50;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.trip-switcher .ts-select:hover { border-color: #6981a3; }
+
+.trip-switcher .ts-select:focus {
+    outline: none;
+    border-color: #517194;
+    box-shadow: 0 0 0 3px rgba(81, 113, 148, 0.22);
+}
+
+.trip-switcher .ts-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 9px 16px;
+    border: none;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+    white-space: nowrap;
+}
+
+.trip-switcher .ts-btn:hover { transform: translateY(-1px); }
+.trip-switcher .ts-btn:active { transform: translateY(0); }
+
+.trip-switcher .ts-new {
+    background: linear-gradient(135deg, #56ab2f, #3d8b22);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(61, 139, 34, 0.35);
+}
+.trip-switcher .ts-new:hover { filter: brightness(1.06); }
+
+.trip-switcher .ts-del {
+    background: rgba(226, 162, 179, 0.35);
+    color: #b04a60;
+    box-shadow: inset 0 0 0 1px rgba(203, 120, 146, 0.5);
+}
+.trip-switcher .ts-del:hover {
+    background: linear-gradient(135deg, #e2a2b3, #cb7892);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(203, 120, 146, 0.4);
+}
+
+.trip-switcher .ts-members {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #396185;
+    background: rgba(147, 177, 209, 0.35);
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.trip-switcher .ts-join {
+    background: linear-gradient(135deg, #56ab2f, #3d8b22);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(61, 139, 34, 0.35);
+}
+.trip-switcher .ts-join:hover { filter: brightness(1.06); }
+
+.trip-switcher .ts-leave {
+    background: rgba(255, 255, 255, 0.7);
+    color: #517194;
+    box-shadow: inset 0 0 0 1px rgba(81, 113, 148, 0.4);
+}
+.trip-switcher .ts-leave:hover { background: #fff; }
+
+/* 未加入行程时的提示 */
+.join-hint {
+    margin-top: 10px;
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: #517194;
+    background: rgba(147, 177, 209, 0.18);
+    border: 1px dashed rgba(81, 113, 148, 0.5);
+    border-radius: 12px;
+}
+
+@media (max-width: 480px) {
+    .trip-switcher { padding: 10px 12px; gap: 8px; }
+    .trip-switcher .ts-select { flex-basis: 100%; }
+    .trip-switcher .ts-btn { padding: 8px 12px; font-size: 12px; }
+}
+
+/* ---------- 空状态 / 占位 ---------- */
+.placeholder {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 1.5rem;
+    font-style: italic;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 480px) {
+    .nav-btn {
+        min-width: 0;
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+
+    .section,
+    .header,
+    .panel {
+        padding: 15px;
+    }
+}

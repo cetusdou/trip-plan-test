@@ -21,6 +21,19 @@
         tripDataStructure = window.tripDataStructure;
     }
 
+    // 统一的 HTML 转义（替代各渲染函数内部的重复定义）
+    function escapeHtml(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    // 是否已加入当前行程（用于显隐编辑入口）
+    function canEditTrip() {
+        return (typeof window.canEditCurrentTrip !== 'function') || window.canEditCurrentTrip();
+    }
+
     /**
      * 初始化 UI 渲染器（订阅状态变化）
      */
@@ -95,13 +108,6 @@
         
         if (!tripData) return;
         
-        // HTML 转义函数
-        function escapeHtml(text) {
-            if (!text) return '';
-            const str = String(text);
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        }
-    
     header.innerHTML = `
         <div class="header-title-container">
             <h1 class="header-title-display">${escapeHtml(tripData.title || '行程计划')}</h1>
@@ -158,13 +164,7 @@
                 });
         }
         
-        // HTML 转义函数
-        function escapeHtml(text) {
-            if (!text) return '';
-            const str = String(text);
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        }
-        
+        const canEdit = canEditTrip();
         let html = '<h2>行程总览</h2><ul class="nav-list">';
         daysArray.forEach((day, index) => {
             if (!day) return;
@@ -173,13 +173,29 @@
             html += `
                 <li class="nav-item">
                     <a href="#" class="nav-link" data-day="${dayId}">${escapeHtml(dayTitle)}</a>
-                    <button class="delete-day-btn" data-day-id="${dayId}" title="删除这一天" onclick="deleteDay('${dayId}')">×</button>
+                    ${canEdit ? `<button class="delete-day-btn" data-day-id="${dayId}" title="删除这一天" onclick="deleteDay('${dayId}')">×</button>` : ''}
                 </li>
             `;
         });
         html += '</ul>';
-        html += '<button class="add-day-btn" onclick="addDay()" title="添加新的一天">+ 添加天数</button>';
+        if (canEdit) {
+            html += '<button class="add-day-btn" onclick="addDay()" title="添加新的一天">+ 添加天数</button>';
+        } else {
+            html += '<div class="join-hint">加入该行程后才能添加 / 编辑内容</div>';
+        }
     navContainer.innerHTML = html;
+    
+    // 没有任何天数时，清空残留的日期头部与卡片，避免显示多余的「第1天」
+    if (daysArray.length === 0) {
+        const dayHeader = document.querySelector('.day-header');
+        if (dayHeader) dayHeader.innerHTML = '<h2>还没有行程，点击上方「+ 添加天数」开始</h2>';
+        const cards = document.getElementById('cards-container');
+        if (cards) cards.innerHTML = '<div class="card-indicator"></div>';
+        if (stateManager) {
+            try { stateManager.setState({ currentDayId: null }); } catch (e) {}
+        }
+        window.currentDayId = null;
+    }
     
     // 添加导航点击事件
     attachNavigationEvents(navContainer);
@@ -257,6 +273,9 @@
         // }
         
         if (!day) {
+            // 找不到对应天数（如删除了最后一天或切换到空行程）：清空日期头部，避免残留旧「第1天」
+            const dayHeader = document.querySelector('.day-header');
+            if (dayHeader) dayHeader.innerHTML = '<h2>请选择日期</h2>';
             return;
         }
         
@@ -374,22 +393,16 @@
         const dayHeader = document.querySelector('.day-header');
         if (!dayHeader) return;
         
-        // HTML 转义函数
-        function escapeHtml(text) {
-            if (!text) return '';
-            const str = String(text);
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        }
-    
+    const canEdit = canEditTrip();
     dayHeader.innerHTML = `
         <div class="day-title-container">
             <h2 class="day-title-display">${escapeHtml(day.title || '')}</h2>
             <input type="text" class="day-title-input" value="${escapeHtml(day.title || '')}" style="display: none;" />
         </div>
         <div class="day-header-actions">
-            <button class="add-item-btn" onclick="showAddItemModal('${dayId}')" title="新增行程项">
+            ${canEdit ? `<button class="add-item-btn" onclick="showAddItemModal('${dayId}')" title="新增行程项">
                 新增行程项
-            </button>
+            </button>` : ''}
             <button class="filter-btn" onclick="toggleFilterPanel()" title="筛选">
                 筛选
             </button>

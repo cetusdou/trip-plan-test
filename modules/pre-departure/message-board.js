@@ -16,34 +16,26 @@ class MessageBoard {
         this.container = container;
         this.loadData();
         this.render();
-    }
-
-    /**
-     * 加载留言板数据
-     */
-    loadData() {
-        // 从 stateManager 或 localStorage 加载数据
-        if (typeof window !== 'undefined' && window.stateManager) {
-            const state = window.stateManager.getState('preDeparture');
-            if (state && state.messages) {
-                this.messages = state.messages;
-            }
-        }
-    }
-
-    /**
-     * 保存留言板数据
-     */
-    saveData() {
-        // 保存到 stateManager 和 localStorage
-        if (typeof window !== 'undefined' && window.stateManager) {
-            window.stateManager.setState({
-                preDeparture: {
-                    ...window.stateManager.getState('preDeparture'),
-                    messages: this.messages
-                }
+        if (window.moduleStore) {
+            window.moduleStore.subscribe('preDeparture_messages', (data) => {
+                this.messages = data || {};
+                this.render();
             });
         }
+    }
+
+    /**
+     * 加载留言板数据（Firestore 缓存）
+     */
+    loadData() {
+        this.messages = (window.moduleStore && window.moduleStore.get('preDeparture_messages')) || {};
+    }
+
+    /**
+     * 保存留言板数据（Firestore）
+     */
+    saveData() {
+        if (window.moduleStore) window.moduleStore.save('preDeparture_messages', this.messages);
     }
 
     /**

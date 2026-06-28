@@ -16,34 +16,26 @@ class PhotoGallery {
         this.container = container;
         this.loadData();
         this.render();
-    }
-
-    /**
-     * 加载照片数据
-     */
-    loadData() {
-        // 从 stateManager 或 localStorage 加载数据
-        if (typeof window !== 'undefined' && window.stateManager) {
-            const state = window.stateManager.getState('postTrip');
-            if (state && state.photos) {
-                this.photos = state.photos;
-            }
-        }
-    }
-
-    /**
-     * 保存照片数据
-     */
-    saveData() {
-        // 保存到 stateManager 和 localStorage
-        if (typeof window !== 'undefined' && window.stateManager) {
-            window.stateManager.setState({
-                postTrip: {
-                    ...window.stateManager.getState('postTrip'),
-                    photos: this.photos
-                }
+        if (window.moduleStore) {
+            window.moduleStore.subscribe('postTrip_photos', (data) => {
+                this.photos = data || {};
+                this.render();
             });
         }
+    }
+
+    /**
+     * 加载照片数据（Firestore 缓存）
+     */
+    loadData() {
+        this.photos = (window.moduleStore && window.moduleStore.get('postTrip_photos')) || {};
+    }
+
+    /**
+     * 保存照片数据（Firestore）
+     */
+    saveData() {
+        if (window.moduleStore) window.moduleStore.save('postTrip_photos', this.photos);
     }
 
     /**

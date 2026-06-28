@@ -1,0 +1,390 @@
+/* ============================================================
+   行后复盘 - 组件样式
+   通用样式（背景/导航/按钮/模态框/表单）见 theme.css。
+   本文件定义行后独有组件：留言板 / 共享照片 / 分账。
+   配色对齐行中：蓝 #396185/#517194/#93b1d1，粉 #e2a2b3，绿 #56ab2f。
+   ============================================================ */
+
+/* ---------- 空状态 ---------- */
+.message-board-empty,
+.photo-gallery-empty {
+    text-align: center;
+    padding: 2rem 1rem;
+}
+
+.message-board-empty p,
+.photo-gallery-empty p {
+    color: #6981a3;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+/* ---------- 留言板 ---------- */
+.message-board {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.message {
+    background: rgba(255, 255, 255, 0.65);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border: 2px solid rgba(147, 177, 209, 0.4);
+    transition: all 0.3s ease;
+}
+
+.message:hover {
+    border-color: #517194;
+    box-shadow: 0 4px 14px rgba(57, 97, 133, 0.18);
+}
+
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.message-user {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.message-date {
+    font-size: 0.8rem;
+    color: #6981a3;
+}
+
+.message-content {
+    margin-bottom: 0.75rem;
+}
+
+.message-content p {
+    color: #475569;
+    line-height: 1.7;
+    font-size: 1rem;
+}
+
+.message-actions,
+.photo-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.like-message-btn,
+.like-photo-btn {
+    background: rgba(226, 162, 179, 0.2) !important;
+    color: #d6336c !important;
+    border: 2px solid rgba(226, 162, 179, 0.5) !important;
+}
+
+.like-message-btn:hover,
+.like-photo-btn:hover {
+    background: rgba(226, 162, 179, 0.35) !important;
+}
+
+.message-input-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.2rem;
+    flex-wrap: wrap;
+}
+
+.message-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.message-input:focus {
+    outline: none;
+    border-color: #56ab2f;
+    box-shadow: 0 0 0 3px rgba(86, 171, 47, 0.12);
+}
+
+/* ---------- 共享照片 ---------- */
+.photo-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.photo-item {
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid rgba(147, 177, 209, 0.4);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.photo-item:hover {
+    border-color: #517194;
+    box-shadow: 0 6px 16px rgba(57, 97, 133, 0.2);
+    transform: translateY(-2px);
+}
+
+.photo-image-container {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #eef2f6;
+    overflow: hidden;
+}
+
+.photo-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-info {
+    padding: 0.75rem;
+    flex: 1;
+}
+
+.photo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.photo-uploader {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.photo-date {
+    font-size: 0.7rem;
+    color: #6981a3;
+}
+
+.photo-caption {
+    font-size: 0.9rem;
+    color: #475569;
+    margin-bottom: 0.3rem;
+}
+
+.photo-location {
+    font-size: 0.8rem;
+    color: #517194;
+}
+
+.photo-actions {
+    padding: 0 0.75rem 0.75rem;
+}
+
+.photo-actions .btn-secondary,
+.photo-actions .btn-danger,
+.photo-actions .like-photo-btn {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+}
+
+.photo-upload-section {
+    display: flex;
+    justify-content: center;
+    margin-top: 0.5rem;
+}
+
+/* ---------- 分账 ---------- */
+.expense-splitter {
+    display: grid;
+    gap: 1.2rem;
+}
+
+.participants-section,
+.expenses-section,
+.settlement-section {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border: 1px solid rgba(147, 177, 209, 0.35);
+}
+
+.participants-section h3,
+.expenses-section h3,
+.settlement-section h3 {
+    font-size: 1.05rem;
+    color: #34495e;
+    margin-bottom: 0.9rem;
+    padding-left: 8px;
+    border-left: 3px solid #e2a2b3;
+}
+
+.participants-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+}
+
+.participant-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(147, 177, 209, 0.25);
+    padding: 0.35rem 0.35rem 0.35rem 0.85rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    color: #34495e;
+}
+
+.participant-item .btn-danger {
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    border-radius: 16px;
+}
+
+.add-participant-form,
+.add-expense-form {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.participant-input {
+    flex: 1;
+    min-width: 160px;
+    padding: 0.6rem 0.9rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
+}
+
+.participant-input:focus {
+    outline: none;
+    border-color: #56ab2f;
+}
+
+.expenses-list {
+    display: grid;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+}
+
+.expense-item {
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 10px;
+    padding: 0.9rem;
+    border-left: 4px solid #517194;
+}
+
+.expense-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.expense-payer {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 0.95rem;
+}
+
+.expense-amount {
+    font-weight: 700;
+    color: #56ab2f;
+    font-size: 0.95rem;
+}
+
+.expense-content {
+    font-size: 0.85rem;
+    color: #475569;
+    line-height: 1.7;
+    margin-bottom: 0.5rem;
+}
+
+.expense-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.expense-actions .btn-secondary,
+.expense-actions .btn-danger {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+}
+
+/* 分账结果 */
+.totals,
+.transactions {
+    margin-bottom: 0.9rem;
+}
+
+.totals h4,
+.transactions h4 {
+    font-size: 0.9rem;
+    color: #34495e;
+    margin-bottom: 0.5rem;
+}
+
+.total-item,
+.transaction-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+    color: #34495e;
+}
+
+.total-item .positive {
+    color: #2e7d32;
+    font-weight: 600;
+}
+
+.total-item .negative {
+    color: #c62828;
+    font-weight: 600;
+}
+
+.transaction-item {
+    border-left: 3px solid #56ab2f;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 480px) {
+    .message-header,
+    .expense-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .message-input-form,
+    .add-participant-form {
+        flex-direction: column;
+    }
+
+    .message-input,
+    .participant-input {
+        width: 100%;
+    }
+
+    .photo-gallery {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    }
+}

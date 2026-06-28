@@ -1,0 +1,23 @@
+rules_version = '2';
+// Firestore 安全规则（免登录临时版）
+// 当前应用暂不需要登录，因此放开为公开读写。
+// ⚠️ 仅适用于私密/小范围使用。恢复登录后请改回需要 request.auth != null 的版本。
+//
+// 数据模型：
+//   trips/{tripId}/days/{dayId}       行程（按天文档，items 为 map）
+//   trips/{tripId}/backup/{key}       软删除备份
+//   trips/{tripId}/sections/{key}     行前/行后各功能区数据
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /trips/{tripId} {
+      allow read, write: if true;
+      match /{document=**} {
+        allow read, write: if true;
+      }
+    }
+    // 用户账户（简单密码验证，明文存储，仅供小范围私密使用）
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+  }
+}

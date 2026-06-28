@@ -1,627 +1,337 @@
-
 /**
- * 用户认证管理模块 (极速版)
- * 策略：优先信任本地缓存，直接进入系统，后台静默验证
+ * 用户管理模块（简单密码验证版）
+ * - 预置五个固定用户：djy / xwz / mrb / hrz / zyt。
+ * - 初始密码 = 用户名 + '1234'（如 djy1234），首次登录自动在 Firestore 建账户。
+ * - 登录成功后记住会话；可在顶部「🔑」修改自己的密码；「×」退出登录。
+ * - 密码以明文存于 Firestore users/{name}（简单验证，仅供小范围私密使用）。
  */
-
-(function() {
+(function () {
     'use strict';
 
-    // 状态与常量
-    let currentUser = null;
-    let isLoggedIn = false;
-    const STORAGE_KEYS = {
-        USER: 'trip_current_user',
-        PASS_HASH: 'trip_password_hash',
-        REMEMBER: 'trip_remember_me'
-    };
+    const USERS = ['djy', 'xwz', 'mrb', 'hrz', 'zyt'];
+    const SESSION_KEY = 'trip_logged_in';     // 当前已登录用户名
+    const CURRENT_KEY = 'trip_current_user';   // 兼容各模块读取的“当前用户”
+    let inited = false;
 
-    // ==========================================
-    // 1. 基础 UI 和 状态函数 (保持不变)
-    // ==========================================
-    function checkFirebaseAvailable() {
-        return typeof window.firebaseDatabase !== 'undefined';
-    }
-    
-    /**
-     * 从数据库读取邀请码（不初始化，直接读取）
-     */
-    async function getInviteCodesFromDatabase() {
-        try {
-            if (!checkFirebaseAvailable()) {
-                return null;
-            }
-            
-            const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-            const inviteCodesRef = ref(window.firebaseDatabase, 'invite_codes');
-            const snapshot = await get(inviteCodesRef);
-            return snapshot.val();
-        } catch (error) {
-            return null;
-        }
-    }
+    function isValidUser(name) { return USERS.indexOf(name) > -1; }
+    function defaultPassword(name) { return name + '1234'; }
 
-    /**
-     * 从Firebase读取密码配置
-     */
-    async function fetchPasswordsFromFirebase() {
-        if (!checkFirebaseAvailable()) {
-            throw new Error('Firebase数据库未初始化');
-        }
-
-        const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-        
-        // 先尝试读取根路径
-        const rootRef = ref(window.firebaseDatabase, '/');
-        const rootSnapshot = await get(rootRef);
-        const rootData = rootSnapshot.val();
-        
-        let passwords = null;
-        
-        if (rootData) {
-            // 尝试不同的键名格式
-            if (rootData.user_passwords) {
-                passwords = rootData.user_passwords;
-            } else if (rootData['"user_passwords"']) {
-                passwords = rootData['"user_passwords"'];
-            } else {
-                // 遍历所有键，查找可能的密码数据
-                for (const key in rootData) {
-                    if (key === 'user_passwords' || key === '"user_passwords"') {
-                        passwords = rootData[key];
-                        break;
-                    }
-                }
-            }
-        }
-        
-        return passwords;
-    }
-    function showLoginUI() {
-        // ... (保持你原有的逻辑: 显示登录框，隐藏主内容) ...
-        const loginModal = document.getElementById('login-modal');
-        const loggedInContainer = document.getElementById('user-logged-in');
-        const mainContent = document.getElementById('main-content');
-        
-        if (loginModal) loginModal.style.display = 'flex';
-        if (loggedInContainer) loggedInContainer.style.display = 'none';
-        if (mainContent) mainContent.style.display = 'none';
-        
-        isLoggedIn = false;
-        currentUser = null;
-        updateStateManager(false, null);
-    }
-
-    function showLoggedInUI(user) {
-        // ... (保持你原有的逻辑: 隐藏登录框，显示主内容) ...
-        const loginModal = document.getElementById('login-modal');
-        const loggedInContainer = document.getElementById('user-logged-in');
-        const mainContent = document.getElementById('main-content');
-        const userNameSpan = document.getElementById('logged-in-user-name');
-        
-        // 关键：强制隐藏登录框
-        if (loginModal) loginModal.style.setProperty('display', 'none', 'important');
-        if (loggedInContainer) loggedInContainer.style.display = 'flex';
-        if (mainContent) mainContent.style.display = 'block';
-        if (userNameSpan) userNameSpan.textContent = `👤 ${user}`;
-        
-        isLoggedIn = true;
-        currentUser = user;
-        window.currentUser = user; // 兼容全局
-        localStorage.setItem('trip_current_user', user);
-        updateStateManager(true, user);
-    }
-
-    function updateStateManager(status, user) {
-        if (window.stateManager) {
-            window.stateManager.setState({ isLoggedIn: status, currentUser: user });
-        }
-    }
-
-    function notifyStatus(msg, type = 'info') {
-        if (typeof window.updateSyncStatus === 'function') {
-            window.updateSyncStatus(msg, type);
-        }
-    }
-
-    // ==========================================
-    // 2. 核心逻辑修改：验证流程
-    // ==========================================
-
-    /**
-     * 等待 Firebase 就绪 (用于后台验证)
-     */
+    // ---------- Firestore 账户 ----------
+    function fbReady() { return !!(window.fb && window.fb.db); }
     function waitForFirebase() {
-        return new Promise((resolve) => {
-            if (window.firebaseDatabase) return resolve(window.firebaseDatabase);
-            // 监听事件
-            window.addEventListener('firebaseReady', () => resolve(window.firebaseDatabase), { once: true });
-            // 超时兜底 (5秒后如果还没连上，就不验证了，默认相信本地)
-            setTimeout(() => resolve(null), 10000); 
+        if (fbReady()) return Promise.resolve(true);
+        return new Promise(resolve => {
+            window.addEventListener('firebaseReady', () => resolve(true), { once: true });
+            setTimeout(() => resolve(fbReady()), 8000);
         });
     }
 
-    /**
-     * 后台静默验证 (不阻塞 UI)
-     */
-    async function backgroundVerify(user, localPass) {
-        const db = await waitForFirebase();
-        
-        if (!db) {
-            return;
-        }
-
+    async function getUserDoc(name) {
+        await waitForFirebase();
+        if (!fbReady()) return null;
+        const { db, doc, getDoc } = window.fb;
         try {
-            const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-            const snapshot = await get(ref(db, 'user_passwords'));
-            const data = snapshot.val();
-            const passwords = data?.user_passwords || data?.['"user_passwords"'] || data;
+            const snap = await getDoc(doc(db, 'users', name));
+            return snap.exists() ? (snap.data() || {}) : null;
+        } catch (e) { console.error('[Auth] 读取账户失败:', e); return null; }
+    }
 
-            if (passwords && passwords[user]) {
-                const cloudPass = passwords[user];
-                if (cloudPass !== localPass) {
-                    alert('您的登录凭证已过期（密码可能已修改），请重新登录');
-                    handleLogout();
-                }
-            }
+    async function ensureUser(name) {
+        if (!fbReady()) return { password: defaultPassword(name) };
+        let data = await getUserDoc(name);
+        if (!data || typeof data.password !== 'string') {
+            const { db, doc, setDoc } = window.fb;
+            data = { password: defaultPassword(name), _createdAt: new Date().toISOString() };
+            try { await setDoc(doc(db, 'users', name), data); } catch (e) { console.error('[Auth] 初始化账户失败:', e); }
+        }
+        return data;
+    }
+
+    async function verifyPassword(name, password) {
+        const data = await ensureUser(name);
+        return !!data && data.password === password;
+    }
+
+    async function changePassword(name, oldPw, newPw) {
+        const ok = await verifyPassword(name, oldPw);
+        if (!ok) return { success: false, message: '原密码不正确' };
+        if (!newPw || newPw.length < 4) return { success: false, message: '新密码至少 4 位' };
+        const { db, doc, setDoc } = window.fb;
+        try {
+            await setDoc(doc(db, 'users', name), { password: newPw, _updatedAt: new Date().toISOString() }, { merge: true });
+            return { success: true };
         } catch (e) {
-            // 静默忽略错误
+            return { success: false, message: '修改失败：' + (e.message || e) };
         }
     }
 
-    /**
-     * 自动登录检查
-     */
-    function initAutoLogin() {
-        const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        const savedPass = localStorage.getItem(STORAGE_KEYS.PASS_HASH);
-        
-        if (savedUser && savedPass) {
-            showLoggedInUI(savedUser);
-            
-            if (typeof window.onLoginSuccess === 'function') {
-                window.onLoginSuccess();
-            }
-
-            backgroundVerify(savedUser, savedPass);
-        } else {
-            showLoginUI();
-        }
+    // ---------- 会话 ----------
+    function getSessionUser() {
+        try { const n = localStorage.getItem(SESSION_KEY); return isValidUser(n) ? n : null; } catch (e) { return null; }
     }
-
-    // ==========================================
-    // 3. 用户交互操作 (保持原有逻辑框架)
-    // ==========================================
-    
-    async function handleLogin() {
-        const usernameEl = document.getElementById('login-username');
-        const passwordEl = document.getElementById('login-password');
-        
-        if (!usernameEl || !passwordEl) {
-            alert('找不到登录表单元素，请刷新页面重试');
-            return;
-        }
-        
-        const username = usernameEl.value.trim().toLowerCase();
-        const password = passwordEl.value;
-        
-        // 验证用户名 - 支持 root（调试账户）和自定义账户
-        // root 账户始终有效，其他账户需要先注册
-        const isRootUser = username === 'root';
-        
-        if (!username) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('请输入用户名', 'error');
-            }
-            return;
-        }
-        
-        if (!password) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('请输入密码', 'error');
-            }
-            return;
-        }
-        
-        if (typeof window.updateSyncStatus === 'function') {
-            window.updateSyncStatus('正在验证密码...', 'info');
-        }
-        
+    function setSession(name) {
         try {
-            if (!checkFirebaseAvailable()) {
-                alert('Firebase数据库未初始化，请刷新页面重试');
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('Firebase数据库未初始化', 'error');
-                }
-                return;
-            }
-            
-            const passwords = await fetchPasswordsFromFirebase();
-            
-            if (!passwords) {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('无法读取密码数据', 'error');
-                }
-                return;
-            }
-            
-            // root账户特殊处理：如果密码未设置，允许直接登录
-            let storedPassword = passwords[username];
-            
-            if (isRootUser && !storedPassword) {
-                storedPassword = 'root123';
-                const { ref, update } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-                const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
-                await update(passwordsRef, { root: storedPassword });
-            } else if (!storedPassword) {
-                // 其他账户需要先注册
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('该用户未注册，请先注册账户', 'error');
-                }
-                return;
-            }
-            
-            // 验证密码（明文比较）
-            if (storedPassword === password) {
-                // 登录成功
-                localStorage.setItem('trip_password_hash', password);
-                showLoggedInUI(username);
-                
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('登录成功，正在下载数据...', 'info');
-                }
-                
-                // 登录后下载数据并渲染
-                if (typeof window.onLoginSuccess === 'function') {
-                    window.onLoginSuccess();
-                }
-            } else {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('密码错误', 'error');
-                }
-            }
-        } catch (error) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus(`登录失败: ${error.message}`, 'error');
-            }
-        }
+            localStorage.setItem(SESSION_KEY, name);
+            localStorage.setItem(CURRENT_KEY, name);
+            localStorage.setItem('predep_cal_name', name);
+        } catch (e) {}
+        window.currentUser = name;
+        if (window.stateManager) window.stateManager.setState({ isLoggedIn: true, currentUser: name });
+    }
+    function clearSession() {
+        try {
+            localStorage.removeItem(SESSION_KEY);
+            localStorage.removeItem(CURRENT_KEY);
+        } catch (e) {}
+        window.currentUser = null;
     }
 
-    function handleLogout() {
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        localStorage.removeItem(STORAGE_KEYS.PASS_HASH);
-        // 重载页面以清空内存状态
+    // ---------- UI ----------
+    function showLoginUI() {
+        const loginModal = document.getElementById('login-modal');
+        const registerModal = document.getElementById('register-modal');
+        const mainContent = document.getElementById('main-content');
+        const loggedInBar = document.getElementById('user-logged-in');
+
+        if (mainContent) mainContent.style.display = 'none';
+        if (loggedInBar) loggedInBar.style.display = 'none';
+        if (registerModal) registerModal.style.display = 'none';
+        if (loginModal) loginModal.style.setProperty('display', 'flex', 'important');
+
+        // 注册按钮隐藏（固定五个用户）
+        const regBtn = document.getElementById('register-btn');
+        if (regBtn) regBtn.style.display = 'none';
+
+        const userInput = document.getElementById('login-username');
+        if (userInput) {
+            userInput.setAttribute('placeholder', '用户名：djy / xwz / mrb / hrz / zyt');
+            userInput.value = userInput.value || '';
+        }
+        const pwInput = document.getElementById('login-password');
+        if (pwInput) pwInput.setAttribute('placeholder', '初始密码为 用户名+1234');
+
+        const loginBtn = document.getElementById('login-btn');
+        if (loginBtn && !loginBtn._bound) {
+            loginBtn._bound = true;
+            loginBtn.addEventListener('click', handleLogin);
+        }
+        [userInput, pwInput].forEach(el => {
+            if (el && !el._enterBound) {
+                el._enterBound = true;
+                el.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+            }
+        });
+    }
+
+    function showContent(name) {
+        const loginModal = document.getElementById('login-modal');
+        const registerModal = document.getElementById('register-modal');
+        const mainContent = document.getElementById('main-content');
+        const loggedInBar = document.getElementById('user-logged-in');
+        const nameEl = document.getElementById('logged-in-user-name');
+
+        if (loginModal) loginModal.style.setProperty('display', 'none', 'important');
+        if (registerModal) registerModal.style.display = 'none';
+        if (mainContent) mainContent.style.display = 'block';
+        if (loggedInBar) loggedInBar.style.display = 'flex';
+        if (nameEl) nameEl.textContent = `👤 ${name}`;
+
+        injectChangePasswordBtn();
+    }
+
+    function injectChangePasswordBtn() {
+        const bar = document.querySelector('.sync-buttons-top');
+        if (!bar || document.getElementById('change-pw-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'change-pw-btn';
+        btn.className = 'sync-btn';
+        btn.title = '修改密码';
+        btn.textContent = '🔑';
+        btn.addEventListener('click', handleChangePassword);
+        // 放在退出按钮前面
+        const logout = bar.querySelector('.btn-logout');
+        if (logout) bar.insertBefore(btn, logout); else bar.appendChild(btn);
+    }
+
+    function setLoginMessage(msg, isError) {
+        let el = document.getElementById('login-message');
+        if (!el) {
+            const form = document.querySelector('#login-modal .login-form');
+            if (!form) { if (msg) alert(msg); return; }
+            el = document.createElement('div');
+            el.id = 'login-message';
+            el.style.cssText = 'margin-top:10px;font-size:13px;text-align:center;';
+            form.appendChild(el);
+        }
+        el.textContent = msg || '';
+        el.style.color = isError ? '#c0392b' : '#2e7d32';
+    }
+
+    // ---------- 动作 ----------
+    async function handleLogin() {
+        const userInput = document.getElementById('login-username');
+        const pwInput = document.getElementById('login-password');
+        const name = (userInput && userInput.value || '').trim().toLowerCase();
+        const pw = (pwInput && pwInput.value) || '';
+
+        if (!isValidUser(name)) { setLoginMessage('用户名无效，请使用 djy / xwz / mrb / hrz / zyt', true); return; }
+        if (!pw) { setLoginMessage('请输入密码', true); return; }
+
+        setLoginMessage('验证中…', false);
+        const ok = await verifyPassword(name, pw);
+        if (!ok) { setLoginMessage('密码错误（初始密码为 用户名+1234）', true); return; }
+
+        setSession(name);
         location.reload();
     }
 
-    async function checkLoginStatus() {
-        const savedUser = localStorage.getItem('trip_current_user');
-        const savedPasswordHash = localStorage.getItem('trip_password_hash');
-        if (savedUser && savedPasswordHash) {
-            // 验证保存的密码hash是否有效（需要从Firebase验证）
-            return await verifyStoredPassword(savedUser, savedPasswordHash);
+    function handleLogout() {
+        clearSession();
+        location.reload();
+    }
+
+    // 使用页内模态框（此环境会屏蔽原生 prompt/alert，因此不能用它们）
+    function buildChangePasswordModal() {
+        if (document.getElementById('change-pw-modal')) return;
+        const modal = document.createElement('div');
+        modal.id = 'change-pw-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:420px;">
+                <div class="modal-header">
+                    <h3>修改密码</h3>
+                    <button class="modal-close" id="cpw-close" type="button">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="cpw-old">当前密码</label>
+                        <input type="password" id="cpw-old" class="form-input" placeholder="请输入当前密码" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="cpw-new">新密码（至少 4 位）</label>
+                        <input type="password" id="cpw-new" class="form-input" placeholder="请输入新密码" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="cpw-confirm">确认新密码</label>
+                        <input type="password" id="cpw-confirm" class="form-input" placeholder="请再次输入新密码" autocomplete="new-password">
+                    </div>
+                    <div id="cpw-msg" style="font-size:13px;text-align:center;min-height:18px;"></div>
+                    <div class="config-actions" style="margin-top:16px;">
+                        <button class="btn-primary" id="cpw-save" type="button">保存</button>
+                        <button class="btn-secondary" id="cpw-cancel" type="button">取消</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#cpw-close').addEventListener('click', closeChangePasswordModal);
+        modal.querySelector('#cpw-cancel').addEventListener('click', closeChangePasswordModal);
+        modal.querySelector('#cpw-save').addEventListener('click', saveChangePassword);
+        modal.querySelectorAll('input').forEach(el => {
+            el.addEventListener('keydown', e => { if (e.key === 'Enter') saveChangePassword(); });
+        });
+        modal.addEventListener('click', e => { if (e.target === modal) closeChangePasswordModal(); });
+    }
+
+    function setChangePwMessage(msg, isError) {
+        const el = document.getElementById('cpw-msg');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.style.color = isError ? '#c0392b' : '#2e7d32';
+    }
+
+    function openChangePasswordModal() {
+        buildChangePasswordModal();
+        const modal = document.getElementById('change-pw-modal');
+        ['cpw-old', 'cpw-new', 'cpw-confirm'].forEach(id => { const i = document.getElementById(id); if (i) i.value = ''; });
+        setChangePwMessage('', false);
+        if (modal) modal.style.setProperty('display', 'flex', 'important');
+        const first = document.getElementById('cpw-old');
+        if (first) setTimeout(() => first.focus(), 50);
+    }
+
+    function closeChangePasswordModal() {
+        const modal = document.getElementById('change-pw-modal');
+        if (modal) modal.style.setProperty('display', 'none', 'important');
+    }
+
+    async function saveChangePassword() {
+        const name = getSessionUser();
+        if (!name) return;
+        const oldPw = (document.getElementById('cpw-old') || {}).value || '';
+        const newPw = (document.getElementById('cpw-new') || {}).value || '';
+        const confirmPw = (document.getElementById('cpw-confirm') || {}).value || '';
+
+        if (!oldPw) { setChangePwMessage('请输入当前密码', true); return; }
+        if (newPw.length < 4) { setChangePwMessage('新密码至少 4 位', true); return; }
+        if (newPw !== confirmPw) { setChangePwMessage('两次输入的新密码不一致', true); return; }
+
+        setChangePwMessage('保存中…', false);
+        const res = await changePassword(name, oldPw, newPw);
+        if (res.success) {
+            setChangePwMessage('密码修改成功', false);
+            setTimeout(closeChangePasswordModal, 800);
         } else {
-            showLoginUI();
-            
-            // 更新 stateManager 的状态（如果存在）
-            if (window.stateManager) {
-                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
-            }
-            
-            return false;
+            setChangePwMessage(res.message || '修改失败', true);
         }
     }
 
-    async function verifyStoredPassword(user, storedPassword) {
-        try {
-            if (!checkFirebaseAvailable()) {
-                showLoginUI();
-                return false;
-            }
-            
-            const { ref, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-            const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
-            const snapshot = await get(passwordsRef);
-            const passwords = snapshot.val();
-            
-            // 测试模式：明文比较
-            if (passwords && passwords[user] === storedPassword) {
-                // 密码验证成功，保持登录状态
-                showLoggedInUI(user);
-                
-                // 更新 stateManager 的状态（如果存在）
-                if (window.stateManager) {
-                    window.stateManager.setState({ isLoggedIn: true, currentUser: user });
-                }
-                
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('正在下载数据...', 'info');
-                }
-                
-                // 登录后下载数据并渲染
-                if (typeof window.onLoginSuccess === 'function') {
-                    window.onLoginSuccess();
-                }
-                
-                return true;
-            } else {
-                // 密码验证失败，需要重新登录
-                localStorage.removeItem('trip_password_hash');
-                localStorage.removeItem('trip_current_user');
-                showLoginUI();
-                
-                // 更新 stateManager 的状态（如果存在）
-                if (window.stateManager) {
-                    window.stateManager.setState({ isLoggedIn: false, currentUser: null });
-                }
-                
-                return false;
-            }
-        } catch (error) {
-            showLoginUI();
-            
-            if (window.stateManager) {
-                window.stateManager.setState({ isLoggedIn: false, currentUser: null });
-            }
-            
-            return false;
-        }
-    }
-    function checkWritePermission() {
-        if (!isLoggedIn || !currentUser) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('请先登录才能进行此操作', 'error');
-            }
-            return false;
-        }
-        return true;
+    function handleChangePassword() { openChangePasswordModal(); }
+
+    function proceed(name) {
+        setSession(name);
+        showContent(name);
+        if (typeof window.onLoginSuccess === 'function') window.onLoginSuccess();
     }
 
-    /**
-     * 显示注册账户模态框
-     */
-    function showRegisterModal() {
-        const modal = document.getElementById('register-modal');
-        if (modal) {
-            modal.style.display = 'flex';
-        } else {
-            alert('找不到注册账户模态框，请检查页面是否完整加载');
-        }
-    }
-
-    /**
-     * 关闭注册账户模态框
-     */
-    function closeRegisterModal() {
-        const modal = document.getElementById('register-modal');
-        if (modal) {
-            modal.style.display = 'none';
-            const usernameInput = document.getElementById('register-username');
-            const passwordInput = document.getElementById('register-password');
-            const confirmInput = document.getElementById('register-confirm');
-            if (usernameInput) usernameInput.value = '';
-            if (passwordInput) passwordInput.value = '';
-            if (confirmInput) confirmInput.value = '';
-        }
-    }
-
-    /**
-     * 注册新账户
-     */
-    async function registerUser() {
-        const usernameEl = document.getElementById('register-username');
-        const passwordEl = document.getElementById('register-password');
-        const confirmEl = document.getElementById('register-confirm');
-        const inviteCodeEl = document.getElementById('register-invite-code');
-        
-        if (!usernameEl || !passwordEl || !confirmEl || !inviteCodeEl) {
-            alert('找不到注册表单元素，请检查页面是否完整加载');
-            return;
-        }
-        
-        const username = usernameEl.value.trim().toLowerCase();
-        const password = passwordEl.value;
-        const confirm = confirmEl.value;
-        const inviteCode = inviteCodeEl.value.trim();
-        
-        // 验证用户名格式
-        const usernameRegex = /^[a-zA-Z0-9_]+$/;
-        if (!username || !usernameRegex.test(username)) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('用户名只能包含字母、数字和下划线', 'error');
-            }
-            return;
-        }
-        
-        // 验证密码长度
-        if (!password || password.length < 4) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('密码长度至少为4位', 'error');
-            }
-            return;
-        }
-        
-        // 验证密码确认
-        if (password !== confirm) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('两次输入的密码不一致', 'error');
-            }
-            return;
-        }
-        
-        // 验证邀请码（从数据库验证）
-        if (!inviteCode) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus('请输入邀请码', 'error');
-            }
-            return;
-        }
-        
-        // 从 Firebase 数据库验证邀请码
-        try {
-            const { ref, get, update } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-            const inviteCodesRef = ref(window.firebaseDatabase, 'invite_codes');
-            const snapshot = await get(inviteCodesRef);
-            const inviteCodesData = snapshot.val();
-            
-            if (!inviteCodesData || !inviteCodesData[inviteCode]) {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('邀请码无效，请输入正确的邀请码', 'error');
-                }
-                return;
-            }
-            
-            // 检查邀请码是否已被使用
-            if (inviteCodesData[inviteCode].used) {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('该邀请码已被使用，请使用其他邀请码', 'error');
-                }
-                return;
-            }
-            
-            // 标记邀请码为已使用
-            await update(inviteCodesRef, { 
-                [inviteCode]: { 
-                    used: true,
-                    used_by: username,
-                    used_at: new Date().toISOString()
-                }
-            });
-        } catch (error) {
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus(`验证邀请码失败: ${error.message}`, 'error');
-            }
-            return;
-        }
-        
-        if (typeof window.updateSyncStatus === 'function') {
-            window.updateSyncStatus('正在注册账户...', 'info');
-        }
-        
-        try {
-            if (!checkFirebaseAvailable()) {
-                alert('Firebase数据库未初始化，请刷新页面重试');
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('Firebase数据库未初始化', 'error');
-                }
-                return;
-            }
-            
-            const { ref, update, get } = await import("https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js");
-            const passwordsRef = ref(window.firebaseDatabase, 'user_passwords');
-            
-            // 检查用户名是否已存在
-            const existingSnapshot = await get(passwordsRef);
-            const existingData = existingSnapshot.val() || {};
-            
-            if (existingData[username]) {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('该用户名已存在，请选择其他用户名', 'error');
-                }
-                return;
-            }
-            
-            // 使用 update 而不是 set，只添加新用户，不覆盖现有用户
-            await update(passwordsRef, { [username]: password });
-            
-            // 验证保存是否成功
-            const verifySnapshot = await get(passwordsRef);
-            const verifyData = verifySnapshot.val();
-            
-            if (verifyData && verifyData[username]) {
-                if (typeof window.updateSyncStatus === 'function') {
-                    window.updateSyncStatus('账户注册成功！现在可以登录了', 'success');
-                }
-                // 显示明显的注册成功提示
-                alert('🎉 账户注册成功！\n\n您现在可以使用注册的用户名和密码登录系统。');
-                closeRegisterModal();
-            } else {
-                throw new Error('注册后验证失败，数据可能未正确写入');
-            }
-        } catch (error) {
-            alert(`注册失败: ${error.message}\n请查看控制台获取详细信息`);
-            if (typeof window.updateSyncStatus === 'function') {
-                window.updateSyncStatus(`注册失败: ${error.message}`, 'error');
-            }
-        }
-    }
-
-    /**
-     * 获取当前用户
-     */
-    function getCurrentUser() {
-        return currentUser;
-    }
-
-    /**
-     * 获取登录状态
-     */
-    function getLoginStatus() {
-        return isLoggedIn;
-    }
-
-
-    // ==========================================
-    // 导出与执行
-    // ==========================================
     function init() {
-        // 绑定按钮事件
-        const loginBtn = document.getElementById('login-btn');
-        if (loginBtn) {
-            loginBtn.removeEventListener('click', handleLogin);
-            loginBtn.addEventListener('click', handleLogin);
-        }
-        
-        // 绑定注册按钮事件
-        const registerBtn = document.getElementById('register-btn');
-        if (registerBtn) {
-            registerBtn.removeEventListener('click', showRegisterModal);
-            registerBtn.addEventListener('click', showRegisterModal);
-        }
-        
-        // 确保全局函数可用
-        window.showRegisterModal = showRegisterModal;
-        window.closeRegisterModal = closeRegisterModal;
-        window.registerUser = registerUser;
+        if (inited) return;
+        inited = true;
 
-        // 预加载邀请码（后台静默执行，仅读取不初始化）
-        getInviteCodesFromDatabase().catch(() => {});
-
-        // 执行自动登录逻辑
-        initAutoLogin();
+        const session = getSessionUser();
+        if (session) {
+            proceed(session);
+        } else {
+            showLoginUI();
+        }
     }
+
+    function checkWritePermission() { return !!getSessionUser(); }
+    function getCurrentUser() {
+        try { return localStorage.getItem(CURRENT_KEY) || getSessionUser(); } catch (e) { return getSessionUser(); }
+    }
+    function noop() {}
+
     window.AuthManager = {
-        checkLoginStatus,
+        init,
+        USERS,
+        getCurrentUser,
+        checkWritePermission,
+        changePassword: handleChangePassword,
         handleLogin,
         handleLogout,
-        checkWritePermission,
-        showRegisterModal,
-        closeRegisterModal,
-        registerUser,
-        getCurrentUser,
-        getLoginStatus,
-        showLoginUI, // 添加 showLoginUI 到 AuthManager 对象
-        init // 添加 init 到 AuthManager 对象
+        getLoginStatus: () => !!getSessionUser(),
+        checkLoginStatus: async () => !!getSessionUser(),
+        showLoginUI,
+        showRegisterModal: noop,
+        closeRegisterModal: noop,
+        registerUser: noop
     };
 
-    // 
-
-    // // 🚀 页面加载即运行
-    // if (document.readyState === 'loading') {
-    //     document.addEventListener('DOMContentLoaded', initAutoLogin);
-    // } else {
-    //     initAutoLogin();
-    // }
-
-
-    // 为了向后兼容，也导出到原来的全局函数名
-    window.checkLoginStatus = checkLoginStatus;
+    // 向后兼容的全局函数
+    window.checkWritePermission = checkWritePermission;
+    window.getCurrentUser = getCurrentUser;
     window.handleLogin = handleLogin;
     window.handleLogout = handleLogout;
-    window.checkWritePermission = checkWritePermission;
-    window.showRegisterModal = showRegisterModal;
-    window.closeRegisterModal = closeRegisterModal;
-    window.registerUser = registerUser;
+    window.showRegisterModal = noop;
+    window.closeRegisterModal = noop;
+    window.registerUser = noop;
     window.showLoginUI = showLoginUI;
+    window.checkLoginStatus = async () => !!getSessionUser();
 
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();
